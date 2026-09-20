@@ -124,7 +124,7 @@ export function registerContinuoRoutes(app: ContinuoRouteHost, core: Scope): voi
       body: z.object({ text: z.string().min(1).max(8000).optional() }).optional(),
       success: { data: docSchema },
       errors: CONTINUO_ERRORS,
-      description: 'Task actions: {task_id}:pause stops a running task (the user pause wins over automatic continuation); {task_id}:resume continues a paused, interrupted or needs_review task in its original session; {task_id}:reply sends the user reply into the task session; {task_id}:complete marks a task that is waiting for the user as done',
+      description: 'Task actions: {task_id}:pause stops a running task (the user pause wins over automatic continuation); {task_id}:resume continues a paused, interrupted, failed or needs_review task in its original session; {task_id}:reply sends the user reply into the task session; {task_id}:complete marks a task that is waiting for the user as done',
       tags: ['continuo'],
       operationId: 'continuoTaskAction',
     },

@@ -5,6 +5,7 @@ export function OpenWorkspace({ onOpen }: { onOpen: (w: Workspace) => void }) {
   const [recent, setRecent] = useState<Workspace[]>([]);
   const [browse, setBrowse] = useState<FsBrowse | null>(null);
   const [newName, setNewName] = useState('');
+  const [pathInput, setPathInput] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -56,11 +57,12 @@ export function OpenWorkspace({ onOpen }: { onOpen: (w: Workspace) => void }) {
         <section className="space-y-2">
           <div className="font-medium">打开已有文件夹</div>
           <div className="panel p-3 space-y-2">
-            <div className="flex items-center gap-2">
-              <button className="btn" disabled={!browse?.parent} onClick={() => { if (browse?.parent) void go(browse.parent); }}>上一级</button>
-              <div className="mono text-xs muted truncate flex-1">{browse?.path ?? '…'}</div>
-              <button className="btn btn-primary" disabled={!browse || busy} onClick={() => { if (browse) void openPath(browse.path); }}>打开这个文件夹</button>
-            </div>
+            <form className="flex items-center gap-2" onSubmit={(e) => { e.preventDefault(); const p = pathInput.trim(); if (p) { setPathInput(''); void go(p); } }}>
+              <button className="btn" type="button" disabled={!browse?.parent} onClick={() => { if (browse?.parent) void go(browse.parent); }}>上一级</button>
+              <input className="flex-1 mono text-xs" placeholder={browse?.path ?? '输入绝对路径后回车跳转'} value={pathInput} onChange={(e) => setPathInput(e.target.value)} />
+              <button className="btn btn-primary" type="button" disabled={!browse || busy} onClick={() => { if (browse) void openPath(browse.path); }}>打开这个文件夹</button>
+            </form>
+            <div className="mono text-xs muted truncate">当前：{browse?.path ?? '…'}</div>
             <div className="max-h-72 overflow-auto divide-y" style={{ borderColor: 'var(--line)' }}>
               {browse?.entries.map((e) => (
                 <div key={e.path} className="flex items-center justify-between py-1.5">

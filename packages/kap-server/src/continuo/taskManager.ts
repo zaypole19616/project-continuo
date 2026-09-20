@@ -169,17 +169,21 @@ export class ContinuoTaskManager {
   async resume(workspaceId: string, taskId: string): Promise<ContinuoWorkspaceDoc> {
     const doc = await this.requireDoc(workspaceId);
     const task = this.requireTask(doc, taskId);
-    if (task.status !== 'paused' && task.status !== 'interrupted' && task.status !== 'needs_review') {
-      throw new ContinuoError('invalid_state', `task ${taskId} is ${task.status}; only paused, interrupted or needs_review tasks resume`);
+    if (task.status !== 'paused' && task.status !== 'interrupted' && task.status !== 'needs_review' && task.status !== 'failed') {
+      throw new ContinuoError('invalid_state', `task ${taskId} is ${task.status}; only paused, interrupted, failed or needs_review tasks resume`);
     }
     const session = await resumeSessionById(this.core.accessor, task.sessionId);
     if (session === undefined) throw new ContinuoError('invalid_state', `session ${task.sessionId} for task ${taskId} is gone`);
     const agent = await ensureMainAgent(session);
     await this.ensureModel(agent);
     this.attach(workspaceId, taskId, session, agent);
-    const reason = task.status === 'needs_review' && task.verification !== undefined ? `Review notes: ${task.verification.join('; ')}` : 'The task was paused or interrupted.';
+    const reason = task.status === 'needs_review' && task.verification !== undefined
+      ? `Review notes: ${task.verification.join('; ')}`
+      : task.status === 'failed'
+        ? `The previous attempt failed (${task.lastError ?? 'unknown error'}).`
+        : 'The task was paused or interrupted.';
     const promptId = this.submitPrompt(agent, `Continue the task: "${task.title}". ${reason} First check what already exists in the workspace so you do not redo finished work, then finish the remaining part. Call ReportWorkspaceResult before your final answer.`);
-    return this.patchTask(workspaceId, taskId, (current) => ({ ...current, status: 'running', pauseRequested: false, trigger: 'resume' as TaskTrigger, promptIds: [...current.promptIds, promptId], endedAt: undefined, verification: undefined }));
+    return this.patchTask(workspaceId, taskId, (current) => ({ ...current, status: 'running', pauseRequested: false, trigger: 'resume' as TaskTrigger, promptIds: [...current.promptIds, promptId], endedAt: undefined, verification: undefined, lastError: undefined }));
   }
 
   async reply(workspaceId: string, taskId: string, text: string): Promise<ContinuoWorkspaceDoc> {
@@ -238,7 +242,7 @@ export class ContinuoTaskManager {
     lines.push(`Opened ${doc.openCount} time(s). Initialization: ${doc.init.status}.`, '');
     if (doc.understanding !== undefined) lines.push('## Workspace understanding', '', doc.understanding.text, '', `Sources: ${doc.understanding.sourceRefs.join(', ') || '—'}`, '');
     lines.push('## Effective context', '');
-    for (const entry of doc.context.filter((candidate) => candidate.status === 'active')) lines.push(`- (${entry.kind}, ${entry.origin}) ${entry.text}${entry.sourceRefs.length ? ` — ${entry.sourceRefs.join(', ')}` : ''}`);
+    for (const entry of doc.context.filter((candidate) => candidate.status === 'active')) lines.push(`- (${entry.kind}, ${entry.origin}) ${entry.text}${entry.sourceRefs.length > 0 ? ` — ${entry.sourceRefs.join(', ')}` : ''}`);
     if (!doc.context.some((candidate) => candidate.status === 'active')) lines.push('- none yet');
     lines.push('', '## Tasks', '');
     for (const task of doc.tasks) {
@@ -280,7 +284,7 @@ export class ContinuoTaskManager {
         ...current,
         scan,
         init: { status: 'completed', fingerprint, startedAt: now, endedAt: now },
-        understanding: { text: 'This folder is empty. The workspace is ready and waiting for the first task; nothing about its purpose is assumed.', sourceRefs: [], updatedAt: now },
+        understanding: { text: '这个文件夹是空的。工作空间已就绪，等待第一个任务；不对它的用途做任何假设。', sourceRefs: [], updatedAt: now },
         activity: [...current.activity, { at: now, kind: 'system', text: 'Empty folder: workspace ready, no scan needed' }],
       }));
     }

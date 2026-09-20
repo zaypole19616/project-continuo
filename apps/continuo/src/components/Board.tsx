@@ -14,12 +14,12 @@ export function Board({ doc, selectedTaskId, connection, onSelect, onAction }: {
     { title: '需要你', match: (t) => t.status === 'awaiting_user' || t.status === 'needs_review' },
     { title: '已结束', match: (t) => t.status === 'completed' || t.status === 'paused' || t.status === 'failed' || t.status === 'interrupted' },
   ];
-  const tasks = [...doc.tasks].reverse();
+  const tasks = [...doc.tasks].toReversed();
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <div className="font-medium">看板</div>
-        <div className="muted text-xs">连接 {connection === 'open' ? '正常' : connection === 'connecting' ? '重连中' : '未连'}</div>
+        {connection !== 'idle' && <div className="muted text-xs">连接 {connection === 'open' ? '正常' : connection === 'connecting' ? '连接中' : '已断开'}</div>}
       </div>
       {cols.map((c) => {
         const list = tasks.filter(c.match);
@@ -41,7 +41,7 @@ function TaskCard({ t, doc, selected, onSelect, onAction }: { t: ContinuoTask; d
   const tag = t.status === 'running' || t.status === 'verifying' ? 'tag-run' : t.status === 'awaiting_user' || t.status === 'needs_review' ? 'tag-wait' : t.status === 'failed' || t.status === 'interrupted' ? 'tag-fail' : 'tag-done';
   const awaitingReply = t.status === 'awaiting_user' && t.pendingInteraction === 'reply';
   const canPause = t.status === 'running' || (t.status === 'awaiting_user' && !awaitingReply) || t.status === 'queued';
-  const canResume = t.status === 'paused' || t.status === 'interrupted' || t.status === 'needs_review';
+  const canResume = t.status === 'paused' || t.status === 'interrupted' || t.status === 'needs_review' || t.status === 'failed';
   const canComplete = awaitingReply || t.status === 'needs_review';
   const isInit = t.kind === 'init';
   const done = t.usage.steps;
@@ -54,7 +54,7 @@ function TaskCard({ t, doc, selected, onSelect, onAction }: { t: ContinuoTask; d
       </div>
       <div className="text-sm">{t.title}</div>
       {isInit && doc.scan && (
-        <div className="muted text-xs">范围：{doc.scan.counts.dirs} 个文件夹、{doc.scan.counts.files} 个文件{doc.scan.guideFiles.length ? `，指引 ${doc.scan.guideFiles.join('、')}` : ''}{doc.scan.unscanned.length ? `；未读 ${doc.scan.unscanned.length} 处` : ''}</div>
+        <div className="muted text-xs">范围：{doc.scan.counts.dirs} 个文件夹、{doc.scan.counts.files} 个文件{doc.scan.guideFiles.length > 0 ? `，指引 ${doc.scan.guideFiles.join('、')}` : ''}{doc.scan.unscanned.length > 0 ? `；未读 ${doc.scan.unscanned.length} 处` : ''}</div>
       )}
       {t.phase && (t.status === 'running' || t.status === 'awaiting_user' || t.status === 'verifying') && <div className="muted text-xs">{awaitingReply ? t.phase : `正在：${t.phase}`}</div>}
       {awaitingReply && t.lastReply && <div className="text-xs muted" style={{ display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{t.lastReply}</div>}
@@ -70,7 +70,7 @@ function TaskCard({ t, doc, selected, onSelect, onAction }: { t: ContinuoTask; d
       {(canPause || canResume || canComplete) && (
         <div className="flex gap-2 pt-1">
           {canPause && <button className="btn text-xs" onClick={(e) => { e.stopPropagation(); onAction('pause'); }}>停止</button>}
-          {canResume && <button className="btn text-xs" onClick={(e) => { e.stopPropagation(); onAction('resume'); }}>继续</button>}
+          {canResume && <button className="btn text-xs" onClick={(e) => { e.stopPropagation(); onAction('resume'); }}>{t.status === 'failed' ? '重试' : '继续'}</button>}
           {canComplete && <button className="btn text-xs" onClick={(e) => { e.stopPropagation(); onAction('complete'); }}>标记完成</button>}
         </div>
       )}

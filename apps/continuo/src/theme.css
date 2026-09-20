@@ -45,3 +45,10 @@ code, pre, .mono { font-family: var(--mono); font-size: 12.5px; }
 .tag-fail { color: var(--danger); border-color: var(--danger); }
 textarea, input { font: inherit; color: inherit; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
 textarea:focus, input:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+
+.ws-grid { grid-template-columns: minmax(0, 1fr) 380px; }
+.ws-aside { border-left: 1px solid var(--line); }
+@media (max-width: 900px) {
+  .ws-grid { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(0, 45%); }
+  .ws-aside { border-left: 0; border-top: 1px solid var(--line); }
+}

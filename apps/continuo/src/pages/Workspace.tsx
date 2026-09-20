@@ -43,7 +43,7 @@ export function WorkspaceView({ workspace, onClose }: { workspace: Workspace; on
       const d = await continuo.get(workspace.id);
       setDoc(d);
       return d;
-    } catch (err) { setError((err as Error).message); return null; }
+    } catch (error) { setError((error as Error).message); return null; }
   }, [workspace.id]);
 
   useEffect(() => {
@@ -53,7 +53,7 @@ export function WorkspaceView({ workspace, onClose }: { workspace: Workspace; on
         const d = await continuo.open(workspace.id, newRequestId());
         if (cancelled) return;
         setDoc(d);
-      } catch (err) { if (!cancelled) setError((err as Error).message); }
+      } catch (error) { if (!cancelled) setError((error as Error).message); }
     })();
     return () => { cancelled = true; };
   }, [workspace.id]);
@@ -98,7 +98,7 @@ export function WorkspaceView({ workspace, onClose }: { workspace: Workspace; on
           if (ev.type === 'event.session.work_changed') { void refreshPending(sessionId); void refresh(); }
           if (ev.type === 'turn.ended') void refresh();
         });
-      } catch (err) { if (!cancelled) setError((err as Error).message); }
+      } catch (error) { if (!cancelled) setError((error as Error).message); }
     })();
     return () => { cancelled = true; streamRef.current?.close(); streamRef.current = null; };
   }, [sessionId, refreshPending, refresh]);
@@ -108,7 +108,7 @@ export function WorkspaceView({ workspace, onClose }: { workspace: Workspace; on
   useEffect(() => {
     if (tab !== 'log') return;
     let cancelled = false;
-    void (async () => { try { const r = await continuo.workLog(workspace.id); if (!cancelled) setWorkLog(r.markdown); } catch (err) { if (!cancelled) setError((err as Error).message); } })();
+    void (async () => { try { const r = await continuo.workLog(workspace.id); if (!cancelled) setWorkLog(r.markdown); } catch (error) { if (!cancelled) setError((error as Error).message); } })();
     return () => { cancelled = true; };
   }, [tab, workspace.id, doc?.revision]);
 
@@ -129,17 +129,17 @@ export function WorkspaceView({ workspace, onClose }: { workspace: Workspace; on
         setDraft(''); if (taRef.current) taRef.current.value = '';
         setDoc(r.doc); userPicked.current = false; setSelectedId(r.task.taskId); setTab('board');
       }
-    } catch (err) { setError((err as Error).message); } finally { setSending(false); }
+    } catch (error) { setError((error as Error).message); } finally { setSending(false); }
   };
 
   const action = async (task: ContinuoTask, a: BoardAction) => {
     setError(null);
-    try { const d = await continuo.taskAction(workspace.id, task.taskId, a); setDoc(d); userPicked.current = false; setSelectedId(task.taskId); } catch (err) { setError((err as Error).message); }
+    try { const d = await continuo.taskAction(workspace.id, task.taskId, a); setDoc(d); userPicked.current = false; setSelectedId(task.taskId); } catch (error) { setError((error as Error).message); }
   };
 
   const patchContext = async (entry: ContextEntry, body: { text?: string; status?: 'active' | 'inactive' }) => {
     setError(null);
-    try { const d = await continuo.patchContext(workspace.id, entry.id, { ...body, expected_revision: entry.revision }); setDoc(d); } catch (err) { setError((err as Error).message); throw err; }
+    try { const d = await continuo.patchContext(workspace.id, entry.id, { ...body, expected_revision: entry.revision }); setDoc(d); } catch (error) { setError((error as Error).message); throw error; }
   };
 
   const initTask = doc?.tasks.find((t) => t.kind === 'init');
@@ -155,14 +155,14 @@ export function WorkspaceView({ workspace, onClose }: { workspace: Workspace; on
         {doc && <div className="muted text-xs">第 {doc.openCount} 次打开 · 有效 context {doc.context.filter((e) => e.status === 'active').length} 条</div>}
         <span className={`tag ${headerTag}`}>{headerStatus}</span>
       </header>
-      <div className="flex-1 min-h-0 grid" style={{ gridTemplateColumns: 'minmax(0,1fr) 380px' }}>
+      <div className="flex-1 min-h-0 grid ws-grid">
         <main className="min-h-0 flex flex-col">
           <div className="flex-1 overflow-auto p-4 space-y-4">
             {error && <div className="panel p-3 text-sm" style={{ borderColor: 'var(--danger)' }}>{error}</div>}
             {doc && doc.init.status === 'running' && initTask && (
               <div className="panel p-3 text-sm space-y-1">
                 <div className="font-medium">正在了解这个文件夹</div>
-                {doc.scan && <div className="muted text-xs">{doc.scan.counts.dirs} 个文件夹、{doc.scan.counts.files} 个文件{doc.scan.guideFiles.length ? `，发现指引 ${doc.scan.guideFiles.join('、')}` : ''}</div>}
+                {doc.scan && <div className="muted text-xs">{doc.scan.counts.dirs} 个文件夹、{doc.scan.counts.files} 个文件{doc.scan.guideFiles.length > 0 ? `，发现指引 ${doc.scan.guideFiles.join('、')}` : ''}</div>}
                 {initTask.phase && <div className="muted text-xs">正在：{initTask.phase}</div>}
                 <div className="muted text-xs">只读，不会改动任何文件。你可以先交代任务，会在了解完成后开始。</div>
               </div>
@@ -199,7 +199,7 @@ export function WorkspaceView({ workspace, onClose }: { workspace: Workspace; on
             )}
           </div>
         </main>
-        <aside className="min-h-0 flex flex-col border-l" style={{ borderColor: 'var(--line)' }}>
+        <aside className="min-h-0 flex flex-col ws-aside" style={{ borderColor: 'var(--line)' }}>
           <div className="flex gap-1 p-2 border-b" style={{ borderColor: 'var(--line)' }}>
             {(['board', 'context', 'log'] as Tab[]).map((t) => (
               <button key={t} className={`btn text-xs ${tab === t ? 'btn-primary' : ''}`} onClick={() => setTab(t)}>{t === 'board' ? '看板' : t === 'context' ? 'Context' : '工作日志'}</button>

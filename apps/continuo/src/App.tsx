@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { kimi, readToken, setToken, type Workspace } from '#/lib/api';
+import { ApiError, kimi, readToken, setToken, type Workspace } from '#/lib/api';
 import { OpenWorkspace } from '#/pages/OpenWorkspace';
 import { WorkspaceView } from '#/pages/Workspace';
 
@@ -10,6 +10,13 @@ export function App() {
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [checking, setChecking] = useState(true);
   const [serverOk, setServerOk] = useState<string | null>(null);
+  const [failure, setFailure] = useState<'auth' | 'network' | null>(null);
+
+  useEffect(() => {
+    const onHash = () => { const t = readToken(); if (t) setTok(t); };
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -25,8 +32,10 @@ export function App() {
           const found = list.items.find((w) => w.id === saved);
           if (found) setWorkspace(found);
         }
-      } catch {
-        if (!cancelled) setServerOk(null);
+      } catch (error) {
+        if (cancelled) return;
+        setServerOk(null);
+        setFailure(error instanceof ApiError && error.code === 401 ? 'auth' : 'network');
       } finally {
         if (!cancelled) setChecking(false);
       }
@@ -39,8 +48,8 @@ export function App() {
     return (
       <Center>
         <div className="panel p-6 max-w-md space-y-3">
-          <div className="text-lg font-semibold">连不上本地服务</div>
-          <p className="muted">请先运行 <code>kimi web</code>，并把启动时打印的 token 填在这里（或用带 <code>#token=</code> 的地址打开本页）。</p>
+          <div className="text-lg font-semibold">{failure === 'auth' ? '需要本地服务的 token' : '连不上本地服务'}</div>
+          <p className="muted">{failure === 'auth' ? '本地服务在，但这个页面没有有效的 token。' : '请先运行 kimi web 启动本地服务。'}把启动时打印的 token 填在这里，或用带 <code>#token=</code> 的地址打开本页。</p>
           <TokenForm onSave={(t) => { setToken(t); setTok(t); }} />
         </div>
       </Center>
