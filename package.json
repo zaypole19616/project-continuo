@@ -29,7 +29,9 @@
     "version": "changeset version",
     "version:release": "changeset version",
     "publish": "pnpm run typecheck && pnpm run lint && pnpm run sherif && pnpm run test && pnpm run build && pnpm run lint:pkg && changeset publish",
-    "prepare": "node .husky/install.mjs"
+    "prepare": "node .husky/install.mjs",
+    "dev:continuo": "KIMI_PORT=${KIMI_PORT:-58627} pnpm -C apps/continuo run dev",
+    "build:continuo": "pnpm -C apps/continuo run build"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "0.18.2",
