@@ -29,6 +29,8 @@ const DEFAULT_APPROVE_TOOLS = new Set([
   'SetGoalBudget',
   'UpdateGoal',
   'select_tools',
+  'WorkspaceContext',
+  'ReportWorkspaceResult',
 ]);
 
 export class DefaultToolApprovePermissionPolicyService implements PermissionPolicy {

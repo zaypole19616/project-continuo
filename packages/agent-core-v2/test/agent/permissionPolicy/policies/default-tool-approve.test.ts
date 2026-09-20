@@ -69,6 +69,8 @@ describe('DefaultToolApprovePermissionPolicyService', () => {
     ['GetGoal', {}],
     ['SetGoalBudget', { tokenBudget: 1000 }],
     ['UpdateGoal', { status: 'complete' }],
+    ['WorkspaceContext', { action: 'list' }],
+    ['ReportWorkspaceResult', { summary: 'done', deliverables: [], unresolved: [] }],
   ] as const)('approves %s', (toolName, args) => {
     expect(policy.evaluate(policyContext(toolName, args))).toEqual({ kind: 'approve' });
   });

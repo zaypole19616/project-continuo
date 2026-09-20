@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import type { TimelineItem, ToolCall } from '#/lib/timeline';
 
+const REASON_LABEL: Record<string, string> = { completed: '本轮完成', cancelled: '已停止', failed: '本轮失败', blocked: '被阻塞，需要处理' };
+
 export function Timeline({ items }: { items: TimelineItem[] }) {
   if (items.length === 0) return <div className="muted p-6 text-center">还没有对话。先在下面交代一个任务。</div>;
   return (
@@ -26,7 +28,7 @@ function AssistantTurn({ item }: { item: Extract<TimelineItem, { kind: 'assistan
       {!item.ended && !item.text && item.tools.length === 0 && <div className="muted text-sm">正在思考…</div>}
       {item.ended && item.ended.reason !== 'completed' && (
         <div className="text-sm" style={{ color: 'var(--danger)' }}>
-          回合结束：{item.ended.reason}{item.ended.error ? ` · ${item.ended.error}` : ''}
+          {REASON_LABEL[item.ended.reason] ?? `回合结束：${item.ended.reason}`}{item.ended.error ? ` · ${item.ended.error}` : ''}
         </div>
       )}
     </div>

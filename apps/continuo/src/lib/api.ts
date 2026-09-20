@@ -78,3 +78,18 @@ export const kimi = {
   resolveApproval: (sessionId: string, approvalId: string, decision: 'approved' | 'rejected', scope?: 'session') =>
     api.post<unknown>(`/sessions/${sessionId}/approvals/${approvalId}`, { decision, ...(scope ? { scope } : {}) }),
 };
+
+export type ContextStatus = 'candidate' | 'active' | 'stale' | 'superseded' | 'inactive';
+export interface ContextEntry { id: string; kind: 'convention' | 'background' | 'decision' | 'progress' | 'material'; text: string; scope: { type: 'workspace' | 'task'; taskId?: string }; sourceRefs: string[]; origin: 'user' | 'file' | 'agent'; status: ContextStatus; revision: number; supersedes?: string; createdAt: string; updatedAt: string }
+export type TaskStatus = 'queued' | 'running' | 'awaiting_user' | 'verifying' | 'completed' | 'needs_review' | 'paused' | 'failed' | 'interrupted';
+export interface ContinuoTask { taskId: string; kind: 'init' | 'user'; title: string; trigger: string; sessionId: string; promptIds: string[]; status: TaskStatus; phase?: string; pauseRequested: boolean; pendingInteraction?: 'question' | 'approval' | 'reply' | 'none'; lastReply?: string; report?: { summary: string; deliverables: Array<{ path: string; note?: string; exists?: boolean }>; unresolved: string[]; reportedAt: string }; verification?: string[]; usage: { steps: number; inputTokens: number; cacheReadTokens: number; outputTokens: number }; lastError?: string; createdAt: string; updatedAt: string; endedAt?: string }
+export interface ContinuoDoc { workspaceId: string; root: string; revision: number; openCount: number; init: { status: 'pending' | 'running' | 'completed' | 'partial' | 'failed' | 'stopped'; taskId?: string; startedAt?: string; endedAt?: string }; scan?: { counts: { dirs: number; files: number; byExt: Record<string, number> }; guideFiles: string[]; truncated: boolean; unscanned: string[] }; understanding?: { text: string; sourceRefs: string[]; updatedAt: string }; context: ContextEntry[]; tasks: ContinuoTask[]; activity: Array<{ at: string; taskId?: string; kind: string; text: string }> }
+
+export const continuo = {
+  open: (workspaceId: string, clientRequestId: string) => api.post<ContinuoDoc>(`/workspaces/${workspaceId}/continuo:open`, { client_request_id: clientRequestId }),
+  get: (workspaceId: string) => api.get<ContinuoDoc>(`/workspaces/${workspaceId}/continuo`),
+  createTask: (workspaceId: string, text: string, clientRequestId: string) => api.post<{ task: ContinuoTask; doc: ContinuoDoc }>(`/workspaces/${workspaceId}/continuo/tasks`, { text, client_request_id: clientRequestId }),
+  taskAction: (workspaceId: string, taskId: string, action: 'pause' | 'resume' | 'complete' | 'reply', body: { text?: string } = {}) => api.post<ContinuoDoc>(`/workspaces/${workspaceId}/continuo/tasks/${taskId}:${action}`, body),
+  patchContext: (workspaceId: string, entryId: string, body: { text?: string; status?: 'active' | 'inactive'; expected_revision: number }) => api.post<ContinuoDoc>(`/workspaces/${workspaceId}/continuo/context/${entryId}`, body),
+  workLog: (workspaceId: string) => api.get<{ markdown: string }>(`/workspaces/${workspaceId}/continuo/work-log`),
+};

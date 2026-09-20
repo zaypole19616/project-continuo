@@ -15,6 +15,7 @@ import { registerAuthRoute } from './auth';
 import { registerCapabilitiesRoutes } from './capabilities';
 import { registerConfigRoutes } from './config';
 import { registerConnectionsRoutes } from './connections';
+import { registerContinuoRoutes } from './continuo';
 import { registerFileHistoryRoutes } from './fileHistory';
 import { registerFilesRoutes } from './files';
 import { registerFsRoutes } from './fs';
@@ -156,6 +157,7 @@ export async function registerApiV1Routes(
         apiV1 as unknown as Parameters<typeof registerPromptsRoutes>[0],
         core,
       );
+      registerContinuoRoutes(apiV1 as unknown as Parameters<typeof registerContinuoRoutes>[0], core);
       registerRemoteControlRoutes(
         apiV1 as unknown as Parameters<typeof registerRemoteControlRoutes>[0],
         { ...opts.remoteControl, telemetry: core.accessor.get(ITelemetryService) },
