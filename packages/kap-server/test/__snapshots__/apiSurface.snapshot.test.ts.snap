@@ -294,6 +294,14 @@ exports[`API surface snapshot > matches the documented v2 route table and meta e
     ],
     [
       "GET",
+      "/api/v1/workspaces/{workspace_id}/continuo",
+    ],
+    [
+      "GET",
+      "/api/v1/workspaces/{workspace_id}/continuo/work-log",
+    ],
+    [
+      "GET",
       "/api/v1/workspaces/{workspace_id}/skills",
     ],
     [
@@ -507,6 +515,22 @@ exports[`API surface snapshot > matches the documented v2 route table and meta e
     [
       "POST",
       "/api/v1/workspaces/{workspace_id}/add-dir",
+    ],
+    [
+      "POST",
+      "/api/v1/workspaces/{workspace_id}/continuo:open",
+    ],
+    [
+      "POST",
+      "/api/v1/workspaces/{workspace_id}/continuo/context/{entry_id}",
+    ],
+    [
+      "POST",
+      "/api/v1/workspaces/{workspace_id}/continuo/tasks",
+    ],
+    [
+      "POST",
+      "/api/v1/workspaces/{workspace_id}/continuo/tasks/{tail}",
     ],
     [
       "POST",
