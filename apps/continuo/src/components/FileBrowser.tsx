@@ -122,7 +122,7 @@ export function FileBrowser({ workspaceId, root, doc, target, agentCollapsed, se
 function EmptyFolder({ query }: { query: string }) {
   return (
     <div className="flex flex-col items-center justify-center gap-3 p-16 text-center">
-      <FolderGlyph size={96} />
+      <FolderGlyph size={104} />
       <div className="text-2" style={{ fontSize: 'var(--fs-chat)' }}>{query ? `没有名字包含「${query}」的项目` : '这个文件夹是空的'}</div>
       {!query && <div className="text-3 fs-meta">在右侧交代一个任务，产物会出现在这里。</div>}
     </div>
@@ -134,7 +134,7 @@ function Grid({ entries, taskTitle, onNavigate, onSelectTask }: { entries: FileE
     <div className="file-grid">
       {entries.map((e) => (
         <button key={e.path} className="file-tile" onDoubleClick={() => onNavigate(e.kind === 'dir' ? { kind: 'folder', path: e.path } : { kind: 'file', path: e.path })} onClick={() => onNavigate(e.kind === 'dir' ? { kind: 'folder', path: e.path } : { kind: 'file', path: e.path })} title={e.name}>
-          <div className="tile-icon">{e.kind === 'dir' ? <FolderGlyph size={84} /> : <FileGlyph name={e.name} size={52} />}</div>
+          <div className="tile-icon">{e.kind === 'dir' ? <FolderGlyph size={82} /> : <FileGlyph name={e.name} size={62} />}</div>
           <div className="tile-name">{e.name}</div>
           <div className="tile-meta">{fileTypeLabel(e.name, e.kind)}{e.kind === 'dir' && e.childCount !== undefined ? ` · ${e.childCount} 项` : ''}</div>
           <Markers entry={e} taskTitle={taskTitle} onSelectTask={onSelectTask} />
@@ -151,7 +151,7 @@ function FileTable({ entries, taskTitle, onNavigate, onSelectTask }: { entries: 
       <tbody>
         {entries.map((e) => (
           <tr key={e.path} className="row-click" onClick={() => onNavigate(e.kind === 'dir' ? { kind: 'folder', path: e.path } : { kind: 'file', path: e.path })}>
-            <td className="col-name"><div className="name-cell">{e.kind === 'dir' ? <FolderGlyph size={22} /> : <FileGlyph name={e.name} size={16} />}<span className="name-text">{e.name}</span><span className="text-3 fs-meta">{fileTypeLabel(e.name, e.kind)}</span></div></td>
+            <td className="col-name"><div className="name-cell">{e.kind === 'dir' ? <FolderGlyph size={20} /> : <FileGlyph name={e.name} size={15} />}<span className="name-text">{e.name}</span><span className="text-3 fs-meta">{fileTypeLabel(e.name, e.kind)}</span></div></td>
             <td className="col-mark"><Markers entry={e} taskTitle={taskTitle} onSelectTask={onSelectTask} /></td>
             <td className="col-time text-3 fs-meta">{formatTime(e.modifiedAt)}</td>
             <td className="col-size text-3 fs-meta" style={{ textAlign: 'right' }}>{e.kind === 'dir' ? `${e.childCount ?? 0} 项` : formatSize(e.size)}</td>

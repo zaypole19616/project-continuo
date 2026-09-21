@@ -1,14 +1,13 @@
 export function FolderGlyph({ size = 64 }: { size?: number }) {
-  const h = Math.round(size * 0.79);
+  const h = Math.round(size * (366 / 475));
   return (
-    <svg width={size} height={h} viewBox="0 0 100 79" fill="none" aria-hidden="true">
+    <svg width={size} height={h} viewBox="0 0 475 366" fill="none" aria-hidden="true">
       <defs>
-        <linearGradient id="fld-back" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#4a8ff2" /><stop offset="1" stopColor="#2f6fde" /></linearGradient>
-        <linearGradient id="fld-front" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#62a9fb" /><stop offset="1" stopColor="#3b86ef" /></linearGradient>
+        <linearGradient id="fld-front" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#62c8f7" /><stop offset="0.5" stopColor="#7ad5fb" /><stop offset="0.88" stopColor="#70c9f2" /><stop offset="1" stopColor="#62c1ec" /></linearGradient>
+        <linearGradient id="fld-back" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#97dfff" /><stop offset="1" stopColor="#8fd9fc" /></linearGradient>
       </defs>
-      <path d="M4 14.5A6.5 6.5 0 0 1 10.5 8H40c2.6 0 5 1 6.8 2.8l2 2.1c1.7 1.8 4.1 2.8 6.6 2.8H89.5A6.5 6.5 0 0 1 96 22.2V68.5a6.5 6.5 0 0 1-6.5 6.5h-79A6.5 6.5 0 0 1 4 68.5Z" fill="url(#fld-back)" />
-      <rect x="4" y="23" width="92" height="52" rx="6.5" fill="url(#fld-front)" />
-      <path d="M10.5 23.6h79" stroke="#ffffff" strokeOpacity=".42" strokeWidth="1.2" strokeLinecap="round" />
+      <path d="M0 22A22 22 0 0 1 22 0h118c12 0 20 4 27 12l18 20c6 7 13 10 23 10h245a22 22 0 0 1 22 22v280a22 22 0 0 1-22 22H22A22 22 0 0 1 0 344Z" fill="url(#fld-back)" />
+      <rect x="0" y="66" width="475" height="300" rx="22" fill="url(#fld-front)" />
     </svg>
   );
 }
@@ -18,18 +17,15 @@ const TYPE_COLOR: Record<string, string> = { md: '#4f6fd8', markdown: '#4f6fd8',
 export function FileGlyph({ name, size = 56 }: { name: string; size?: number }) {
   const ext = (name.split('.').pop() ?? '').toLowerCase();
   const color = TYPE_COLOR[ext] ?? '#8a8a91';
-  const h = Math.round(size * 1.29);
+  const h = Math.round(size * (476 / 362));
   return (
-    <svg width={size} height={h} viewBox="0 0 56 72" fill="none" aria-hidden="true">
+    <svg width={size} height={h} viewBox="0 0 362 476" fill="none" aria-hidden="true">
       <defs>
-        <linearGradient id="doc-body" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#ffffff" /><stop offset="1" stopColor="#f3f3f5" /></linearGradient>
+        <linearGradient id="doc-fold" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#d9d9dd" /><stop offset="1" stopColor="#f4f4f6" /></linearGradient>
       </defs>
-      <path d="M8 2h28l14 14v50a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4V6a4 4 0 0 1 4-4Z" fill="url(#doc-body)" stroke="#c9c9ce" strokeWidth="1" />
-      <path d="M36 2v10a4 4 0 0 0 4 4h10" fill="#e6e6ea" stroke="#c9c9ce" strokeWidth="1" strokeLinejoin="round" />
-      <rect x="12" y="30" width="30" height="3" rx="1.5" fill={color} opacity=".55" />
-      <rect x="12" y="38" width="32" height="3" rx="1.5" fill={color} opacity=".4" />
-      <rect x="12" y="46" width="22" height="3" rx="1.5" fill={color} opacity=".4" />
-      {ext && <text x="12" y="64" fontSize="10" fontWeight="600" fill={color} fontFamily="-apple-system, system-ui, sans-serif">{ext.toUpperCase().slice(0, 4)}</text>}
+      <path d="M14 0H168L362 204V462a14 14 0 0 1-14 14H14a14 14 0 0 1-14-14V14A14 14 0 0 1 14 0Z" fill="#ffffff" stroke="#cfcfd4" strokeWidth="3" />
+      <path d="M168 0V190a14 14 0 0 0 14 14H362Z" fill="url(#doc-fold)" stroke="#cfcfd4" strokeWidth="3" strokeLinejoin="round" />
+      {ext && <text x="181" y="430" textAnchor="middle" fontSize="64" fontWeight="600" fill={color} fontFamily="-apple-system, system-ui, sans-serif">{ext.toUpperCase().slice(0, 5)}</text>}
     </svg>
   );
 }
