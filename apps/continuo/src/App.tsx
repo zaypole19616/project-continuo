@@ -47,9 +47,9 @@ export function App() {
   if (!serverOk) {
     return (
       <Center>
-        <div className="panel p-6 max-w-md space-y-3">
-          <div className="text-lg font-semibold">{failure === 'auth' ? '需要本地服务的 token' : '连不上本地服务'}</div>
-          <p className="muted">{failure === 'auth' ? '本地服务在，但这个页面没有有效的 token。' : '请先运行 kimi web 启动本地服务。'}把启动时打印的 token 填在这里，或用带 <code>#token=</code> 的地址打开本页。</p>
+        <div className="card p-6 max-w-md space-y-3">
+          <div style={{ fontSize: 'var(--fs-h2)', fontWeight: 600 }}>{failure === 'auth' ? '需要本地服务的 token' : '连不上本地服务'}</div>
+          <p className="text-2">{failure === 'auth' ? '本地服务在，但这个页面没有有效的 token。' : '请先运行 kimi web 启动本地服务。'}把启动时打印的 token 填在这里，或用带 <code>#token=</code> 的地址打开本页。</p>
           <TokenForm onSave={(t) => { setToken(t); setTok(t); }} />
         </div>
       </Center>

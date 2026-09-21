@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { MessageCircleQuestion, ShieldAlert } from 'lucide-react';
 import type { ApprovalRequest, QuestionRequest } from '#/lib/api';
 
 export function QuestionCard({ q, onAnswer }: { q: QuestionRequest; onAnswer: (answers: Record<string, unknown>, note?: string) => Promise<void> }) {
@@ -16,18 +17,18 @@ export function QuestionCard({ q, onAnswer }: { q: QuestionRequest; onAnswer: (a
     try { await onAnswer(answers); } finally { setBusy(false); }
   };
   return (
-    <div className="panel p-4 space-y-3" style={{ borderColor: 'var(--warn)' }}>
-      <div className="tag tag-wait">需要你</div>
+    <div className="card p-4 space-y-3 fade-in" style={{ borderColor: 'var(--warn)' }}>
+      <div className="flex items-center gap-2 fs-meta" style={{ color: 'var(--warn)' }}><MessageCircleQuestion size={16} />需要你决定</div>
       {q.questions.map((item) => (
         <div key={item.id} className="space-y-2">
-          {item.header && <div className="muted text-xs">{item.header}</div>}
-          <div className="font-medium">{item.question}</div>
-          {item.body && <div className="muted text-sm whitespace-pre-wrap">{item.body}</div>}
+          {item.header && <div className="text-3 fs-meta">{item.header}</div>}
+          <div className="font-medium" style={{ fontSize: 'var(--fs-chat)' }}>{item.question}</div>
+          {item.body && <div className="text-2 whitespace-pre-wrap">{item.body}</div>}
           <div className="grid gap-1">
             {item.options.map((o) => (
-              <label key={o.id} className="flex items-start gap-2 cursor-pointer">
+              <label key={o.id} className={`row row-click ${picked[item.id] === o.id ? 'is-selected' : ''}`} style={{ minHeight: 40 }}>
                 <input type="radio" name={item.id} checked={picked[item.id] === o.id} onChange={() => setPicked({ ...picked, [item.id]: o.id })} />
-                <span><span>{o.label}</span>{o.description && <span className="muted"> · {o.description}</span>}</span>
+                <span><span>{o.label}</span>{o.description && <span className="text-3"> · {o.description}</span>}</span>
               </label>
             ))}
             {item.allow_other && (
@@ -36,7 +37,7 @@ export function QuestionCard({ q, onAnswer }: { q: QuestionRequest; onAnswer: (a
           </div>
         </div>
       ))}
-      <button className="btn btn-primary" disabled={!allPicked || busy} onClick={() => { void submit(); }}>回答并继续</button>
+      <div className="flex justify-end"><button className="btn btn-primary" disabled={!allPicked || busy} onClick={() => { void submit(); }}>回答并继续</button></div>
     </div>
   );
 }
@@ -44,16 +45,17 @@ export function QuestionCard({ q, onAnswer }: { q: QuestionRequest; onAnswer: (a
 export function ApprovalCard({ a, onDecide }: { a: ApprovalRequest; onDecide: (d: 'approved' | 'rejected', scope?: 'session') => Promise<void> }) {
   const [busy, setBusy] = useState(false);
   const run = async (d: 'approved' | 'rejected', scope?: 'session') => { setBusy(true); try { await onDecide(d, scope); } finally { setBusy(false); } };
-  const display = a.tool_input_display as { operation?: string; path?: string; command?: string } | undefined;
+  const display = a.tool_input_display as { operation?: string; path?: string; command?: string; kind?: string; summary?: string } | undefined;
+  const detail = display?.command ?? display?.path ?? display?.summary;
   return (
-    <div className="panel p-4 space-y-2" style={{ borderColor: 'var(--warn)' }}>
-      <div className="tag tag-wait">等待批准</div>
-      <div className="font-medium">{a.action || `${a.tool_name}`}</div>
-      {display && (display.command || display.path) && <pre className="p-2 rounded text-xs overflow-auto" style={{ background: 'var(--bg)' }}>{display.command ?? display.path}</pre>}
-      <div className="flex gap-2">
-        <button className="btn btn-primary" disabled={busy} onClick={() => { void run('approved'); }}>允许</button>
-        <button className="btn" disabled={busy} onClick={() => { void run('approved', 'session'); }}>本次会话都允许</button>
+    <div className="card p-4 space-y-3 fade-in" style={{ borderColor: 'var(--warn)' }}>
+      <div className="flex items-center gap-2 fs-meta" style={{ color: 'var(--warn)' }}><ShieldAlert size={16} />等待你批准</div>
+      <div className="font-medium" style={{ fontSize: 'var(--fs-chat)' }}>{a.action || a.tool_name}</div>
+      {detail && <pre className="p-2 overflow-auto" style={{ background: 'var(--row-hover)', borderRadius: 'var(--r-2)' }}>{detail}</pre>}
+      <div className="flex gap-2 flex-wrap justify-end">
         <button className="btn" disabled={busy} onClick={() => { void run('rejected'); }}>拒绝</button>
+        <button className="btn" disabled={busy} onClick={() => { void run('approved', 'session'); }}>本次任务都允许</button>
+        <button className="btn btn-primary" disabled={busy} onClick={() => { void run('approved'); }}>允许</button>
       </div>
     </div>
   );

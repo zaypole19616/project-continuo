@@ -45,6 +45,10 @@ Continuo 面向一个本地文件夹。打开它，会发生三件事。
 
 看板只有四列：待执行 / 进行中 / 需要你 / 已结束。它和工作日志读的是同一份事件账本，不是另一套状态。
 
+### 界面：三栏，一块材质
+
+主窗口沿用桌面工作台的三栏模型：左栏导航（工作空间、文件树、任务列表），中栏文件工作区（目录表格、文件预览；文件旁标出「指引」和「产物」，点产物能跳到产出它的那次任务），右栏 Agent 面板（对话 / 看板 / Context / 日志四个页签，底部是输入框）。三栏共用一块中性材质，用分隔线而不是三张卡片区分；文件区是视觉焦点，颜色只留给状态和文件类型；左右两栏都能收起，亮暗主题跟随系统。这套结构和设计原则参考了 Kuse Desktop 的公开产品文档，代码全部独立实现。
+
 ### Demo 剧本（用仓库自带的演示文件夹）
 
 `apps/continuo/demo-workspace/` 是一个虚构公司 Northwind 的季度复盘文件夹，全部数据为合成数据。
@@ -112,6 +116,7 @@ Continuo 面向一个本地文件夹。打开它，会发生三件事。
 - stale 只按文件大小和修改时间判断，不做内容 diff。
 - 理解与条目的语言跟随工作空间文档，靠 prompt 约束，不强制。
 - 前端用 1.5 秒轮询取账本变化，没有把账本变更接进 WebSocket。
+- 文件工作区只读：能浏览目录、预览文本和 Markdown，不能在界面里编辑或上传文件。
 - 功能在实验开关 `KIMI_CODE_EXPERIMENTAL_CONTINUO` 后面，默认关闭。
 
 ## 6. 运行方式
@@ -133,4 +138,4 @@ KIMI_PORT=58627 pnpm dev:continuo
 
 打开 `http://127.0.0.1:5180/#token=<上面的 token>`，选一个文件夹。演示建议把 `apps/continuo/demo-workspace/` 复制到任意可写位置再打开，它是合成数据，可以随便改。
 
-代码位置：引擎侧 `packages/agent-core-v2/src/features/continuo/`，服务侧 `packages/kap-server/src/continuo/` 与 `routes/continuo.ts`，前端 `apps/continuo/`，测试 `packages/agent-core-v2/test/features/continuo/`。
+代码位置：引擎侧 `packages/agent-core-v2/src/features/continuo/`，服务侧 `packages/kap-server/src/continuo/`（含只读文件接口 `files.ts`）与 `routes/continuo.ts`，前端 `apps/continuo/`（`components/Sidebar` / `FileBrowser` / `AgentPanel` 三栏），测试 `packages/agent-core-v2/test/features/continuo/`。

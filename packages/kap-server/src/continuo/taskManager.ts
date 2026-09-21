@@ -30,13 +30,10 @@ import {
 import { ulid } from 'ulid';
 
 import { ensureMainAgent } from '../transport/mainAgent';
+import { ContinuoError } from './errors';
 import { renderScanForPrompt, scanFingerprint, scanWorkspace } from './scan';
 
-export class ContinuoError extends Error {
-  constructor(readonly code: 'workspace_not_found' | 'task_not_found' | 'invalid_state' | 'revision_conflict' | 'entry_not_found', message: string) {
-    super(message);
-  }
-}
+export { ContinuoError } from './errors';
 
 interface Attachment {
   readonly dispose: () => void;

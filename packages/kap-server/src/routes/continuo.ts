@@ -5,6 +5,7 @@ import { ContinuoError, ContinuoTaskManager } from '../continuo/taskManager';
 import { errEnvelope, okEnvelope } from '../envelope';
 import { defineRoute } from '../middleware/defineRoute';
 import { parseActionSuffix } from './action-suffix';
+import { listFiles, readTextFile } from '../continuo/files';
 import { ErrorCode } from '../protocol/error-codes';
 
 const workspaceParamSchema = z.object({ workspace_id: z.string().min(1) });
@@ -183,6 +184,56 @@ export function registerContinuoRoutes(app: ContinuoRouteHost, core: Scope): voi
     },
   );
   app.post(contextRoute.path, contextRoute.options, contextRoute.handler as Parameters<ContinuoRouteHost['post']>[2]);
+
+  const filesRoute = defineRoute(
+    {
+      method: 'GET',
+      path: '/workspaces/{workspace_id}/continuo/files',
+      params: workspaceParamSchema,
+      querystring: z.object({ path: z.string().max(4096).optional() }),
+      success: { data: docSchema },
+      errors: CONTINUO_ERRORS,
+      description: 'List one folder of the workspace with size, modification time, guide-file and produced-by-task markers',
+      tags: ['continuo'],
+      operationId: 'continuoListFiles',
+    },
+    async (req, reply) => {
+      if (!flagGuard(req.id, reply)) return;
+      try {
+        const doc = await manager.snapshot(req.params.workspace_id);
+        if (doc === undefined) throw new ContinuoError('workspace_not_found', `workspace ${req.params.workspace_id} has not been opened in Continuo`);
+        reply.send(okEnvelope(await listFiles(doc, req.query.path ?? ''), req.id));
+      } catch (error) {
+        sendError(reply, req.id, error);
+      }
+    },
+  );
+  app.get(filesRoute.path, filesRoute.options, filesRoute.handler as Parameters<ContinuoRouteHost['get']>[2]);
+
+  const fileRoute = defineRoute(
+    {
+      method: 'GET',
+      path: '/workspaces/{workspace_id}/continuo/file',
+      params: workspaceParamSchema,
+      querystring: z.object({ path: z.string().min(1).max(4096) }),
+      success: { data: docSchema },
+      errors: CONTINUO_ERRORS,
+      description: 'Read one text file of the workspace (bounded); binary files return only metadata',
+      tags: ['continuo'],
+      operationId: 'continuoReadFile',
+    },
+    async (req, reply) => {
+      if (!flagGuard(req.id, reply)) return;
+      try {
+        const doc = await manager.snapshot(req.params.workspace_id);
+        if (doc === undefined) throw new ContinuoError('workspace_not_found', `workspace ${req.params.workspace_id} has not been opened in Continuo`);
+        reply.send(okEnvelope(await readTextFile(doc, req.query.path), req.id));
+      } catch (error) {
+        sendError(reply, req.id, error);
+      }
+    },
+  );
+  app.get(fileRoute.path, fileRoute.options, fileRoute.handler as Parameters<ContinuoRouteHost['get']>[2]);
 
   const workLogRoute = defineRoute(
     {

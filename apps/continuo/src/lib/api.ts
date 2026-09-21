@@ -93,3 +93,12 @@ export const continuo = {
   patchContext: (workspaceId: string, entryId: string, body: { text?: string; status?: 'active' | 'inactive'; expected_revision: number }) => api.post<ContinuoDoc>(`/workspaces/${workspaceId}/continuo/context/${entryId}`, body),
   workLog: (workspaceId: string) => api.get<{ markdown: string }>(`/workspaces/${workspaceId}/continuo/work-log`),
 };
+
+export interface FileEntry { name: string; path: string; kind: 'file' | 'dir'; size: number; modifiedAt: string; producedBy?: string; isGuide: boolean; childCount?: number }
+export interface FileListing { path: string; parent: string | null; entries: FileEntry[] }
+export interface FileContent { path: string; size: number; modifiedAt: string; text?: string; truncated: boolean; binary: boolean; producedBy?: string }
+
+export const continuoFiles = {
+  list: (workspaceId: string, path = '') => api.get<FileListing>(`/workspaces/${workspaceId}/continuo/files?path=${encodeURIComponent(path)}`),
+  read: (workspaceId: string, path: string) => api.get<FileContent>(`/workspaces/${workspaceId}/continuo/file?path=${encodeURIComponent(path)}`),
+};
