@@ -122,7 +122,7 @@ export function FileBrowser({ workspaceId, root, doc, target, agentCollapsed, se
 function EmptyFolder({ query }: { query: string }) {
   return (
     <div className="flex flex-col items-center justify-center gap-3 p-16 text-center">
-      <FolderGlyph size={88} />
+      <FolderGlyph size={96} />
       <div className="text-2" style={{ fontSize: 'var(--fs-chat)' }}>{query ? `没有名字包含「${query}」的项目` : '这个文件夹是空的'}</div>
       {!query && <div className="text-3 fs-meta">在右侧交代一个任务，产物会出现在这里。</div>}
     </div>
@@ -134,7 +134,7 @@ function Grid({ entries, taskTitle, onNavigate, onSelectTask }: { entries: FileE
     <div className="file-grid">
       {entries.map((e) => (
         <button key={e.path} className="file-tile" onDoubleClick={() => onNavigate(e.kind === 'dir' ? { kind: 'folder', path: e.path } : { kind: 'file', path: e.path })} onClick={() => onNavigate(e.kind === 'dir' ? { kind: 'folder', path: e.path } : { kind: 'file', path: e.path })} title={e.name}>
-          <div className="tile-icon">{e.kind === 'dir' ? <FolderGlyph size={76} /> : <FileGlyph name={e.name} size={54} />}</div>
+          <div className="tile-icon">{e.kind === 'dir' ? <FolderGlyph size={84} /> : <FileGlyph name={e.name} size={52} />}</div>
           <div className="tile-name">{e.name}</div>
           <div className="tile-meta">{fileTypeLabel(e.name, e.kind)}{e.kind === 'dir' && e.childCount !== undefined ? ` · ${e.childCount} 项` : ''}</div>
           <Markers entry={e} taskTitle={taskTitle} onSelectTask={onSelectTask} />

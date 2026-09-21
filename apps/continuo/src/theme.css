@@ -268,7 +268,7 @@ textarea:focus, input:focus { outline: none; border-color: var(--n-4); box-shado
 .file-tile { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 14px 8px 12px; border: 1px solid transparent; border-radius: var(--r-4); background: transparent; cursor: pointer; color: var(--text-1); min-width: 0; }
 .file-tile:hover { background: var(--row-hover); }
 .file-tile:focus-visible { outline: none; border-color: var(--divider-strong); }
-.tile-icon { height: 68px; display: flex; align-items: center; justify-content: center; }
+.tile-icon { height: 72px; display: flex; align-items: center; justify-content: center; }
 .tile-name { font-size: 14px; line-height: 1.35; text-align: center; word-break: break-word; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; max-width: 100%; }
 .tile-meta { font-size: var(--fs-meta); color: var(--text-3); }
 
