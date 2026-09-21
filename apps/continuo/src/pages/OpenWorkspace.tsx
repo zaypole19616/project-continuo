@@ -1,10 +1,14 @@
 import { useEffect, useState } from 'react';
-import { ArrowRight, ChevronRight, Folder, FolderPlus, Sparkles } from 'lucide-react';
-import { kimi, type FsBrowse, type Workspace } from '#/lib/api';
+import { ArrowRight, ChevronRight, Folder, FolderPlus, Sparkles, X } from 'lucide-react';
+import { forgetRecent, kimi, readRecent, type FsBrowse, type Workspace } from '#/lib/api';
 import { FolderGlyph } from '#/components/icons';
 
 export function OpenWorkspace({ onOpen, onAbout }: { onOpen: (w: Workspace) => void; onAbout: () => void }) {
-  const [recent, setRecent] = useState<Workspace[]>([]);
+  const [all, setAll] = useState<Workspace[]>([]);
+  const [recentIds, setRecentIds] = useState<string[]>(() => readRecent());
+  const [showOthers, setShowOthers] = useState(false);
+  const recent = recentIds.map((id) => all.find((w) => w.id === id)).filter((w): w is Workspace => w !== undefined);
+  const others = all.filter((w) => !recentIds.includes(w.id));
   const [browse, setBrowse] = useState<FsBrowse | null>(null);
   const [pathInput, setPathInput] = useState('');
   const [newName, setNewName] = useState('');
@@ -13,7 +17,7 @@ export function OpenWorkspace({ onOpen, onAbout }: { onOpen: (w: Workspace) => v
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    kimi.workspaces().then((r) => setRecent(r.items)).catch((error: Error) => setError(error.message));
+    kimi.workspaces().then((r) => setAll(r.items)).catch((error: Error) => setError(error.message));
     kimi.fsHome().then((h) => kimi.fsBrowse(h.home)).then(setBrowse).catch((error: Error) => setError(error.message));
   }, []);
 
@@ -77,19 +81,33 @@ export function OpenWorkspace({ onOpen, onAbout }: { onOpen: (w: Workspace) => v
 
         {recent.length > 0 && (
           <section className="space-y-3">
-            <div className="side-section" style={{ padding: '0 2px' }}><span>最近打开</span></div>
+            <div className="side-section" style={{ padding: '0 2px' }}><span>最近在 Continuo 打开</span></div>
             <div className="recent-grid">
               {recent.slice(0, 8).map((w) => (
-                <button key={w.id} className="recent-card" onClick={() => onOpen(w)} title={w.root}>
+                <div key={w.id} className="recent-card" onClick={() => onOpen(w)} title={w.root} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter') onOpen(w); }}>
                   <FolderGlyph size={34} />
                   <div className="min-w-0 flex-1">
                     <div className="font-medium truncate">{w.name}</div>
                     <div className="t3 xs truncate">{w.root}</div>
                   </div>
-                  <ChevronRight size={16} className="t3" />
-                </button>
+                  <button className="ws-forget" title="从列表移除（不删除文件）" onClick={(e) => { e.stopPropagation(); forgetRecent(w.id); setRecentIds(readRecent()); }}><X size={14} /></button>
+                </div>
               ))}
             </div>
+          </section>
+        )}
+        {others.length > 0 && (
+          <section className="space-y-2">
+            <button className="btn btn-ghost btn-sm" onClick={() => setShowOthers(!showOthers)}>{showOthers ? '收起' : `本机 Kimi 服务里还登记了 ${others.length} 个文件夹`}<ChevronRight size={14} style={{ transform: showOthers ? 'rotate(90deg)' : undefined }} /></button>
+            {showOthers && (
+              <div className="card divide-y" style={{ borderColor: 'var(--line)' }}>
+                {others.map((w) => (
+                  <button key={w.id} className="side-row w-full" style={{ height: 40, borderRadius: 0 }} onClick={() => onOpen(w)} title={w.root}>
+                    <FolderGlyph size={18} /><span className="truncate">{w.name || '（未命名）'}</span><span className="t3 xs truncate flex-1">{w.root}</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </section>
         )}
 

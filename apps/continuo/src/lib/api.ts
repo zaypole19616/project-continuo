@@ -102,3 +102,15 @@ export const continuoFiles = {
   list: (workspaceId: string, path = '') => api.get<FileListing>(`/workspaces/${workspaceId}/continuo/files?path=${encodeURIComponent(path)}`),
   read: (workspaceId: string, path: string) => api.get<FileContent>(`/workspaces/${workspaceId}/continuo/file?path=${encodeURIComponent(path)}`),
 };
+
+const RECENT_KEY = 'continuo.recent';
+export function readRecent(): string[] {
+  try { const v = JSON.parse(localStorage.getItem(RECENT_KEY) ?? '[]'); return Array.isArray(v) ? v.filter((x) => typeof x === 'string') : []; } catch { return []; }
+}
+export function touchRecent(id: string): void {
+  const next = [id, ...readRecent().filter((x) => x !== id)].slice(0, 12);
+  try { localStorage.setItem(RECENT_KEY, JSON.stringify(next)); } catch {}
+}
+export function forgetRecent(id: string): void {
+  try { localStorage.setItem(RECENT_KEY, JSON.stringify(readRecent().filter((x) => x !== id))); } catch {}
+}

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { ChevronDown, ChevronRight, HelpCircle, MessageSquareText, PanelLeft, Plus, Search } from 'lucide-react';
-import { DEFAULT_MODEL, kimi, type ContinuoDoc, type ContinuoTask, type Workspace } from '#/lib/api';
+import { ChevronDown, ChevronRight, HelpCircle, MessageSquareText, PanelLeft, Plus, Search, X } from 'lucide-react';
+import { DEFAULT_MODEL, forgetRecent, kimi, readRecent, type ContinuoDoc, type ContinuoTask, type Workspace } from '#/lib/api';
 import { FolderGlyph } from './icons';
 
 const TASK_DOT: Record<ContinuoTask['status'], string> = {
@@ -12,15 +12,18 @@ export function Sidebar({ workspace, doc, collapsed, selectedTaskId, onToggle, o
   onToggle: () => void; onSelectTask: (task: ContinuoTask) => void; onSwitchWorkspace: (w: Workspace) => void; onAddWorkspace: () => void; onNewTask: () => void; onSearch: () => void; onAbout: () => void;
 }) {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
+  const [recent, setRecent] = useState<string[]>(() => readRecent());
   const [showAll, setShowAll] = useState(false);
   useEffect(() => {
     let cancelled = false;
+    setRecent(readRecent());
     kimi.workspaces().then((r) => { if (!cancelled) setWorkspaces(r.items); }).catch(() => undefined);
     return () => { cancelled = true; };
   }, [workspace.id]);
   const tasks = doc ? [...doc.tasks].toReversed() : [];
-  const others = workspaces.filter((w) => w.id !== workspace.id);
+  const others = recent.filter((id) => id !== workspace.id).map((id) => workspaces.find((w) => w.id === id)).filter((w): w is Workspace => w !== undefined);
   const visible = showAll ? others : others.slice(0, 4);
+  const forget = (id: string) => { forgetRecent(id); setRecent(readRecent()); };
 
   if (collapsed) {
     return (
@@ -59,10 +62,13 @@ export function Sidebar({ workspace, doc, collapsed, selectedTaskId, onToggle, o
           {tasks.length === 0 && <div className="t3 xs" style={{ padding: '4px 10px 4px 34px' }}>还没有任务</div>}
         </div>
         {visible.map((w) => (
-          <button key={w.id} className="side-row" onClick={() => onSwitchWorkspace(w)} title={w.root}>
-            <FolderGlyph size={18} /><span className="flex-1 truncate">{w.name}</span><ChevronRight size={14} className="t3" />
-          </button>
+          <div key={w.id} className="side-row side-row-ws" title={w.root} onClick={() => onSwitchWorkspace(w)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter') onSwitchWorkspace(w); }}>
+            <FolderGlyph size={18} /><span className="flex-1 truncate">{w.name}</span>
+            <button className="ws-forget" title="从列表移除（不删除文件）" onClick={(e) => { e.stopPropagation(); forget(w.id); }}><X size={13} /></button>
+            <ChevronRight size={14} className="t3 ws-chev" />
+          </div>
         ))}
+        {others.length === 0 && <div className="t3 xs" style={{ padding: '6px 10px' }}>这里只列你在 Continuo 里打开过的文件夹</div>}
         {others.length > 4 && <button className="side-row t3 sm" style={{ justifyContent: 'center' }} onClick={() => setShowAll(!showAll)}>{showAll ? '收起' : `显示更多（${others.length - 4}）`}</button>}
       </div>
       <div className="side-footer">

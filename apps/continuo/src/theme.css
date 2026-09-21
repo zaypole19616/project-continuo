@@ -278,3 +278,10 @@ textarea:focus, input:focus { outline: none; border-color: var(--accent); box-sh
 .pane-agent { container-type: inline-size; }
 @container (max-width: 420px) { .model-chip { display: none; } }
 @container (max-width: 360px) { .chat-status .mono { display: none; } }
+
+.ws-forget { display: none; width: 22px; height: 22px; border: 0; border-radius: 6px; background: transparent; color: var(--text-3); align-items: center; justify-content: center; cursor: pointer; flex: none; }
+.ws-forget:hover { background: var(--surface-selected); color: var(--text-1); }
+.side-row-ws:hover .ws-forget, .recent-card:hover .ws-forget { display: inline-flex; }
+.side-row-ws:hover .ws-chev { display: none; }
+.side-row:focus-visible, .side-sub:focus-visible, .recent-card:focus-visible { outline: 2px solid var(--accent-line); outline-offset: -2px; }
+.side-row:focus:not(:focus-visible), .side-sub:focus:not(:focus-visible) { outline: none; }
