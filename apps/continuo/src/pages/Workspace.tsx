@@ -18,6 +18,17 @@ function pickDefaultTask(doc: ContinuoDoc): ContinuoTask | null {
   return users.find(isActive) ?? users.at(-1) ?? doc.tasks.at(-1) ?? null;
 }
 
+function useMediaQuery(query: string): boolean {
+  const [matches, setMatches] = useState(() => window.matchMedia(query).matches);
+  useEffect(() => {
+    const mq = window.matchMedia(query);
+    const onChange = () => setMatches(mq.matches);
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, [query]);
+  return matches;
+}
+
 const readPref = (key: string, fallback: boolean) => { try { const v = localStorage.getItem(key); return v === null ? fallback : v === '1'; } catch { return fallback; } };
 const writePref = (key: string, value: boolean) => { try { localStorage.setItem(key, value ? '1' : '0'); } catch {} };
 
@@ -26,6 +37,7 @@ export function WorkspaceView({ workspace, onSwitch, onClose, onAbout }: { works
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [tab, setTab] = useState<AgentTab>('chat');
   const [navCollapsed, setNavCollapsed] = useState(() => readPref('continuo.nav.collapsed', false));
+  const narrow = useMediaQuery('(max-width: 1000px) and (min-width: 761px)');
   const [agentCollapsed, setAgentCollapsed] = useState(() => readPref('continuo.agent.collapsed', false));
   const [target, setTarget] = useState<NavTarget>({ kind: 'folder', path: '' });
   const [error, setError] = useState<string | null>(null);
@@ -154,7 +166,7 @@ export function WorkspaceView({ workspace, onSwitch, onClose, onAbout }: { works
 
   return (
     <div className={`shell ${navCollapsed ? 'nav-collapsed' : ''} ${agentCollapsed ? 'agent-collapsed' : ''}`}>
-      <Sidebar workspace={workspace} doc={doc} collapsed={navCollapsed} selectedTaskId={selectedId} onToggle={toggleNav} onSelectTask={selectTask} onSwitchWorkspace={onSwitch} onAddWorkspace={onClose} onNewTask={focusComposer} onSearch={() => searchRef.current?.focus()} onAbout={onAbout} />
+      <Sidebar workspace={workspace} doc={doc} collapsed={navCollapsed || narrow} selectedTaskId={selectedId} onToggle={toggleNav} onSelectTask={selectTask} onSwitchWorkspace={onSwitch} onAddWorkspace={onClose} onNewTask={focusComposer} onSearch={() => searchRef.current?.focus()} onAbout={onAbout} />
       <FileBrowser workspaceId={workspace.id} root={workspace.root} doc={doc} target={target} agentCollapsed={agentCollapsed} searchRef={searchRef} onNavigate={setTarget} onOpenAgent={() => setAgent(false)} onSelectTask={selectTaskById} onError={setError} />
       <AgentPanel
         workspaceName={workspace.name} doc={doc} tab={tab} onTab={setTab} onCollapse={() => setAgent(true)}

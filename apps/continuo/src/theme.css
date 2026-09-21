@@ -259,3 +259,22 @@ textarea:focus, input:focus { outline: none; border-color: var(--accent); box-sh
 .tabs { display: flex; gap: 2px; padding: 3px; border-radius: 10px; background: var(--surface-sunken); }
 .tab { flex: 1; height: 28px; border: 0; border-radius: 8px; background: transparent; color: var(--text-2); font-size: var(--fs-sm); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
 .tab.is-active { background: var(--surface); color: var(--text-1); box-shadow: var(--shadow-sm); }
+
+/* header must never wrap */
+.pane-header { flex-wrap: nowrap; overflow: hidden; }
+.crumbs { flex: 1 1 auto; overflow: hidden; white-space: nowrap; }
+.crumbs > * { flex: none; }
+.crumbs button, .crumbs .current { white-space: nowrap; }
+.crumbs .current { overflow: hidden; text-overflow: ellipsis; max-width: 260px; flex: 0 1 auto; }
+.search-box { flex: 0 1 260px; min-width: 120px; width: auto; }
+.search-box input { min-width: 0; }
+.seg, .pane-header .btn { flex: none; }
+.toolbar { flex-wrap: nowrap; overflow: hidden; white-space: nowrap; }
+.toolbar-title { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.toolbar-btn { flex: none; }
+@container (max-width: 640px) { .crumbs .crumb-root-label { display: none; } .search-box { flex-basis: 160px; } }
+@container (max-width: 480px) { .search-box { display: none; } .toolbar-btn span { display: none; } }
+.side-row, .side-sub, .brand, .model-chip, .ws-chip, .chat-title { white-space: nowrap; }
+.pane-agent { container-type: inline-size; }
+@container (max-width: 420px) { .model-chip { display: none; } }
+@container (max-width: 360px) { .chat-status .mono { display: none; } }

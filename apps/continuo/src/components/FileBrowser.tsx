@@ -68,7 +68,7 @@ export function FileBrowser({ workspaceId, root, doc, target, agentCollapsed, se
     <section className="pane pane-content" aria-label="文件工作区">
       <header className="pane-header chrome" style={{ height: 56 }}>
         <div className="crumbs flex-1 min-w-0">
-          <button onClick={() => onNavigate({ kind: 'folder', path: '' })} className="flex items-center gap-1"><FolderGlyph size={18} /><span>工作空间</span></button>
+          <button onClick={() => onNavigate({ kind: 'folder', path: '' })} className="flex items-center gap-1" title="工作空间"><FolderGlyph size={18} /><span className="crumb-root-label">工作空间</span></button>
           <ChevronRight size={14} className="text-3" />
           {crumbs.length === 0 && target.kind === 'folder' ? <span className="current">{rootName}</span> : <button onClick={() => onNavigate({ kind: 'folder', path: '' })}>{rootName}</button>}
           {crumbs.map((c, i) => {
@@ -97,14 +97,14 @@ export function FileBrowser({ workspaceId, root, doc, target, agentCollapsed, se
           <div className="toolbar chrome">
             <span className="toolbar-title">{folderName}</span>
             <span className="text-3">{entries.length} 项</span>
-            <button className="toolbar-btn" onClick={copyPath} title="复制这个文件夹的路径"><Copy size={16} />复制路径</button>
+            <button className="toolbar-btn" onClick={copyPath} title="复制这个文件夹的路径"><Copy size={16} /><span>复制路径</span></button>
             {creating ? (
               <form className="flex items-center gap-2" onSubmit={(e) => { e.preventDefault(); void createFolder(); }}>
                 <input ref={newNameRef} autoFocus placeholder="新文件夹名" style={{ height: 30, width: 180 }} onBlur={() => { if (!newNameRef.current?.value.trim()) setCreating(false); }} />
                 <button className="btn btn-sm btn-primary" type="submit">创建</button>
               </form>
             ) : (
-              <button className="toolbar-btn" onClick={() => setCreating(true)}><FolderPlus size={16} />新建文件夹</button>
+              <button className="toolbar-btn" onClick={() => setCreating(true)} title="新建文件夹"><FolderPlus size={16} /><span>新建文件夹</span></button>
             )}
           </div>
           <div className="pane-body">
