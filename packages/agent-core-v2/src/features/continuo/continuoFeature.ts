@@ -1,4 +1,5 @@
 import { ScopeActivation } from '#/_base/di/instantiation';
+import { IFlagService } from '#/app/flag/flag';
 import { LifecycleScope } from '#/app/scopes';
 import { Feature } from '#/features/feature';
 import { registerFeature } from '#/features/featureRegistry';
@@ -10,15 +11,16 @@ import { ReportResultTool } from './tools/report-result/reportResultTool';
 import { IWorkspaceContextTool, WORKSPACE_CONTEXT_TOOL_NAME } from './tools/workspace-context/workspace-context';
 import { WorkspaceContextTool } from './tools/workspace-context/workspaceContextTool';
 
-import './flag';
+import { CONTINUO_FLAG_ID } from './flag';
 import './profile/continuoInit';
 import './profile/continuoWorker';
 
 export class ContinuoFeature extends Feature {
   static override readonly name = 'continuo';
 
-  constructor() {
+  constructor(@IFlagService flags: IFlagService) {
     super();
+    if (!flags.enabled(CONTINUO_FLAG_ID)) return;
     this.contributeService(LifecycleScope.App, IContinuoStore, ContinuoStoreService, {
       activation: ScopeActivation.OnDemand,
     });
