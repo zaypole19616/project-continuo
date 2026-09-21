@@ -45,7 +45,6 @@ export function Sidebar({ workspace, doc, collapsed, selectedTaskId, onToggle, o
       </div>
       <div className="pane-body px-2 pb-3">
         <button className="side-row" onClick={onNewTask}><Plus size={16} className="ic" /><span className="flex-1">新任务</span><span className="kbd">⌘N</span></button>
-        <button className="side-row" onClick={onSearch}><Search size={16} className="ic" /><span className="flex-1">搜索此文件夹</span><span className="kbd">⌘F</span></button>
 
         <div className="side-section"><span>工作空间</span><button className="btn btn-icon" style={{ width: 24, height: 24 }} title="打开别的文件夹" onClick={onAddWorkspace}><Plus size={14} /></button></div>
         <button className="side-row is-selected" title={workspace.root}>

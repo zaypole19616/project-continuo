@@ -92,7 +92,10 @@ export const continuo = {
   taskAction: (workspaceId: string, taskId: string, action: 'pause' | 'resume' | 'complete' | 'reply', body: { text?: string } = {}) => api.post<ContinuoDoc>(`/workspaces/${workspaceId}/continuo/tasks/${taskId}:${action}`, body),
   patchContext: (workspaceId: string, entryId: string, body: { text?: string; status?: 'active' | 'inactive'; expected_revision: number }) => api.post<ContinuoDoc>(`/workspaces/${workspaceId}/continuo/context/${entryId}`, body),
   workLog: (workspaceId: string) => api.get<{ markdown: string }>(`/workspaces/${workspaceId}/continuo/work-log`),
+  demo: () => api.post<Workspace>('/continuo:demo', {}),
 };
+
+export const DEMO_WORKSPACE_NAME = 'Northwind-Q2-复盘';
 
 export interface FileEntry { name: string; path: string; kind: 'file' | 'dir'; size: number; modifiedAt: string; producedBy?: string; isGuide: boolean; childCount?: number }
 export interface FileListing { path: string; parent: string | null; entries: FileEntry[] }

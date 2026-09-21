@@ -1,4 +1,4 @@
-import { IFlagService, type Scope } from '@moonshot-ai/agent-core-v2';
+import { IFlagService, IWorkspaceService, type Scope } from '@moonshot-ai/agent-core-v2';
 import { z } from 'zod';
 
 import { ContinuoError, ContinuoTaskManager } from '../continuo/taskManager';
@@ -6,6 +6,8 @@ import { errEnvelope, okEnvelope } from '../envelope';
 import { defineRoute } from '../middleware/defineRoute';
 import { parseActionSuffix } from './action-suffix';
 import { listFiles, readTextFile } from '../continuo/files';
+import { materializeDemoWorkspace } from '../continuo/demoWorkspace';
+import { toWireWorkspace } from './workspaces';
 import { ErrorCode } from '../protocol/error-codes';
 
 const workspaceParamSchema = z.object({ workspace_id: z.string().min(1) });
@@ -184,6 +186,30 @@ export function registerContinuoRoutes(app: ContinuoRouteHost, core: Scope): voi
     },
   );
   app.post(contextRoute.path, contextRoute.options, contextRoute.handler as Parameters<ContinuoRouteHost['post']>[2]);
+
+  const demoRoute = defineRoute(
+    {
+      method: 'POST',
+      path: '/continuo::demo',
+      body: z.object({}).optional(),
+      success: { data: docSchema },
+      errors: CONTINUO_ERRORS,
+      description: 'Create (once) a synthetic demo folder under the home directory and register it as a workspace',
+      tags: ['continuo'],
+      operationId: 'continuoDemoWorkspace',
+    },
+    async (req, reply) => {
+      if (!flagGuard(req.id, reply)) return;
+      try {
+        const { root } = await materializeDemoWorkspace();
+        const ws = await core.accessor.get(IWorkspaceService).createOrTouch(root, undefined);
+        reply.send(okEnvelope(await toWireWorkspace(core, ws), req.id));
+      } catch (error) {
+        sendError(reply, req.id, error);
+      }
+    },
+  );
+  app.post(demoRoute.path, demoRoute.options, demoRoute.handler as Parameters<ContinuoRouteHost['post']>[2]);
 
   const filesRoute = defineRoute(
     {

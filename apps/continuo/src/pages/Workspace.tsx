@@ -6,7 +6,6 @@ import { Sidebar } from '#/components/Sidebar';
 import type { NavTarget } from '#/components/FileBrowser';
 import { AgentPanel } from '#/components/AgentPanel';
 import { SidePanel, type SideMode } from '#/components/SidePanel';
-import type { BoardAction } from '#/components/Board';
 
 const ACTIVE = new Set(['queued', 'running', 'awaiting_user', 'verifying']);
 const isActive = (t: ContinuoTask) => ACTIVE.has(t.status);
@@ -36,7 +35,7 @@ const writePref = (key: string, value: boolean) => { try { localStorage.setItem(
 export function WorkspaceView({ workspace, onSwitch, onClose, onAbout }: { workspace: Workspace; onSwitch: (w: Workspace) => void; onClose: () => void; onAbout: (bet?: string) => void }) {
   const [doc, setDoc] = useState<ContinuoDoc | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [sideMode, setSideMode] = useState<SideMode | null>(() => { try { const v = localStorage.getItem('continuo.side'); return v === 'none' ? null : ((v as SideMode | null) ?? 'files'); } catch { return 'files'; } });
+  const [sideMode, setSideMode] = useState<SideMode | null>(() => { try { const v = localStorage.getItem('continuo.side'); return v === 'none' ? null : v === 'context' ? 'context' : 'files'; } catch { return 'files'; } });
   const [navCollapsed, setNavCollapsed] = useState(() => readPref('continuo.nav.collapsed', false));
   const narrow = useMediaQuery('(max-width: 1000px) and (min-width: 761px)');
   const [target, setTarget] = useState<NavTarget>({ kind: 'folder', path: '' });
@@ -45,7 +44,6 @@ export function WorkspaceView({ workspace, onSwitch, onClose, onAbout }: { works
   const [state, setState] = useState<TimelineState>(emptyTimeline());
   const [questions, setQuestions] = useState<QuestionRequest[]>([]);
   const [approvals, setApprovals] = useState<ApprovalRequest[]>([]);
-  const [workLog, setWorkLog] = useState('');
   const [sending, setSending] = useState(false);
   const streamRef = useRef<SessionStream | null>(null);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
@@ -111,13 +109,6 @@ export function WorkspaceView({ workspace, onSwitch, onClose, onAbout }: { works
   }, [sessionId, refreshPending, refresh]);
 
   useEffect(() => {
-    if (sideMode !== 'log') return;
-    let cancelled = false;
-    void (async () => { try { const r = await continuo.workLog(workspace.id); if (!cancelled) setWorkLog(r.markdown); } catch (error) { if (!cancelled) setError((error as Error).message); } })();
-    return () => { cancelled = true; };
-  }, [sideMode, workspace.id, doc?.revision]);
-
-  useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'n') { e.preventDefault(); focusComposer(); }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'f') { e.preventDefault(); focusSearch(); }
@@ -127,17 +118,17 @@ export function WorkspaceView({ workspace, onSwitch, onClose, onAbout }: { works
   });
 
   const activeUserTask = doc?.tasks.find((t) => t.kind === 'user' && isBlocking(t)) ?? null;
-  const replyTarget = selected && selected.kind === 'user' && (isAwaitingReply(selected) || selected.status === 'completed' || selected.status === 'needs_review') ? selected : null;
+  const continueTarget = selected && selected.kind === 'user' && !isBlocking(selected) ? selected : null;
 
-  const send = async (mode: 'new' | 'reply') => {
+  const send = async () => {
     const text = (composerRef.current?.value ?? '').trim();
     if (!text || sending) return;
     setSending(true); setError(null);
     try {
-      if (mode === 'reply' && replyTarget) {
-        const d = await continuo.taskAction(workspace.id, replyTarget.taskId, 'reply', { text });
+      if (continueTarget) {
+        const d = await continuo.taskAction(workspace.id, continueTarget.taskId, 'reply', { text });
         if (composerRef.current) composerRef.current.value = '';
-        setDoc(d); userPicked.current = false; setSelectedId(replyTarget.taskId);
+        setDoc(d); userPicked.current = false; setSelectedId(continueTarget.taskId);
       } else {
         const r = await continuo.createTask(workspace.id, text, newRequestId());
         if (composerRef.current) composerRef.current.value = '';
@@ -146,7 +137,7 @@ export function WorkspaceView({ workspace, onSwitch, onClose, onAbout }: { works
     } catch (error) { setError((error as Error).message); } finally { setSending(false); }
   };
 
-  const action = async (task: ContinuoTask, a: BoardAction) => {
+  const action = async (task: ContinuoTask, a: 'pause' | 'resume' | 'complete') => {
     setError(null);
     try { const d = await continuo.taskAction(workspace.id, task.taskId, a); setDoc(d); userPicked.current = false; setSelectedId(task.taskId); } catch (error) { setError((error as Error).message); }
   };
@@ -169,14 +160,14 @@ export function WorkspaceView({ workspace, onSwitch, onClose, onAbout }: { works
       <AgentPanel
         workspaceName={workspace.name} doc={doc} sideMode={sideMode} onSide={setSide}
         selected={selected} state={state} questions={questions} approvals={approvals} connection={connection} error={error}
-        activeUserTask={activeUserTask} replyTarget={replyTarget} composerRef={composerRef} sending={sending}
-        onSend={(mode) => { void send(mode); }}
+        activeUserTask={activeUserTask} continueTarget={continueTarget} composerRef={composerRef} sending={sending}
+        onSend={() => { void send(); }}
         onAnswer={async (q, answers, note) => { if (!sessionId) return; await kimi.resolveQuestion(sessionId, q.question_id, answers, note); await refreshPending(sessionId); void refresh(); }}
         onDecide={async (a, d, scope) => { if (!sessionId) return; await kimi.resolveApproval(sessionId, a.approval_id, d, scope); await refreshPending(sessionId); void refresh(); }}
         onAction={(t, a) => { void action(t, a); }} onOpenFile={openFile} onAbout={(bet) => onAbout(bet)} onPatchContext={patchContext}
       />
       {sideMode !== null && (
-        <SidePanel mode={sideMode} onMode={setSide} workspaceId={workspace.id} root={workspace.root} doc={doc} target={target} onNavigate={setTarget} onSelectTask={selectTask} selectedTaskId={selectedId} workLog={workLog} onAction={(t, a) => { void action(t, a); }} onPatchContext={patchContext} onError={setError} searchRef={searchRef} />
+        <SidePanel mode={sideMode} onMode={setSide} workspaceId={workspace.id} root={workspace.root} doc={doc} target={target} onNavigate={setTarget} onSelectTask={selectTask} onPatchContext={patchContext} onError={setError} searchRef={searchRef} />
       )}
     </div>
   );
