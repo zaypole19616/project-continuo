@@ -176,7 +176,7 @@ export function WorkspaceView({ workspace, onSwitch, onClose, onAbout }: { works
         onAction={(t, a) => { void action(t, a); }} onOpenFile={openFile} onAbout={(bet) => onAbout(bet)} onPatchContext={patchContext}
       />
       {sideMode !== null && (
-        <SidePanel mode={sideMode} onMode={setSide} onClose={() => setSide(null)} workspaceId={workspace.id} root={workspace.root} doc={doc} target={target} onNavigate={setTarget} onSelectTask={selectTask} selectedTaskId={selectedId} workLog={workLog} onAction={(t, a) => { void action(t, a); }} onPatchContext={patchContext} onError={setError} searchRef={searchRef} />
+        <SidePanel mode={sideMode} onMode={setSide} workspaceId={workspace.id} root={workspace.root} doc={doc} target={target} onNavigate={setTarget} onSelectTask={selectTask} selectedTaskId={selectedId} workLog={workLog} onAction={(t, a) => { void action(t, a); }} onPatchContext={patchContext} onError={setError} searchRef={searchRef} />
       )}
     </div>
   );

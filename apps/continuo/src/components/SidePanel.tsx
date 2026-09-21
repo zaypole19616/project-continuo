@@ -1,4 +1,4 @@
-import { FolderOpen, KanbanSquare, Layers, PanelRightClose, ScrollText } from 'lucide-react';
+import { FolderOpen, KanbanSquare, Layers, ScrollText } from 'lucide-react';
 import type { ContextEntry, ContinuoDoc, ContinuoTask } from '#/lib/api';
 import { Board, type BoardAction } from './Board';
 import { ContextPanel } from './ContextPanel';
@@ -7,8 +7,8 @@ import { FileTree } from './FileTree';
 
 export type SideMode = 'files' | 'board' | 'context' | 'log';
 
-export function SidePanel({ mode, onMode, onClose, workspaceId, root, doc, target, onNavigate, onSelectTask, selectedTaskId, workLog, onAction, onPatchContext, onError, searchRef }: {
-  mode: SideMode; onMode: (m: SideMode) => void; onClose: () => void;
+export function SidePanel({ mode, onMode, workspaceId, root, doc, target, onNavigate, onSelectTask, selectedTaskId, workLog, onAction, onPatchContext, onError, searchRef }: {
+  mode: SideMode; onMode: (m: SideMode) => void;
   workspaceId: string; root: string; doc: ContinuoDoc | null; target: NavTarget; onNavigate: (t: NavTarget) => void;
   onSelectTask: (task: ContinuoTask) => void; selectedTaskId: string | null; workLog: string;
   onAction: (task: ContinuoTask, action: BoardAction) => void;
@@ -27,8 +27,6 @@ export function SidePanel({ mode, onMode, onClose, workspaceId, root, doc, targe
           <ModeTab active={mode === 'context'} label="Context" badge={pending || undefined} onClick={() => onMode('context')}><Layers size={15} /></ModeTab>
           <ModeTab active={mode === 'log'} label="日志" onClick={() => onMode('log')}><ScrollText size={15} /></ModeTab>
         </div>
-        <span className="flex-1" />
-        <button className="btn btn-icon" title="收起面板" onClick={onClose}><PanelRightClose size={18} /></button>
       </header>
       {mode === 'files' && (
         <div className="side-files">

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { ArrowUp, Check, CircleAlert, FolderOpen, KanbanSquare, Layers, Loader2, PanelRight, Plus, ScrollText, Square } from 'lucide-react';
+import { ArrowUp, Check, CircleAlert, FolderOpen, Loader2, PanelRight, PanelRightClose, Plus, Square } from 'lucide-react';
 import { DEFAULT_MODEL, type ApprovalRequest, type ContextEntry, type ContinuoDoc, type ContinuoTask, type QuestionRequest } from '#/lib/api';
 import type { TimelineState } from '#/lib/timeline';
 import { Timeline } from './Timeline';
@@ -53,18 +53,17 @@ export function AgentPanel(p: AgentPanelProps) {
   const initRunning = p.doc?.init.status === 'running';
   const showEmpty = !p.selected && p.doc && !initRunning;
   const fill = (text: string) => { setDraft(text); if (p.composerRef.current) { p.composerRef.current.value = text; p.composerRef.current.focus(); } };
-  const toggle = (m: SideMode) => p.onSide(p.sideMode === m ? null : m);
+  const lastMode = useRef<SideMode>('files');
+  useEffect(() => { if (p.sideMode !== null) lastMode.current = p.sideMode; }, [p.sideMode]);
 
   return (
     <section className="pane pane-main" aria-label="对话">
       <header className="chat-header chrome">
         <span className="chat-title truncate" title={title}>{title}</span>
         <span className="flex-1" />
-        <HeaderIcon label="文件" active={p.sideMode === 'files'} onClick={() => toggle('files')}><FolderOpen size={18} /></HeaderIcon>
-        <HeaderIcon label="看板" active={p.sideMode === 'board'} badge={needYou || undefined} onClick={() => toggle('board')}><KanbanSquare size={18} /></HeaderIcon>
-        <HeaderIcon label="Context" active={p.sideMode === 'context'} badge={pendingContext || undefined} onClick={() => toggle('context')}><Layers size={18} /></HeaderIcon>
-        <HeaderIcon label="工作日志" active={p.sideMode === 'log'} onClick={() => toggle('log')}><ScrollText size={18} /></HeaderIcon>
-        {p.sideMode === null && <HeaderIcon label="打开右侧面板" active={false} onClick={() => p.onSide('files')}><PanelRight size={18} /></HeaderIcon>}
+        {p.sideMode === null
+          ? <HeaderIcon label="打开右侧面板" active={false} badge={(needYou + pendingContext) || undefined} onClick={() => p.onSide(lastMode.current)}><PanelRight size={18} /></HeaderIcon>
+          : <HeaderIcon label="收起右侧面板" active={false} onClick={() => { lastMode.current = p.sideMode ?? 'files'; p.onSide(null); }}><PanelRightClose size={18} /></HeaderIcon>}
       </header>
       {p.error && <div className="banner banner-err mx-auto mt-3" style={{ maxWidth: 760 }}>{p.error}</div>}
 
