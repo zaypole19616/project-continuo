@@ -3,8 +3,9 @@ import { continuo, kimi, type ApprovalRequest, type ContextEntry, type ContinuoD
 import { SessionStream } from '#/lib/ws';
 import { applyEvent, emptyTimeline, fromMessages, type TimelineState } from '#/lib/timeline';
 import { Sidebar } from '#/components/Sidebar';
-import { FileBrowser, type NavTarget } from '#/components/FileBrowser';
-import { AgentPanel, type AgentTab } from '#/components/AgentPanel';
+import type { NavTarget } from '#/components/FileBrowser';
+import { AgentPanel } from '#/components/AgentPanel';
+import { SidePanel, type SideMode } from '#/components/SidePanel';
 import type { BoardAction } from '#/components/Board';
 
 const ACTIVE = new Set(['queued', 'running', 'awaiting_user', 'verifying']);
@@ -32,13 +33,12 @@ function useMediaQuery(query: string): boolean {
 const readPref = (key: string, fallback: boolean) => { try { const v = localStorage.getItem(key); return v === null ? fallback : v === '1'; } catch { return fallback; } };
 const writePref = (key: string, value: boolean) => { try { localStorage.setItem(key, value ? '1' : '0'); } catch {} };
 
-export function WorkspaceView({ workspace, onSwitch, onClose, onAbout }: { workspace: Workspace; onSwitch: (w: Workspace) => void; onClose: () => void; onAbout: () => void }) {
+export function WorkspaceView({ workspace, onSwitch, onClose, onAbout }: { workspace: Workspace; onSwitch: (w: Workspace) => void; onClose: () => void; onAbout: (bet?: string) => void }) {
   const [doc, setDoc] = useState<ContinuoDoc | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [tab, setTab] = useState<AgentTab>('chat');
+  const [sideMode, setSideMode] = useState<SideMode | null>(() => { try { const v = localStorage.getItem('continuo.side'); return v === 'none' ? null : ((v as SideMode | null) ?? 'files'); } catch { return 'files'; } });
   const [navCollapsed, setNavCollapsed] = useState(() => readPref('continuo.nav.collapsed', false));
   const narrow = useMediaQuery('(max-width: 1000px) and (min-width: 761px)');
-  const [agentCollapsed, setAgentCollapsed] = useState(() => readPref('continuo.agent.collapsed', false));
   const [target, setTarget] = useState<NavTarget>({ kind: 'folder', path: '' });
   const [error, setError] = useState<string | null>(null);
   const [connection, setConnection] = useState('idle');
@@ -58,7 +58,7 @@ export function WorkspaceView({ workspace, onSwitch, onClose, onAbout }: { works
 
   useEffect(() => {
     let cancelled = false;
-    setDoc(null); setSelectedId(null); userPicked.current = false; setTarget({ kind: 'folder', path: '' }); setTab('chat'); setError(null);
+    setDoc(null); setSelectedId(null); userPicked.current = false; setTarget({ kind: 'folder', path: '' }); setError(null);
     void (async () => {
       try { const d = await continuo.open(workspace.id, newRequestId()); if (!cancelled) setDoc(d); } catch (error) { if (!cancelled) setError((error as Error).message); }
     })();
@@ -74,7 +74,7 @@ export function WorkspaceView({ workspace, onSwitch, onClose, onAbout }: { works
 
   useEffect(() => {
     if (!doc) return;
-    if (selectedId && doc.tasks.some((t) => t.taskId === selectedId) && userPicked.current) return;
+    if (userPicked.current && (selectedId === null || doc.tasks.some((t) => t.taskId === selectedId))) return;
     const pick = pickDefaultTask(doc);
     if (pick && pick.taskId !== selectedId) setSelectedId(pick.taskId);
   }, [doc, selectedId]);
@@ -111,16 +111,16 @@ export function WorkspaceView({ workspace, onSwitch, onClose, onAbout }: { works
   }, [sessionId, refreshPending, refresh]);
 
   useEffect(() => {
-    if (tab !== 'log') return;
+    if (sideMode !== 'log') return;
     let cancelled = false;
     void (async () => { try { const r = await continuo.workLog(workspace.id); if (!cancelled) setWorkLog(r.markdown); } catch (error) { if (!cancelled) setError((error as Error).message); } })();
     return () => { cancelled = true; };
-  }, [tab, workspace.id, doc?.revision]);
+  }, [sideMode, workspace.id, doc?.revision]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'n') { e.preventDefault(); focusComposer(); }
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'f') { e.preventDefault(); searchRef.current?.focus(); }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'f') { e.preventDefault(); focusSearch(); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -143,7 +143,6 @@ export function WorkspaceView({ workspace, onSwitch, onClose, onAbout }: { works
         if (composerRef.current) composerRef.current.value = '';
         setDoc(r.doc); userPicked.current = false; setSelectedId(r.task.taskId);
       }
-      setTab('chat'); setAgent(false);
     } catch (error) { setError((error as Error).message); } finally { setSending(false); }
   };
 
@@ -157,26 +156,28 @@ export function WorkspaceView({ workspace, onSwitch, onClose, onAbout }: { works
     try { const d = await continuo.patchContext(workspace.id, entry.id, { ...body, expected_revision: entry.revision }); setDoc(d); } catch (error) { setError((error as Error).message); throw error; }
   };
 
-  const setAgent = (collapsed: boolean) => { setAgentCollapsed(collapsed); writePref('continuo.agent.collapsed', collapsed); };
-  const selectTask = (task: ContinuoTask) => { userPicked.current = true; setSelectedId(task.taskId); setTab('chat'); setAgent(false); };
-  const selectTaskById = (taskId: string) => { const t = doc?.tasks.find((x) => x.taskId === taskId); if (t) selectTask(t); };
-  const openFile = (path: string) => { setTarget({ kind: 'file', path }); };
+  const setSide = (m: SideMode | null) => { setSideMode(m); try { localStorage.setItem('continuo.side', m ?? 'none'); } catch {} };
+  const selectTask = (task: ContinuoTask) => { userPicked.current = true; setSelectedId(task.taskId); };
+  const openFile = (path: string) => { setTarget({ kind: 'file', path }); setSide('files'); };
   const toggleNav = () => setNavCollapsed((v) => { writePref('continuo.nav.collapsed', !v); return !v; });
-  const focusComposer = () => { setTab('chat'); setAgent(false); userPicked.current = true; setSelectedId(null); setTimeout(() => composerRef.current?.focus(), 50); };
+  const focusComposer = () => { userPicked.current = true; setSelectedId(null); setTimeout(() => composerRef.current?.focus(), 50); };
+  const focusSearch = () => { setSide('files'); setTimeout(() => searchRef.current?.focus(), 50); };
 
   return (
-    <div className={`shell ${navCollapsed ? 'nav-collapsed' : ''} ${agentCollapsed ? 'agent-collapsed' : ''}`}>
-      <Sidebar workspace={workspace} doc={doc} collapsed={navCollapsed || narrow} selectedTaskId={selectedId} onToggle={toggleNav} onSelectTask={selectTask} onSwitchWorkspace={onSwitch} onAddWorkspace={onClose} onNewTask={focusComposer} onSearch={() => searchRef.current?.focus()} onAbout={onAbout} />
-      <FileBrowser workspaceId={workspace.id} root={workspace.root} doc={doc} target={target} agentCollapsed={agentCollapsed} searchRef={searchRef} onNavigate={setTarget} onOpenAgent={() => setAgent(false)} onSelectTask={selectTaskById} onError={setError} />
+    <div className={`shell ${navCollapsed ? 'nav-collapsed' : ''} ${sideMode === null ? 'side-collapsed' : ''}`}>
+      <Sidebar workspace={workspace} doc={doc} collapsed={navCollapsed || narrow} selectedTaskId={selectedId} onToggle={toggleNav} onSelectTask={selectTask} onSwitchWorkspace={onSwitch} onAddWorkspace={onClose} onNewTask={focusComposer} onSearch={focusSearch} onAbout={() => onAbout()} />
       <AgentPanel
-        workspaceName={workspace.name} doc={doc} tab={tab} onTab={setTab} onCollapse={() => setAgent(true)}
-        selected={selected} state={state} questions={questions} approvals={approvals} connection={connection} workLog={workLog} error={error}
+        workspaceName={workspace.name} doc={doc} sideMode={sideMode} onSide={setSide}
+        selected={selected} state={state} questions={questions} approvals={approvals} connection={connection} error={error}
         activeUserTask={activeUserTask} replyTarget={replyTarget} composerRef={composerRef} sending={sending}
-        onSend={(mode) => { void send(mode); }} onNewTask={focusComposer}
+        onSend={(mode) => { void send(mode); }}
         onAnswer={async (q, answers, note) => { if (!sessionId) return; await kimi.resolveQuestion(sessionId, q.question_id, answers, note); await refreshPending(sessionId); void refresh(); }}
         onDecide={async (a, d, scope) => { if (!sessionId) return; await kimi.resolveApproval(sessionId, a.approval_id, d, scope); await refreshPending(sessionId); void refresh(); }}
-        onAction={(t, a) => { void action(t, a); }} onSelectTask={selectTask} onPatchContext={patchContext} onOpenFile={openFile}
+        onAction={(t, a) => { void action(t, a); }} onOpenFile={openFile} onAbout={(bet) => onAbout(bet)} onPatchContext={patchContext}
       />
+      {sideMode !== null && (
+        <SidePanel mode={sideMode} onMode={setSide} onClose={() => setSide(null)} workspaceId={workspace.id} root={workspace.root} doc={doc} target={target} onNavigate={setTarget} onSelectTask={selectTask} selectedTaskId={selectedId} workLog={workLog} onAction={(t, a) => { void action(t, a); }} onPatchContext={patchContext} onError={setError} searchRef={searchRef} />
+      )}
     </div>
   );
 }

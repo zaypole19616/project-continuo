@@ -285,3 +285,36 @@ textarea:focus, input:focus { outline: none; border-color: var(--accent); box-sh
 .side-row-ws:hover .ws-chev { display: none; }
 .side-row:focus-visible, .side-sub:focus-visible, .recent-card:focus-visible { outline: 2px solid var(--accent-line); outline-offset: -2px; }
 .side-row:focus:not(:focus-visible), .side-sub:focus:not(:focus-visible) { outline: none; }
+
+/* claude-like layout: nav | conversation | side */
+.shell { --side-w: 600px; grid-template-columns: var(--nav-w, 260px) minmax(0, 1fr) var(--side-w, 600px); }
+.shell.side-collapsed { grid-template-columns: var(--nav-w, 260px) minmax(0, 1fr) 0px; }
+.pane-main { background: var(--canvas); }
+.pane-side { background: var(--surface); border-left: 1px solid var(--line); overflow: hidden; container-type: inline-size; }
+.chat-col { width: 100%; max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px; }
+.chat-body { padding: 24px 28px 8px; display: block; }
+.chat-footer { padding: 8px 28px 16px; }
+.side-files { flex: 1; min-height: 0; display: grid; grid-template-columns: 220px minmax(0, 1fr); }
+.side-tree { border-right: 1px solid var(--line); overflow: auto; padding: 8px 6px; background: var(--canvas); }
+.side-files .pane-content { min-width: 0; }
+.tree-row { display: flex; align-items: center; gap: 6px; width: 100%; height: 28px; padding: 0 8px; border: 0; border-radius: 6px; background: transparent; color: var(--text-1); font-size: var(--fs-sm); cursor: pointer; text-align: left; white-space: nowrap; }
+.tree-row:hover { background: var(--surface-hover); }
+.tree-row.is-selected { background: var(--surface-selected); }
+.tree-row .truncate { overflow: hidden; text-overflow: ellipsis; }
+.mode-tab { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border: 0; border-radius: 8px; background: transparent; color: var(--text-2); font-size: var(--fs-sm); cursor: pointer; white-space: nowrap; }
+.mode-tab.is-active { background: var(--surface); color: var(--text-1); box-shadow: var(--shadow-sm); }
+.mode-badge { min-width: 16px; height: 16px; padding: 0 4px; border-radius: 999px; background: var(--accent); color: #fff; font-size: 10px; line-height: 16px; text-align: center; font-weight: 600; }
+.seg .mode-tab { width: auto; }
+.demo-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; text-align: left; }
+.demo-card { display: flex; flex-direction: column; gap: 6px; padding: 16px; border-radius: var(--r-xl); border: 1px solid var(--line); background: var(--surface); cursor: pointer; text-align: left; transition: box-shadow var(--motion-fast), transform var(--motion-fast); }
+.demo-card:hover { box-shadow: var(--shadow-md); transform: translateY(-1px); }
+.demo-en { font-size: var(--fs-xs); font-weight: 700; color: var(--accent); letter-spacing: 0.06em; text-transform: uppercase; }
+.demo-title { font-size: var(--fs-lg); font-weight: 600; }
+.demo-desc { font-size: var(--fs-sm); color: var(--text-2); line-height: 1.55; }
+.bet-chip { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 8px; border-radius: 999px; border: 1px solid var(--accent-line); background: var(--accent-soft); color: var(--accent); font-size: var(--fs-xs); font-weight: 600; cursor: pointer; }
+.bet-chip:hover { background: #dbeeff; }
+.cand-row { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 10px; background: rgba(255, 255, 255, 0.7); }
+@container (max-width: 520px) { .side-files { grid-template-columns: minmax(0, 1fr); } .side-tree { display: none; } }
+@media (max-width: 1280px) { .shell { --side-w: 520px; } }
+@media (max-width: 1000px) { .shell { grid-template-columns: 64px minmax(0, 1fr) var(--side-w, 440px); --side-w: 440px; } .shell.side-collapsed { grid-template-columns: 64px minmax(0, 1fr) 0px; } .demo-grid { grid-template-columns: 1fr; } }
+@media (max-width: 760px) { .shell, .shell.nav-collapsed { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) minmax(0, 46%); } .shell.side-collapsed { grid-template-rows: auto minmax(0, 1fr) 0; } .pane-side { border-left: 0; border-top: 1px solid var(--line); } }

@@ -72,7 +72,7 @@ export function App() {
     );
   }
   if (!workspace) return <OpenWorkspace onOpen={(w) => { localStorage.setItem(WS_KEY, w.id); touchRecent(w.id); setWorkspace(w); }} onAbout={() => goAbout()} />;
-  return <WorkspaceView workspace={workspace} onSwitch={(w) => { localStorage.setItem(WS_KEY, w.id); touchRecent(w.id); setWorkspace(w); }} onClose={() => { localStorage.removeItem(WS_KEY); setWorkspace(null); }} onAbout={() => goAbout()} />;
+  return <WorkspaceView workspace={workspace} onSwitch={(w) => { localStorage.setItem(WS_KEY, w.id); touchRecent(w.id); setWorkspace(w); }} onClose={() => { localStorage.removeItem(WS_KEY); setWorkspace(null); }} onAbout={(bet) => goAbout(bet && BETS.has(bet) ? (bet as BetId) : 'index')} />;
 }
 
 function TokenForm({ onSave }: { onSave: (t: string) => void }) {
