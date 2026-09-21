@@ -58,7 +58,7 @@ export function App() {
   if (!workspace) {
     return <OpenWorkspace onOpen={(w) => { localStorage.setItem(WS_KEY, w.id); setWorkspace(w); }} />;
   }
-  return <WorkspaceView workspace={workspace} onClose={() => { localStorage.removeItem(WS_KEY); setWorkspace(null); }} />;
+  return <WorkspaceView workspace={workspace} onSwitch={(w) => { localStorage.setItem(WS_KEY, w.id); setWorkspace(w); }} onClose={() => { localStorage.removeItem(WS_KEY); setWorkspace(null); }} />;
 }
 
 function TokenForm({ onSave }: { onSave: (t: string) => void }) {
