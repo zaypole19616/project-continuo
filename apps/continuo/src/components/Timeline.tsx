@@ -5,10 +5,10 @@ import type { TimelineItem, ToolCall } from '#/lib/timeline';
 const REASON_LABEL: Record<string, string> = { completed: '本轮完成', cancelled: '已停止', failed: '本轮失败', blocked: '被阻塞，需要处理' };
 
 export function Timeline({ items, emptyHint }: { items: TimelineItem[]; emptyHint?: string }) {
-  if (items.length === 0) return <div className="text-3 p-6 text-center fs-meta">{emptyHint ?? '还没有对话。'}</div>;
+  if (items.length === 0) return <div className="t3 p-6 text-center sm">{emptyHint ?? '还没有对话。'}</div>;
   return (
     <div className="space-y-5">
-      {items.map((it) => it.kind === 'user' ? <div key={it.id} className="msg-user fade-in">{it.text}</div> : <AssistantTurn key={it.id} item={it} />)}
+      {items.map((it) => it.kind === 'user' ? <div key={it.id} className="flex flex-col items-end gap-1 fade-in"><div className="msg-user">{it.text}</div><span className="t3 xs">{clock(it.at)}</span></div> : <AssistantTurn key={it.id} item={it} />)}
     </div>
   );
 }
@@ -19,6 +19,7 @@ function AssistantTurn({ item }: { item: Extract<TimelineItem, { kind: 'assistan
       {item.tools.length > 0 && <ActivityTimeline tools={item.tools} />}
       {item.text && <div className="msg-assistant">{item.text}</div>}
       {!item.ended && !item.text && item.tools.length === 0 && <div className="text-3 fs-meta flex items-center gap-2"><Loader2 size={14} className="spin" />正在思考…</div>}
+      {item.ended && item.ended.reason === 'completed' && (item.text || item.tools.length > 0) && <div className="t3 xs">{clock(item.at)}</div>}
       {item.ended && item.ended.reason !== 'completed' && (
         <div className="fs-meta flex items-start gap-2" style={{ color: item.ended.reason === 'cancelled' ? 'var(--text-3)' : 'var(--err)' }}>
           <CircleAlert size={14} style={{ marginTop: 2 }} />
@@ -65,6 +66,11 @@ function StatusIcon({ t }: { t: ToolCall }) {
   if (!t.done) return <Loader2 size={14} className="spin" style={{ color: 'var(--info)' }} />;
   if (t.isError) return <CircleAlert size={14} style={{ color: 'var(--err)' }} />;
   return <Check size={14} style={{ color: 'var(--ok)' }} />;
+}
+
+function clock(ms: number): string {
+  const d = new Date(ms);
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
 function describe(t: ToolCall): string {

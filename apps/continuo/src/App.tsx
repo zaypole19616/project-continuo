@@ -2,18 +2,30 @@ import { useEffect, useState } from 'react';
 import { ApiError, kimi, readToken, setToken, type Workspace } from '#/lib/api';
 import { OpenWorkspace } from '#/pages/OpenWorkspace';
 import { WorkspaceView } from '#/pages/Workspace';
+import { About, type BetId } from '#/pages/About';
 
 const WS_KEY = 'continuo.workspace';
+const BETS = new Set(['legibility', 'proactiveness', 'clarity', 'direction']);
+
+type Route = { kind: 'app' } | { kind: 'about'; page: BetId | 'index' };
+
+function readRoute(): Route {
+  const h = window.location.hash.replace(/^#/, '');
+  const m = /^\/about(?:\/([a-z]+))?$/.exec(h);
+  if (m) return { kind: 'about', page: m[1] && BETS.has(m[1]) ? (m[1] as BetId) : 'index' };
+  return { kind: 'app' };
+}
 
 export function App() {
   const [token, setTok] = useState<string | null>(() => readToken());
+  const [route, setRoute] = useState<Route>(() => readRoute());
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [checking, setChecking] = useState(true);
   const [serverOk, setServerOk] = useState<string | null>(null);
   const [failure, setFailure] = useState<'auth' | 'network' | null>(null);
 
   useEffect(() => {
-    const onHash = () => { const t = readToken(); if (t) setTok(t); };
+    const onHash = () => { const t = readToken(); if (t) setTok(t); setRoute(readRoute()); };
     window.addEventListener('hashchange', onHash);
     return () => window.removeEventListener('hashchange', onHash);
   }, []);
@@ -43,22 +55,24 @@ export function App() {
     return () => { cancelled = true; };
   }, [token]);
 
+  const goAbout = (page: BetId | 'index' = 'index') => { window.location.hash = page === 'index' ? '/about' : `/about/${page}`; };
+  const goApp = () => { window.location.hash = ''; setRoute({ kind: 'app' }); };
+
+  if (route.kind === 'about') return <About page={route.page} onNavigate={goAbout} onOpenApp={goApp} />;
   if (checking) return <Center>正在连接本地服务…</Center>;
   if (!serverOk) {
     return (
       <Center>
         <div className="card p-6 max-w-md space-y-3">
-          <div style={{ fontSize: 'var(--fs-h2)', fontWeight: 600 }}>{failure === 'auth' ? '需要本地服务的 token' : '连不上本地服务'}</div>
-          <p className="text-2">{failure === 'auth' ? '本地服务在，但这个页面没有有效的 token。' : '请先运行 kimi web 启动本地服务。'}把启动时打印的 token 填在这里，或用带 <code>#token=</code> 的地址打开本页。</p>
+          <div style={{ fontSize: 'var(--fs-xl)', fontWeight: 700 }}>{failure === 'auth' ? '需要本地服务的 token' : '连不上本地服务'}</div>
+          <p className="t2">{failure === 'auth' ? '本地服务在，但这个页面没有有效的 token。' : '请先运行 kimi web 启动本地服务。'}把启动时打印的 token 填在这里，或用带 <code>#token=</code> 的地址打开本页。</p>
           <TokenForm onSave={(t) => { setToken(t); setTok(t); }} />
         </div>
       </Center>
     );
   }
-  if (!workspace) {
-    return <OpenWorkspace onOpen={(w) => { localStorage.setItem(WS_KEY, w.id); setWorkspace(w); }} />;
-  }
-  return <WorkspaceView workspace={workspace} onSwitch={(w) => { localStorage.setItem(WS_KEY, w.id); setWorkspace(w); }} onClose={() => { localStorage.removeItem(WS_KEY); setWorkspace(null); }} />;
+  if (!workspace) return <OpenWorkspace onOpen={(w) => { localStorage.setItem(WS_KEY, w.id); setWorkspace(w); }} onAbout={() => goAbout()} />;
+  return <WorkspaceView workspace={workspace} onSwitch={(w) => { localStorage.setItem(WS_KEY, w.id); setWorkspace(w); }} onClose={() => { localStorage.removeItem(WS_KEY); setWorkspace(null); }} onAbout={() => goAbout()} />;
 }
 
 function TokenForm({ onSave }: { onSave: (t: string) => void }) {

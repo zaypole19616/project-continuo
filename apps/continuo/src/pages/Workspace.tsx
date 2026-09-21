@@ -21,7 +21,7 @@ function pickDefaultTask(doc: ContinuoDoc): ContinuoTask | null {
 const readPref = (key: string, fallback: boolean) => { try { const v = localStorage.getItem(key); return v === null ? fallback : v === '1'; } catch { return fallback; } };
 const writePref = (key: string, value: boolean) => { try { localStorage.setItem(key, value ? '1' : '0'); } catch {} };
 
-export function WorkspaceView({ workspace, onSwitch, onClose }: { workspace: Workspace; onSwitch: (w: Workspace) => void; onClose: () => void }) {
+export function WorkspaceView({ workspace, onSwitch, onClose, onAbout }: { workspace: Workspace; onSwitch: (w: Workspace) => void; onClose: () => void; onAbout: () => void }) {
   const [doc, setDoc] = useState<ContinuoDoc | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [tab, setTab] = useState<AgentTab>('chat');
@@ -154,7 +154,7 @@ export function WorkspaceView({ workspace, onSwitch, onClose }: { workspace: Wor
 
   return (
     <div className={`shell ${navCollapsed ? 'nav-collapsed' : ''} ${agentCollapsed ? 'agent-collapsed' : ''}`}>
-      <Sidebar workspace={workspace} doc={doc} collapsed={navCollapsed} selectedTaskId={selectedId} onToggle={toggleNav} onSelectTask={selectTask} onSwitchWorkspace={onSwitch} onAddWorkspace={onClose} onNewTask={focusComposer} onSearch={() => searchRef.current?.focus()} />
+      <Sidebar workspace={workspace} doc={doc} collapsed={navCollapsed} selectedTaskId={selectedId} onToggle={toggleNav} onSelectTask={selectTask} onSwitchWorkspace={onSwitch} onAddWorkspace={onClose} onNewTask={focusComposer} onSearch={() => searchRef.current?.focus()} onAbout={onAbout} />
       <FileBrowser workspaceId={workspace.id} root={workspace.root} doc={doc} target={target} agentCollapsed={agentCollapsed} searchRef={searchRef} onNavigate={setTarget} onOpenAgent={() => setAgent(false)} onSelectTask={selectTaskById} onError={setError} />
       <AgentPanel
         workspaceName={workspace.name} doc={doc} tab={tab} onTab={setTab} onCollapse={() => setAgent(true)}
