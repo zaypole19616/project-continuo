@@ -30,7 +30,7 @@ In a second terminal:
 KIMI_PORT=58627 pnpm dev:continuo
 ```
 
-Open `http://127.0.0.1:5180/#token=<token printed by kimi web>` and pick a folder. `apps/continuo/demo-workspace/` is a synthetic demo folder; copy it somewhere writable first.
+Open `http://127.0.0.1:5180/#token=<token printed by kimi web>` and click **用演示文件夹开始体验** (a synthetic folder is created under `~/Continuo Demo/`), or open a folder of your own.
 
 ## Where the code is
 

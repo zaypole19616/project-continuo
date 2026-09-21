@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ChevronDown, ChevronRight, Check, CircleAlert, Loader2 } from 'lucide-react';
 import type { TimelineItem, ToolCall } from '#/lib/timeline';
+import { renderMarkdown } from '#/lib/markdown';
 
 const REASON_LABEL: Record<string, string> = { completed: '本轮完成', cancelled: '已停止', failed: '本轮失败', blocked: '被阻塞，需要处理' };
 
@@ -17,7 +18,7 @@ function AssistantTurn({ item }: { item: Extract<TimelineItem, { kind: 'assistan
   return (
     <div className="space-y-3 fade-in">
       {item.tools.length > 0 && <ActivityTimeline tools={item.tools} />}
-      {item.text && <div className="msg-assistant">{item.text}</div>}
+      {item.text && (item.ended ? <div className="msg-assistant md" style={{ whiteSpace: 'normal' }} dangerouslySetInnerHTML={{ __html: renderMarkdown(item.text) }} /> : <div className="msg-assistant">{item.text}</div>)}
       {!item.ended && !item.text && item.tools.length === 0 && <div className="text-3 fs-meta flex items-center gap-2"><Loader2 size={14} className="spin" />正在思考…</div>}
       {item.ended && item.ended.reason === 'completed' && (item.text || item.tools.length > 0) && <div className="t3 xs">{clock(item.at)}</div>}
       {item.ended && item.ended.reason !== 'completed' && (

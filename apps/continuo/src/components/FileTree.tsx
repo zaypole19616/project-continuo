@@ -10,8 +10,9 @@ export function FileTree({ workspaceId, rootName, revision, target, onNavigate }
 
   const load = (path: string) => continuoFiles.list(workspaceId, path).then((r) => setChildren((prev) => ({ ...prev, [path]: r.entries }))).catch(() => undefined);
 
-  useEffect(() => { void load(''); }, [workspaceId, revision]);
+  useEffect(() => { if (revision > 0) void load(''); }, [workspaceId, revision]);
   useEffect(() => {
+    if (revision === 0) return;
     for (const path of Object.keys(open)) if (open[path] && path !== '') void load(path);
   }, [revision]);
   useEffect(() => {
@@ -19,7 +20,7 @@ export function FileTree({ workspaceId, rootName, revision, target, onNavigate }
     const dirs = parts.map((_, i) => parts.slice(0, i + 1).join('/'));
     for (const dir of dirs) {
       if (!open[dir]) setOpen((prev) => ({ ...prev, [dir]: true }));
-      if (!children[dir]) void load(dir);
+      if (!children[dir] && revision > 0) void load(dir);
     }
   }, [target]);
 

@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, ArrowUpDown, BookOpen, ChevronRight, Copy, FolderPlus, LayoutGrid, List, PanelRightOpen, Search, Sparkles } from 'lucide-react';
-import { continuoFiles, kimi, type ContinuoDoc, type FileContent, type FileEntry, type FileListing } from '#/lib/api';
+import { useEffect, useMemo, useState } from 'react';
+import { ArrowLeft, BookOpen, ChevronRight, LayoutGrid, List, PanelRightOpen, Search, Sparkles } from 'lucide-react';
+import { continuoFiles, type ContinuoDoc, type FileContent, type FileEntry, type FileListing } from '#/lib/api';
 import { renderMarkdown } from '#/lib/markdown';
 import { FileGlyph, FolderGlyph, fileTypeLabel } from './icons';
 
@@ -15,10 +15,8 @@ export function FileBrowser({ workspaceId, root, doc, target, agentCollapsed, se
   const [listing, setListing] = useState<FileListing | null>(null);
   const [file, setFile] = useState<FileContent | null>(null);
   const [view, setView] = useState<'grid' | 'list'>(() => { try { return localStorage.getItem('continuo.view') === 'list' ? 'list' : 'grid'; } catch { return 'grid'; } });
-  const [sort, setSort] = useState<SortKey>('name');
+  const sort: SortKey = 'name';
   const [query, setQuery] = useState('');
-  const [creating, setCreating] = useState(false);
-  const newNameRef = useRef<HTMLInputElement | null>(null);
   const revision = doc?.revision ?? 0;
 
   useEffect(() => {
@@ -52,18 +50,6 @@ export function FileBrowser({ workspaceId, root, doc, target, agentCollapsed, se
   const folderName = crumbs.length === 0 ? rootName : crumbs.at(-1)!;
   const taskTitle = (taskId: string) => doc?.tasks.find((t) => t.taskId === taskId)?.title ?? taskId;
   const switchView = (v: 'grid' | 'list') => { setView(v); try { localStorage.setItem('continuo.view', v); } catch {} };
-  const copyPath = () => { const abs = folderPath === '' ? root : `${root}/${folderPath}`; void navigator.clipboard?.writeText(abs); };
-  const createFolder = async () => {
-    const name = newNameRef.current?.value.trim();
-    if (!name) { setCreating(false); return; }
-    try {
-      await kimi.fsMkdir(`${root}${folderPath ? `/${folderPath}` : ''}/${name}`);
-      setCreating(false);
-      const r = await continuoFiles.list(workspaceId, folderPath);
-      setListing(r);
-    } catch (error) { onError((error as Error).message); }
-  };
-
   return (
     <section className="pane pane-content" aria-label="文件工作区">
       <header className="pane-header chrome" style={{ height: 56 }}>
@@ -86,7 +72,6 @@ export function FileBrowser({ workspaceId, root, doc, target, agentCollapsed, se
           <button className={view === 'grid' ? 'is-active' : ''} title="网格" onClick={() => switchView('grid')}><LayoutGrid size={16} /></button>
           <button className={view === 'list' ? 'is-active' : ''} title="列表" onClick={() => switchView('list')}><List size={16} /></button>
         </div>
-        <button className="btn btn-icon" title={`排序：${sort === 'name' ? '名称' : sort === 'time' ? '修改时间' : '大小'}（点击切换）`} onClick={() => setSort(sort === 'name' ? 'time' : sort === 'time' ? 'size' : 'name')}><ArrowUpDown size={16} /></button>
         {agentCollapsed && <button className="btn btn-icon" title="打开 Agent 面板" onClick={onOpenAgent}><PanelRightOpen size={18} /></button>}
       </header>
 
@@ -97,15 +82,6 @@ export function FileBrowser({ workspaceId, root, doc, target, agentCollapsed, se
           <div className="toolbar chrome">
             <span className="toolbar-title">{folderName}</span>
             <span className="text-3">{entries.length} 项</span>
-            <button className="toolbar-btn" onClick={copyPath} title="复制这个文件夹的路径"><Copy size={16} /><span>复制路径</span></button>
-            {creating ? (
-              <form className="flex items-center gap-2" onSubmit={(e) => { e.preventDefault(); void createFolder(); }}>
-                <input ref={newNameRef} autoFocus placeholder="新文件夹名" style={{ height: 30, width: 180 }} onBlur={() => { if (!newNameRef.current?.value.trim()) setCreating(false); }} />
-                <button className="btn btn-sm btn-primary" type="submit">创建</button>
-              </form>
-            ) : (
-              <button className="toolbar-btn" onClick={() => setCreating(true)} title="新建文件夹"><FolderPlus size={16} /><span>新建文件夹</span></button>
-            )}
           </div>
           <div className="pane-body">
             {!listing ? <div className="text-3 fs-meta p-6">读取中…</div>

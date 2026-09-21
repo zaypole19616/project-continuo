@@ -1,10 +1,9 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { ArrowUp, Check, CircleAlert, FolderOpen, Loader2, PanelRight, PanelRightClose, Plus, Square } from 'lucide-react';
-import { DEFAULT_MODEL, type ApprovalRequest, type ContextEntry, type ContinuoDoc, type ContinuoTask, type QuestionRequest } from '#/lib/api';
+import { ArrowUp, Check, CircleAlert, FolderOpen, Loader2, PanelRight, PanelRightClose, Play, RotateCcw, Square } from 'lucide-react';
+import { DEFAULT_MODEL, DEMO_WORKSPACE_NAME, type ApprovalRequest, type ContextEntry, type ContinuoDoc, type ContinuoTask, type QuestionRequest } from '#/lib/api';
 import type { TimelineState } from '#/lib/timeline';
 import { Timeline } from './Timeline';
 import { ApprovalCard, QuestionCard } from './InteractionCards';
-import type { BoardAction } from './Board';
 import type { SideMode } from './SidePanel';
 
 export interface AgentPanelProps {
@@ -19,22 +18,22 @@ export interface AgentPanelProps {
   connection: string;
   error: string | null;
   activeUserTask: ContinuoTask | null;
-  replyTarget: ContinuoTask | null;
+  continueTarget: ContinuoTask | null;
   composerRef: React.RefObject<HTMLTextAreaElement | null>;
   sending: boolean;
-  onSend: (mode: 'new' | 'reply') => void;
+  onSend: () => void;
   onAnswer: (q: QuestionRequest, answers: Record<string, unknown>, note?: string) => Promise<void>;
   onDecide: (a: ApprovalRequest, d: 'approved' | 'rejected', scope?: 'session') => Promise<void>;
-  onAction: (task: ContinuoTask, action: BoardAction) => void;
+  onAction: (task: ContinuoTask, action: 'pause' | 'resume' | 'complete') => void;
   onOpenFile: (path: string) => void;
   onAbout: (bet: string) => void;
   onPatchContext: (entry: ContextEntry, body: { text?: string; status?: 'active' | 'inactive' }) => Promise<void>;
 }
 
-const DEMOS: Array<{ bet: string; en: string; title: string; desc: string; prompt: string }> = [
-  { bet: 'legibility', en: 'Legibility', title: '它按你的规矩干活', desc: '先在 Context 里改一条约定，再交代任务，看产物是否照改后的规矩落位、命名。', prompt: '起草一份 Q2 经营复盘初稿，放到 drafts/。' },
-  { bet: 'proactiveness', en: 'Proactiveness', title: '缺决定时它停下来问', desc: '材料里没有的决定它不编。你回一句，它在原会话接着干，中途可停可续。', prompt: '给 Q2 复盘初稿补一节「下季度价格动作」，价格方向和幅度按我的决定写，材料里没有的不要编。' },
-  { bet: 'clarity', en: 'Clarity', title: '完成由文件证明', desc: '任务结束时核验产物是否真的存在；有未解决项就进待复核，不假装完成。', prompt: '基于 Q2 复盘初稿写一份 200 字以内的高管摘要，放到 drafts/。' },
+const DEMOS: Array<{ bet: string; en: string; title: string; desc: string; prompt: string; generic: string }> = [
+  { bet: 'legibility', en: 'Legibility', title: '它按你的规矩干活', desc: '先在 Context 里改一条约定，再交代任务，看产物是否照改后的规矩落位、命名。', prompt: '起草一份 Q2 经营复盘初稿，放到 drafts/。', generic: '基于这个文件夹里的材料，起草一份总结初稿，按这里的约定放好、命名好。' },
+  { bet: 'proactiveness', en: 'Proactiveness', title: '缺决定时它停下来问', desc: '材料里没有的决定它不编。你回一句，它在原会话接着干，中途可停可续。', prompt: '给 Q2 复盘初稿补一节「下季度价格动作」，价格方向和幅度按我的决定写，材料里没有的不要编。', generic: '找出这个文件夹里需要我拍板的事，列出来问我，不要自己替我决定。' },
+  { bet: 'clarity', en: 'Clarity', title: '完成由文件证明', desc: '任务结束时核验产物是否真的存在；有未解决项就进待复核，不假装完成。', prompt: '基于 Q2 复盘初稿写一份 200 字以内的高管摘要，放到 drafts/。', generic: '把这个文件夹里最新的一份产物压缩成 200 字以内的摘要，另存为新文件。' },
 ];
 
 const isAwaitingReply = (t: ContinuoTask | null) => !!t && t.status === 'awaiting_user' && t.pendingInteraction === 'reply';
@@ -47,7 +46,9 @@ export function AgentPanel(p: AgentPanelProps) {
 
   const needYou = p.doc?.tasks.filter((t) => t.status === 'awaiting_user' || t.status === 'needs_review').length ?? 0;
   const pendingContext = p.doc?.context.filter((e) => e.status === 'candidate' || e.status === 'stale').length ?? 0;
-  const replyMode = isAwaitingReply(p.replyTarget);
+  const continuing = p.continueTarget !== null;
+  const awaitingReply = isAwaitingReply(p.continueTarget);
+  const isDemo = p.workspaceName === DEMO_WORKSPACE_NAME;
   const title = p.selected ? (p.selected.kind === 'init' ? '了解这个工作空间' : p.selected.title) : '新任务';
   const modelName = DEFAULT_MODEL.split('/').pop();
   const initRunning = p.doc?.init.status === 'running';
@@ -82,7 +83,7 @@ export function AgentPanel(p: AgentPanelProps) {
               <p className="t2" style={{ margin: '0 0 22px' }}>它已经了解了这个文件夹。下面三张卡各演示一个判断，点一下就开始。</p>
               <div className="demo-grid">
                 {DEMOS.map((d) => (
-                  <button key={d.bet} className="demo-card" onClick={() => fill(d.prompt)}>
+                  <button key={d.bet} className="demo-card" onClick={() => fill(isDemo ? d.prompt : d.generic)}>
                     <span className="demo-en">{d.en}</span>
                     <span className="demo-title">{d.title}</span>
                     <span className="demo-desc">{d.desc}</span>
@@ -94,7 +95,7 @@ export function AgentPanel(p: AgentPanelProps) {
           {p.selected && p.selected.kind === 'init' && p.doc?.understanding && (
             <UnderstandingCard doc={p.doc} onContext={() => p.onSide('context')} onAbout={() => p.onAbout('clarity')} onPatch={p.onPatchContext} />
           )}
-          {!showEmpty && <Timeline items={p.state.items} emptyHint={p.selected ? '这个任务还没有对话。' : undefined} />}
+          {!showEmpty && <Timeline items={p.selected?.kind === 'init' ? p.state.items.filter((it) => it.kind !== 'user') : p.state.items} emptyHint={p.selected ? (p.selected.kind === 'init' ? undefined : '这个任务还没有对话。') : undefined} />}
           {p.selected?.report && (p.selected.report.deliverables.length > 0 || p.selected.report.unresolved.length > 0) && (p.selected.status === 'completed' || p.selected.status === 'needs_review') && (
             <DeliverableCard task={p.selected} onOpenFile={p.onOpenFile} onAbout={() => p.onAbout('clarity')} />
           )}
@@ -115,20 +116,27 @@ export function AgentPanel(p: AgentPanelProps) {
               <button className="btn btn-sm" onClick={() => p.onAction(p.activeUserTask!, 'pause')}><Square size={12} />停止</button>
             </div>
           ) : (
-            <div className="composer">
-              <textarea ref={p.composerRef} rows={2} placeholder={replyMode ? '回复这个任务…' : '交代一个任务，或问它这个文件夹里的事…'} value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); p.onSend(replyMode ? 'reply' : 'new'); setDraft(''); } }} />
-              <div className="composer-footer chrome">
-                <button className="btn btn-icon" title="附加文件（即将支持）" disabled><Plus size={18} /></button>
-                <span className="model-chip">✳ {modelName}</span>
-                <span className="ws-chip"><FolderOpen size={13} />{p.workspaceName}</span>
-                <span className="flex-1" />
-                {p.replyTarget && <button className={`btn btn-sm ${replyMode ? 'btn-primary' : 'btn-ghost'}`} disabled={!p.doc || p.sending} onClick={() => { p.onSend('reply'); setDraft(''); }}>{replyMode ? '回复' : '追问这个任务'}</button>}
-                <button className="send" title={replyMode ? '作为新任务发送' : '发送'} disabled={!p.doc || p.sending} onClick={() => { p.onSend('new'); setDraft(''); }}><ArrowUp size={16} /></button>
+            <>
+              {p.continueTarget && (p.continueTarget.status === 'paused' || p.continueTarget.status === 'interrupted' || p.continueTarget.status === 'failed' || p.continueTarget.status === 'needs_review') && (
+                <div className="state-bar chrome">
+                  <span className="t2 sm flex-1">{p.continueTarget.status === 'paused' ? '任务已暂停' : p.continueTarget.status === 'interrupted' ? '任务被中断' : p.continueTarget.status === 'failed' ? '上次执行失败' : '任务待复核：有未解决项'}</span>
+                  {p.continueTarget.status === 'needs_review' && <button className="btn btn-sm" onClick={() => p.onAction(p.continueTarget!, 'complete')}><Check size={12} />标记完成</button>}
+                  <button className="btn btn-sm btn-primary" onClick={() => p.onAction(p.continueTarget!, 'resume')}>{p.continueTarget.status === 'failed' ? <><RotateCcw size={12} />重试</> : <><Play size={12} />继续</>}</button>
+                </div>
+              )}
+              <div className="composer">
+                <textarea ref={p.composerRef} rows={2} placeholder={awaitingReply ? '回复它…' : continuing ? '接着这个任务说…' : '交代一个任务…'} value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); p.onSend(); setDraft(''); } }} />
+                <div className="composer-footer chrome">
+                  <span className="model-chip">✳ {modelName}</span>
+                  <span className="ws-chip"><FolderOpen size={13} />{p.workspaceName}</span>
+                  <span className="flex-1" />
+                  <button className="send" title="发送" disabled={!p.doc || p.sending} onClick={() => { p.onSend(); setDraft(''); }}><ArrowUp size={16} /></button>
+                </div>
               </div>
-            </div>
+            </>
           )}
           <div className="chat-status chrome">
-            <span className="t3 xs">{p.connection === 'connecting' ? '连接中…' : p.selected ? `任务 ${p.selected.taskId}` : ''}</span>
+            <span className="t3 xs">{p.connection === 'connecting' ? '连接中…' : continuing ? '会在这个任务里接着干；要另起一个，点左上角「新任务」' : ''}</span>
           </div>
         </div>
       </div>

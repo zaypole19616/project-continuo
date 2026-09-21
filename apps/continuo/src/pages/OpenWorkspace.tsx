@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { ArrowRight, ChevronRight, Folder, FolderPlus, Sparkles, X } from 'lucide-react';
-import { forgetRecent, kimi, readRecent, type FsBrowse, type Workspace } from '#/lib/api';
+import { ArrowRight, ChevronRight, Folder, FolderPlus, Play, Sparkles, X } from 'lucide-react';
+import { continuo, forgetRecent, kimi, readRecent, type FsBrowse, type Workspace } from '#/lib/api';
 import { FolderGlyph } from '#/components/icons';
 
 export function OpenWorkspace({ onOpen, onAbout }: { onOpen: (w: Workspace) => void; onAbout: () => void }) {
@@ -32,6 +32,10 @@ export function OpenWorkspace({ onOpen, onAbout }: { onOpen: (w: Workspace) => v
     try { const made = await kimi.fsMkdir(browse.path.replace(/\/$/, '') + '/' + newName.trim()); onOpen(await kimi.createWorkspace(made.path)); } catch (error) { setError((error as Error).message); } finally { setBusy(false); }
   };
   const submit = () => { const p = pathInput.trim(); if (!p) { setBrowsing(true); return; } void openPath(p); };
+  const startDemo = async () => {
+    setBusy(true); setError(null);
+    try { onOpen(await continuo.demo()); } catch (error) { setError((error as Error).message); } finally { setBusy(false); }
+  };
 
   return (
     <div className="h-full overflow-auto" style={{ background: 'var(--canvas)' }}>
@@ -42,11 +46,20 @@ export function OpenWorkspace({ onOpen, onAbout }: { onOpen: (w: Workspace) => v
       </nav>
       <div className="open-hero">
         <FolderGlyph size={72} />
-        <h1>选一个文件夹，把工作交出去</h1>
-        <p>Continuo 会先了解这个文件夹，再开始干活。它做的每一步、记下的每一条，你都看得见、改得了。</p>
+        <h1>把一个文件夹交给 Continuo</h1>
+        <p>它先理解这个文件夹，再开始干活；需要你决定时才来问；做完的东西放回文件夹里，下次打开接着干。</p>
       </div>
       <div className="mx-auto space-y-8" style={{ maxWidth: 760, padding: '0 32px 80px' }}>
         {error && <div className="banner banner-err">{error}</div>}
+        <button className="demo-start" disabled={busy} onClick={() => { void startDemo(); }}>
+          <span className="demo-start-icon"><Play size={18} /></span>
+          <span className="min-w-0 flex-1 text-left">
+            <span className="block font-semibold lg">用演示文件夹开始体验</span>
+            <span className="block t2 sm">一个虚构公司的季度复盘材料，两分钟走完：理解、纠正、交任务、卡点、交付。</span>
+          </span>
+          <ArrowRight size={18} className="t3" />
+        </button>
+        <div className="t3 xs" style={{ textAlign: 'center' }}>或者打开自己的文件夹</div>
         <form className="open-input" onSubmit={(e) => { e.preventDefault(); submit(); }}>
           <Folder size={18} className="t3" />
           <input placeholder="粘贴文件夹的绝对路径，或从下面选一个" value={pathInput} onChange={(e) => setPathInput(e.target.value)} />
@@ -111,14 +124,7 @@ export function OpenWorkspace({ onOpen, onAbout }: { onOpen: (w: Workspace) => v
           </section>
         )}
 
-        <button className="recent-card w-full" onClick={onAbout}>
-          <span className="brand-mark" style={{ width: 34, height: 34, borderRadius: 10 }}><Sparkles size={16} color="#fff" /></span>
-          <div className="min-w-0 flex-1 text-left">
-            <div className="font-medium">Continuo 的四个判断</div>
-            <div className="t3 xs">Legibility · Proactiveness · Clarity · Direction</div>
-          </div>
-          <ArrowRight size={16} className="t3" />
-        </button>
+        <button className="btn btn-ghost w-full" onClick={onAbout}><Sparkles size={14} />这个产品背后的四个判断</button>
       </div>
     </div>
   );

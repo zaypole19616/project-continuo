@@ -45,9 +45,9 @@ Continuo 面向一个本地文件夹。打开它，会发生三件事。
 
 看板只有四列：待执行 / 进行中 / 需要你 / 已结束。它和工作日志读的是同一份事件账本，不是另一套状态。
 
-### 界面：一个工作台，三栏
+### 界面：对话为主，文件夹在右
 
-主窗口是一个工作台：左栏导航（新任务、搜索、当前工作空间及其任务记录、其他工作空间、账户），中栏文件工作区（面包屑、搜索、网格 / 列表、排序；图标网格里的文件带「指引」「产物」标记，点产物跳到产出它的任务；Markdown 在中栏预览），右栏 Agent 面板（标题栏图标切换看板 / Context / 日志；对话里有理解卡、活动时间线、产物卡；输入框带模型标识与圆形发送）。视觉体系照 Kimi 的产品：暖白画布，黑白为主加一个 Kimi 蓝，Schibsted Grotesk 字体，大圆角与克制的阴影。`#/about` 是四个判断的介绍页（Legibility、Proactiveness、Clarity、Direction），从打开页和侧栏底部都能进。代码全部独立实现。
+主窗口三栏：左栏导航（新任务、当前工作空间及其任务记录、其他工作空间、账户），中栏对话（居中 760；空状态是三张体验卡，各对应一个判断，点一下预填任务；理解卡、提问卡、审批卡、产物卡带小标签标明体现的判断），右栏可收起的面板，「文件」模式是文件树 + 文件夹网格 + 预览，「Context」模式是账本。首页一键用演示文件夹开始（服务端在 `~/Continuo Demo/` 生成一份合成材料并注册为工作空间）。视觉照 Kimi 的产品：暖白画布、黑白加一个 Kimi 蓝、Schibsted Grotesk、大圆角。`#/about` 是四个判断的介绍页。
 
 ## 3. Harness：继承什么、新增什么、为什么
 
@@ -127,6 +127,6 @@ KIMI_CODE_EXPERIMENTAL_CONTINUO=1 node apps/kimi-code/dist/main.mjs web --no-ope
 KIMI_PORT=58627 pnpm dev:continuo
 ```
 
-打开 `http://127.0.0.1:5180/#token=<上面的 token>`，选一个文件夹。演示建议把 `apps/continuo/demo-workspace/` 复制到任意可写位置再打开，它是合成数据，可以随便改。
+打开 `http://127.0.0.1:5180/#token=<上面的 token>`，点「用演示文件夹开始体验」，或打开自己的文件夹。演示数据是合成的，可以随便改。
 
 代码位置：引擎侧 `packages/agent-core-v2/src/features/continuo/`，服务侧 `packages/kap-server/src/continuo/`（含只读文件接口 `files.ts`）与 `routes/continuo.ts`，前端 `apps/continuo/`（`components/Sidebar` / `FileBrowser` / `AgentPanel` 三栏），测试 `packages/agent-core-v2/test/features/continuo/`。
