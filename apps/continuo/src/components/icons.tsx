@@ -1,14 +1,16 @@
 export function FolderGlyph({ size = 64 }: { size?: number }) {
-  const h = Math.round(size * 0.78);
+  const h = Math.round(size * 0.8);
   return (
-    <svg width={size} height={h} viewBox="0 0 64 50" fill="none" aria-hidden="true">
+    <svg width={size} height={h} viewBox="0 0 64 51" fill="none" aria-hidden="true">
       <defs>
-        <linearGradient id="fg-back" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#7fc4f2" /><stop offset="1" stopColor="#5aaee6" /></linearGradient>
-        <linearGradient id="fg-front" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#bfe3fb" /><stop offset="1" stopColor="#8ccbf3" /></linearGradient>
+        <linearGradient id="fld-back" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#6db4f5" /><stop offset="1" stopColor="#4a9be8" /></linearGradient>
+        <linearGradient id="fld-front" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#b3dbfb" /><stop offset="0.55" stopColor="#95cdf9" /><stop offset="1" stopColor="#7dbff5" /></linearGradient>
+        <linearGradient id="fld-shade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#000" stopOpacity="0.16" /><stop offset="1" stopColor="#000" stopOpacity="0" /></linearGradient>
       </defs>
-      <path d="M4 9a4 4 0 0 1 4-4h14.5a4 4 0 0 1 2.8 1.2l3.4 3.3H56a4 4 0 0 1 4 4V42a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4Z" fill="url(#fg-back)" />
-      <rect x="4" y="16" width="56" height="30" rx="4" fill="url(#fg-front)" />
-      <rect x="14" y="12.5" width="18" height="4" rx="1" fill="#ffffff" opacity=".85" />
+      <path d="M2 10.5A5.5 5.5 0 0 1 7.5 5H22c1.6 0 3 .6 4.1 1.7l1.6 1.6c1 1 2.4 1.7 3.9 1.7h25A5.5 5.5 0 0 1 62 15.5V44a5.5 5.5 0 0 1-5.5 5.5h-49A5.5 5.5 0 0 1 2 44Z" fill="url(#fld-back)" />
+      <rect x="2" y="15" width="60" height="34.5" rx="5.5" fill="url(#fld-front)" />
+      <rect x="2" y="15" width="60" height="6" fill="url(#fld-shade)" style={{ mixBlendMode: 'multiply' }} opacity=".35" />
+      <path d="M7.5 15.5h49" stroke="#ffffff" strokeOpacity=".55" strokeWidth="1" strokeLinecap="round" />
     </svg>
   );
 }
