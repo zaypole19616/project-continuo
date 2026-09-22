@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { ArrowRight, ArrowUp, Check, ChevronDown, CircleAlert, FolderOpen, Loader2, PanelRight, PanelRightClose, Play, RotateCcw, Sparkles, Square } from 'lucide-react';
+import { ArrowRight, ArrowUp, Check, ChevronDown, CircleAlert, FolderOpen, PanelRight, PanelRightClose, Play, RotateCcw, Sparkles, Square } from 'lucide-react';
 import { DEFAULT_MODEL, type ApprovalRequest, type ContextEntry, type ContinuoDoc, type ContinuoTask, type QuestionRequest, type Workspace } from '#/lib/api';
 import type { TimelineState } from '#/lib/timeline';
 import { Timeline } from './Timeline';
@@ -52,13 +52,10 @@ export function AgentPanel(p: AgentPanelProps) {
   useEffect(() => { if (p.sideMode !== null) lastMode.current = p.sideMode; }, [p.sideMode]);
   const send = () => { p.onSend(); setDraft(''); };
 
-  const composer = p.activeUserTask ? (
-    <div className="composer" style={{ padding: '12px 14px 12px 18px', display: 'flex', alignItems: 'center', gap: 12 }}>
-      <Loader2 size={16} className="spin" style={{ color: 'var(--accent)' }} />
-      <span className="t2 flex-1 sm">{p.activeUserTask.status === 'awaiting_user' ? (p.activeUserTask.pendingInteraction === 'approval' ? '要动你的文件，等你点允许' : '有一个决定需要你') : `正在做：${p.activeUserTask.phase ?? p.activeUserTask.title}`}</span>
-      <Button size="sm" onClick={() => p.onAction(p.activeUserTask!, 'pause')}><Square size={12} />停止</Button>
-    </div>
-  ) : (
+  const running = p.activeUserTask !== null && p.activeUserTask.status !== 'awaiting_user';
+  const stop = () => { if (p.activeUserTask) p.onAction(p.activeUserTask, 'pause'); };
+
+  const composer = (
     <>
       {p.continueTarget && (p.continueTarget.status === 'paused' || p.continueTarget.status === 'interrupted' || p.continueTarget.status === 'failed' || p.continueTarget.status === 'needs_review') && (
         <div className="state-bar chrome">
@@ -81,11 +78,21 @@ export function AgentPanel(p: AgentPanelProps) {
         </div>
       )}
       <div className="composer">
-        <textarea ref={p.composerRef} rows={hero ? 3 : 2} placeholder={p.workspace === null ? '先选一个文件夹，再交代任务…' : awaitingReply ? '回复它…' : continuing ? '有新的要求？直接说…' : '这次想完成什么？'} value={draft} disabled={p.workspace === null} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send(); } }} />
+        <textarea
+          ref={p.composerRef}
+          rows={hero ? 3 : 2}
+          placeholder={p.workspace === null ? '先选一个文件夹，再交代任务…' : awaitingReply ? '回复它…' : continuing ? '有新的要求？直接说…' : '这次想完成什么？'}
+          value={draft}
+          disabled={p.workspace === null}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); if (!running && !p.sending) send(); } }}
+        />
         <div className="composer-footer chrome">
           <span className="model-chip">✳ {modelName}</span>
           <span className="flex-1" />
-          <button className="send" title="发送" disabled={!p.doc || p.sending} onClick={send}><ArrowUp size={16} /></button>
+          {running
+            ? <button className="send" title="停止" onClick={stop}><Square size={13} fill="currentColor" /></button>
+            : <button className="send" title="发送" disabled={!p.doc || p.sending} onClick={send}><ArrowUp size={16} /></button>}
         </div>
       </div>
     </>
