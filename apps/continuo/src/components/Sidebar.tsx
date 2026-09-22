@@ -1,6 +1,6 @@
-import { useState } from 'react';
-import { CircleHelp, Folder, FolderOpen, HelpCircle, PanelLeft, Plus, Search, SquarePen } from 'lucide-react';
-import { DEFAULT_MODEL, type ContinuoDoc, type ContinuoTask, type Workspace } from '#/lib/api';
+import { useEffect, useState } from 'react';
+import { ChevronRight, CircleHelp, Folder, FolderOpen, HelpCircle, PanelLeft, Plus, Search, SquarePen } from 'lucide-react';
+import { continuo, DEFAULT_MODEL, type ContinuoDoc, type ContinuoTask, type Workspace } from '#/lib/api';
 import { FolderMenu } from './FolderMenu';
 
 const TASK_DOT: Record<ContinuoTask['status'], string> = {
@@ -13,7 +13,9 @@ export function Sidebar({ workspace, doc, workspaces, collapsed, selectedTaskId,
   onNewTask: () => void; onSearch: () => void; onAbout: () => void; onGuide: () => void;
 }) {
   const [adding, setAdding] = useState<DOMRect | null>(null);
+  const [folded, setFolded] = useState<Record<string, boolean>>(() => readFolded());
   const tasks = doc ? [...doc.tasks].toReversed() : [];
+  const toggle = (id: string) => setFolded((current) => { const next = { ...current, [id]: !current[id] }; writeFolded(next); return next; });
 
   if (collapsed) {
     return (
@@ -45,24 +47,13 @@ export function Sidebar({ workspace, doc, workspaces, collapsed, selectedTaskId,
             {adding && <FolderMenu anchor={adding} currentId={workspace?.id} onPick={onPickWorkspace} onClose={() => setAdding(null)} />}
           </>
         </div>
-        {workspaces.map((w) => {
-          const current = w.id === workspace?.id;
-          return (
-            <div key={w.id} className="side-group">
-              <button className={`side-folder-row ${current ? 'is-current' : ''}`} title={w.root} onClick={() => onPickWorkspace(w)}>
-                {current ? <FolderOpen size={15} className="ic" /> : <Folder size={15} className="ic" />}
-                <span className="flex-1 truncate">{w.name}</span>
-              </button>
-              {current && tasks.map((t) => (
-                <button key={t.taskId} className={`side-sub ${t.taskId === selectedTaskId ? 'is-selected' : ''}`} onClick={() => onSelectTask(t)} title={t.title}>
-                  <span className="flex-1 truncate">{t.kind === 'init' ? '了解这个文件夹' : t.title}</span>
-                  {TASK_DOT[t.status] ? <span className={`status-dot ${TASK_DOT[t.status]}`} /> : <span className="t3 xs">{shortDate(t.createdAt)}</span>}
-                </button>
-              ))}
-              {current && tasks.length === 0 && <div className="side-empty">还没有会话</div>}
-            </div>
-          );
-        })}
+        {workspaces.map((w) => (
+          <FolderGroup
+            key={w.id} workspace={w} current={w.id === workspace?.id} tasks={w.id === workspace?.id ? tasks : undefined}
+            open={!folded[w.id]} selectedTaskId={selectedTaskId}
+            onToggle={() => toggle(w.id)} onOpen={() => onPickWorkspace(w)} onSelectTask={onSelectTask}
+          />
+        ))}
         {workspaces.length === 0 && <div className="side-empty" style={{ paddingLeft: 9 }}>还没有文件夹，点上面的 ＋ 添加一个</div>}
       </div>
       <div className="px-2 pb-1"><button className="side-row" onClick={onGuide}><CircleHelp size={16} className="ic" /><span className="flex-1">使用引导</span></button></div>
@@ -75,6 +66,51 @@ export function Sidebar({ workspace, doc, workspaces, collapsed, selectedTaskId,
         <button className="btn btn-icon" title="四个判断" onClick={onAbout}><HelpCircle size={18} /></button>
       </div>
     </aside>
+  );
+}
+
+const FOLDED_KEY = 'continuo.folders.collapsed';
+function readFolded(): Record<string, boolean> {
+  try { return JSON.parse(localStorage.getItem(FOLDED_KEY) ?? '{}') as Record<string, boolean>; } catch { return {}; }
+}
+function writeFolded(value: Record<string, boolean>) {
+  try { localStorage.setItem(FOLDED_KEY, JSON.stringify(value)); } catch {}
+}
+
+function FolderGroup({ workspace, current, tasks, open, selectedTaskId, onToggle, onOpen, onSelectTask }: {
+  workspace: Workspace; current: boolean; tasks?: ContinuoTask[]; open: boolean; selectedTaskId: string | null;
+  onToggle: () => void; onOpen: () => void; onSelectTask: (task: ContinuoTask) => void;
+}) {
+  const [fetched, setFetched] = useState<ContinuoTask[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  useEffect(() => {
+    if (!open || current || fetched !== null) return;
+    let cancelled = false;
+    setLoading(true);
+    continuo.get(workspace.id)
+      .then((d) => { if (!cancelled) setFetched([...d.tasks].toReversed()); })
+      .catch(() => { if (!cancelled) setFetched([]); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [open, current, fetched, workspace.id]);
+  const list = tasks ?? fetched;
+  return (
+    <div className="side-group">
+      <div className={`side-folder-row ${current ? 'is-current' : ''}`} title={workspace.root}>
+        <button className="side-fold" aria-label={open ? '收起' : '展开'} aria-expanded={open} onClick={onToggle}><ChevronRight size={13} className={open ? 'is-open' : ''} /></button>
+        <button className="side-folder-name" onClick={onOpen}>
+          {current ? <FolderOpen size={15} className="ic" /> : <Folder size={15} className="ic" />}
+          <span className="flex-1 truncate">{workspace.name}</span>
+        </button>
+      </div>
+      {open && list?.map((t) => (
+        <button key={t.taskId} className={`side-sub ${current && t.taskId === selectedTaskId ? 'is-selected' : ''}`} onClick={() => { if (!current) onOpen(); else onSelectTask(t); }} title={t.title}>
+          <span className="flex-1 truncate">{t.kind === 'init' ? '了解这个文件夹' : t.title}</span>
+          {TASK_DOT[t.status] ? <span className={`status-dot ${TASK_DOT[t.status]}`} /> : <span className="t3 xs">{shortDate(t.createdAt)}</span>}
+        </button>
+      ))}
+      {open && (loading ? <div className="side-empty">读取中…</div> : list?.length === 0 && <div className="side-empty">还没有会话</div>)}
+    </div>
   );
 }
 
