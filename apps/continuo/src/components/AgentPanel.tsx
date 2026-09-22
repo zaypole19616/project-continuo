@@ -43,11 +43,6 @@ const DEMO_CARDS: Card[] = [
   { bet: 'clarity', title: '做完了才说做完', desc: '任务结束时核对文件是不是真的在文件夹里；没做到的如实列出，不假装完成。', prompt: '基于最新的 Q2 复盘稿写一份 200 字以内的高管摘要，放到 drafts/。' },
 ];
 
-const GENERIC_CARDS: Card[] = [
-  { bet: 'legibility', title: '它按你的规矩干活', desc: '先在右侧「记住的事」里改一条约定，再交代任务，看它做出的文件是否照改后的规矩放好、命名。', prompt: '基于这个文件夹里的材料，起草一份总结初稿，按这里的约定放好、命名好。' },
-  { bet: 'proactiveness', title: '缺决定时它停下来问', desc: '材料里没有的决定它不编。你回一句，它接着干，中途可停可续。', prompt: '找出这个文件夹里需要我拍板的事，列出来问我，不要自己替我决定。' },
-  { bet: 'clarity', title: '做完了才说做完', desc: '任务结束时核对文件是不是真的在文件夹里；没做到的如实列出，不假装完成。', prompt: '把这个文件夹里最新的一份产物压缩成 200 字以内的摘要，另存为新文件。' },
-];
 
 const isAwaitingReply = (t: ContinuoTask | null) => !!t && t.status === 'awaiting_user' && t.pendingInteraction === 'reply';
 
@@ -87,10 +82,11 @@ export function AgentPanel(p: AgentPanelProps) {
           {showEmpty && p.doc && (
             <div className="empty-hero fade-in">
               <h2>{p.doc.tasks.some((t) => t.kind === 'user') ? '这次，想做什么？' : '准备好了，开始吧。'}</h2>
-              <p className="t2" style={{ margin: '0 0 6px' }}>{memorySummary(p.doc)}</p>
-              <p className="t3 sm" style={{ margin: '0 0 22px' }}>下面三张卡各演示一件事，点一下就开始。<button className="link" onClick={() => p.onSide('context')}>看看它记住了什么</button></p>
+              {p.doc.understanding && !isDemo && <p className="t2 empty-brief">{p.doc.understanding.text}</p>}
+              <p className="t3 sm" style={{ margin: '0 0 22px' }}>{memorySummary(p.doc)}<button className="link" onClick={() => p.onSide('context')}>{p.doc.context.some((e) => e.status === 'candidate') ? '去确认' : '查看'}</button></p>
+              {isDemo && <p className="t3 sm" style={{ margin: '-14px 0 22px' }}>下面三张卡各演示一件事，点一下就开始。</p>}
               <div className="demo-grid">
-                {(isDemo ? DEMO_CARDS : GENERIC_CARDS).map((d) => (
+                {(isDemo ? DEMO_CARDS : []).map((d) => (
                   <button key={d.bet} className="demo-card" onClick={() => fill(d.prompt)}>
                     <span className="demo-en">{BET_LABEL[d.bet]}</span>
                     <span className="demo-title">{d.title}</span>
@@ -101,7 +97,7 @@ export function AgentPanel(p: AgentPanelProps) {
             </div>
           )}
           {p.selected && p.selected.kind === 'init' && p.doc?.understanding && (
-            <UnderstandingCard doc={p.doc} onContext={() => p.onSide('context')} onAbout={() => p.onAbout('clarity')} onPatch={p.onPatchContext} onReunderstand={p.onReunderstand} />
+            <UnderstandingCard doc={p.doc} onContext={() => p.onSide('context')} onAbout={() => p.onAbout('clarity')} onReunderstand={p.onReunderstand} />
           )}
           {!showEmpty && !initRunning && <Timeline items={p.selected?.kind === 'init' ? p.state.items.filter((it) => it.kind !== 'user') : p.state.items} emptyHint={p.selected ? (p.selected.kind === 'init' ? undefined : p.selected.sessionId === '' ? `这是演示夹自带的上次任务（${shortDate(p.selected.createdAt)}），对话没有随演示夹保存；下面是它当时的收尾。` : '这个任务还没有对话。') : undefined} />}
           {p.selected && p.doc && p.selected.kind === 'user' && (p.selected.status === 'completed' || p.selected.status === 'needs_review') && (
@@ -156,11 +152,9 @@ export function BetChip({ bet, note, onClick }: { bet: BetKey; note?: string; on
   return <button className="bet-chip chrome" onClick={onClick} title="这背后的想法">{BET_LABEL[bet]}{note ? <span className="t3"> · {note}</span> : null}</button>;
 }
 
-function UnderstandingCard({ doc, onContext, onAbout, onPatch, onReunderstand }: { doc: ContinuoDoc; onContext: () => void; onAbout: () => void; onPatch: (entry: ContextEntry, body: { text?: string; status?: 'active' | 'inactive' }) => Promise<void>; onReunderstand: () => void }) {
-  const active = doc.context.filter((e) => e.status === 'active');
-  const candidates = doc.context.filter((e) => e.status === 'candidate');
-  const [busy, setBusy] = useState<string | null>(null);
-  const act = async (e: ContextEntry, status: 'active' | 'inactive') => { setBusy(e.id); try { await onPatch(e, { status }); } finally { setBusy(null); } };
+function UnderstandingCard({ doc, onContext, onAbout, onReunderstand }: { doc: ContinuoDoc; onContext: () => void; onAbout: () => void; onReunderstand: () => void }) {
+  const active = doc.context.filter((e) => e.status === 'active').length;
+  const candidates = doc.context.filter((e) => e.status === 'candidate').length;
   return (
     <div className="understand fade-in space-y-3">
       <div>
@@ -168,30 +162,11 @@ function UnderstandingCard({ doc, onContext, onAbout, onPatch, onReunderstand }:
         <div className="font-medium" style={{ margin: '6px 0' }}>我对这个文件夹的理解</div>
         <div className="sm" style={{ lineHeight: 1.65 }}>{doc.understanding!.text}</div>
       </div>
-      {active.length > 0 && (
-        <div className="space-y-1">
-          <div className="t3 xs">已记住 · 来自文件或你的确认</div>
-          {active.slice(0, 4).map((e) => <div key={e.id} className="sm flex items-start gap-2"><Check size={14} style={{ color: 'var(--ok)', marginTop: 3 }} /><span>{e.text}</span></div>)}
-        </div>
-      )}
-      {candidates.length > 0 && (
-        <div className="space-y-2">
-          <div className="t3 xs">它的推断 · 等你确认才会用</div>
-          {candidates.slice(0, 3).map((e) => (
-            <div key={e.id} className="cand-row">
-              <span className="sm flex-1">{e.text}</span>
-              <button className="btn btn-sm btn-primary" disabled={busy === e.id} onClick={() => { void act(e, 'active'); }}>确认</button>
-              <button className="btn btn-sm btn-ghost" disabled={busy === e.id} onClick={() => { void act(e, 'inactive'); }}>忽略</button>
-            </div>
-          ))}
-        </div>
-      )}
-      <div className="flex items-center gap-2">
-        <span className="tag tag-done">记住了 {active.length} 件事</span>
-        {candidates.length > 0 && <span className="tag tag-wait">{candidates.length} 条待确认</span>}
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="sm t2">记住了 {active} 件事{candidates > 0 ? `，还有 ${candidates} 条推断等你确认` : ''}</span>
         <span className="flex-1" />
         <button className="btn btn-sm btn-ghost" title="再读一遍文件夹，重新形成理解（约一分钟）" onClick={onReunderstand}><RotateCcw size={12} />重新了解</button>
-        <button className="btn btn-sm" onClick={onContext}>查看或修改</button>
+        <button className="btn btn-sm" onClick={onContext}>{candidates > 0 ? '去确认' : '查看或修改'}</button>
       </div>
     </div>
   );
@@ -264,13 +239,13 @@ function InitStage({ startedAt }: { startedAt?: string }) {
 
 function memorySummary(doc: ContinuoDoc): string {
   const remembered = doc.context.filter((e) => e.status === 'active').length;
+  const pending = doc.context.filter((e) => e.status === 'candidate').length;
   const saved = doc.tasks.filter((t) => t.kind === 'user' && t.reuse !== undefined && t.reuse.entries > 0 && (t.status === 'completed' || t.status === 'needs_review')).length;
-  const last = doc.tasks.findLast((t) => t.kind === 'user' && (t.status === 'completed' || t.status === 'needs_review'));
-  if (remembered === 0 && !last) return '它已经了解了这个文件夹。';
-  const parts = [`它记住了 ${remembered} 件事`];
+  if (remembered === 0 && pending === 0) return '它已经了解了这个文件夹。';
+  const parts = [`记住了 ${remembered} 件事`];
+  if (pending > 0) parts.push(`还有 ${pending} 条推断等你确认`);
   if (saved > 0) parts.push(`已为 ${saved} 个任务省去重新交代`);
-  const head = parts.join('，');
-  return last ? `${head}；上次（${shortDate(last.createdAt)}）做的是「${last.title.length > 24 ? `${last.title.slice(0, 24)}…` : last.title}」。` : `${head}。`;
+  return `${parts.join('，')}。`;
 }
 
 function HeaderIcon({ label, active, badge, onClick, children }: { label: string; active: boolean; badge?: number; onClick: () => void; children: ReactNode }) {

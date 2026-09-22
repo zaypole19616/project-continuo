@@ -17,10 +17,10 @@ export function ContextPanel({ doc, onPatch, onOpenFile }: { doc: ContinuoDoc; o
       <section className="space-y-2">
         <div className="nav-section" style={{ padding: '0 2px' }}>它对这个文件夹的理解</div>
         {doc.understanding ? (
-          <div className="card-quiet p-3 space-y-2" style={{ fontSize: 'var(--fs-body)' }}>
-            <div className="whitespace-pre-wrap">{doc.understanding.text}</div>
-            {doc.understanding.sourceRefs.length > 0 && <Sources refs={doc.understanding.sourceRefs} onOpenFile={onOpenFile} />}
-          </div>
+          <details className="entry understanding-details">
+            <summary className="entry-text chrome" style={{ cursor: 'pointer' }}>{doc.understanding.text}</summary>
+            {doc.understanding.sourceRefs.length > 0 && <div style={{ marginTop: 8 }}><Sources refs={doc.understanding.sourceRefs} onOpenFile={onOpenFile} /></div>}
+          </details>
         ) : (
           <div className="text-3 fs-meta">{doc.init.status === 'running' ? '正在了解这个文件夹…' : '还没有形成理解。'}</div>
         )}
@@ -68,29 +68,32 @@ function Sources({ refs, onOpenFile }: { refs: readonly string[]; onOpenFile: (p
 
 function EntryCard({ e, mode, onPatch, onOpenFile }: { e: ContextEntry; mode: 'active' | 'candidate' | 'stale'; onPatch: (entry: ContextEntry, body: Patch) => Promise<void>; onOpenFile: (path: string) => void }) {
   const [editing, setEditing] = useState(false);
+  const [open, setOpen] = useState(false);
   const [text, setText] = useState(e.text);
   const [busy, setBusy] = useState(false);
   const run = async (body: Patch) => { setBusy(true); try { await onPatch(e, body); setEditing(false); } finally { setBusy(false); } };
   const OriginIcon = e.origin === 'user' ? UserCheck : e.origin === 'file' ? BookOpen : Wand2;
   return (
-    <div className="card-quiet p-3 space-y-2" style={{ borderStyle: mode === 'candidate' ? 'dashed' : 'solid', borderColor: mode === 'stale' ? 'var(--warn)' : undefined, fontSize: 'var(--fs-body)' }}>
-      <div className="flex items-center gap-2 text-3 fs-meta chrome">
+    <div className={`entry ${mode}`}>
+      <div className="entry-meta chrome">
         <span className="tag tag-neutral">{KIND_LABEL[e.kind]}</span>
         <span className="flex items-center gap-1"><OriginIcon size={12} />{ORIGIN_LABEL[e.origin]}</span>
         {e.scope.type === 'task' && <span>仅本任务</span>}
       </div>
-      {editing ? <textarea className="w-full" rows={3} value={text} onChange={(ev) => setText(ev.target.value)} /> : <div className="whitespace-pre-wrap">{e.text}</div>}
-      {e.sourceRefs.length > 0 && <Sources refs={e.sourceRefs} onOpenFile={onOpenFile} />}
-      <div className="flex gap-2 flex-wrap chrome">
+      {editing
+        ? <textarea className="w-full" rows={3} value={text} onChange={(ev) => setText(ev.target.value)} />
+        : <div className={`entry-text ${open ? '' : 'clamp'}`} role="button" tabIndex={0} title={open ? undefined : '点开看全文'} onClick={() => setOpen(!open)} onKeyDown={(ev) => { if (ev.key === 'Enter') setOpen(!open); }}>{e.text}</div>}
+      {open && !editing && e.sourceRefs.length > 0 && <Sources refs={e.sourceRefs} onOpenFile={onOpenFile} />}
+      <div className="entry-actions chrome">
         {mode === 'candidate' && <button className="btn btn-sm btn-primary" disabled={busy} onClick={() => { void run({ status: 'active' }); }}>确认</button>}
         {mode === 'stale' && <button className="btn btn-sm btn-primary" disabled={busy} onClick={() => { void run({ status: 'active' }); }}>仍然有效</button>}
         {editing ? (
           <>
             <button className="btn btn-sm btn-primary" disabled={busy || !text.trim()} onClick={() => { void run({ text: text.trim() }); }}>保存</button>
-            <button className="btn btn-sm" disabled={busy} onClick={() => { setEditing(false); setText(e.text); }}>取消</button>
+            <button className="btn btn-sm btn-ghost" disabled={busy} onClick={() => { setEditing(false); setText(e.text); }}>取消</button>
           </>
         ) : (
-          <button className="btn btn-sm" disabled={busy} onClick={() => setEditing(true)}>改一下</button>
+          <button className="btn btn-sm btn-ghost" disabled={busy} onClick={() => setEditing(true)}>改一下</button>
         )}
         <button className="btn btn-sm btn-ghost" disabled={busy} onClick={() => { void run({ status: 'inactive' }); }}>{mode === 'candidate' ? '忽略' : '不再用'}</button>
       </div>

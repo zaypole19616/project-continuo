@@ -352,3 +352,16 @@ button.link:hover { text-decoration: underline; }
 .onboard-dots { display: inline-flex; gap: 6px; }
 .onboard-dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--line-strong); transition: background var(--motion-fast), width var(--motion-fast); }
 .onboard-dots i.is-active { width: 18px; border-radius: 3px; background: var(--accent); }
+
+.entry { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); font-size: var(--fs-sm); }
+.entry.candidate { border-style: dashed; }
+.entry.stale { border-color: var(--warn); }
+.entry-meta { display: flex; align-items: center; gap: 8px; font-size: var(--fs-xs); color: var(--text-3); }
+.entry-text { line-height: 1.55; white-space: pre-wrap; cursor: pointer; }
+.entry-text.clamp { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; white-space: normal; }
+.entry-actions { display: flex; align-items: center; gap: 2px; margin-left: -6px; }
+.entry-actions .btn-sm { height: 26px; padding: 0 8px; }
+.understanding-details summary::-webkit-details-marker { display: none; }
+.understanding-details summary { list-style: none; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; white-space: normal; }
+.understanding-details[open] summary { display: block; }
+.empty-brief { margin: 0 auto 8px; max-width: 560px; line-height: 1.65; }
