@@ -403,9 +403,11 @@ button.link:hover { text-decoration: underline; }
 
 
 .work-record { font-size: var(--fs-sm); max-width: none; }
-.work-record h2 { font-size: var(--fs-md); font-weight: 600; color: var(--text-2); margin: 18px 0 6px; }
-.work-record ul { list-style: none; padding-left: 0; }
-.work-record li { padding: 3px 0; border-bottom: 1px solid var(--line); color: var(--text-1); }
+.work-record h2 { font-size: var(--text-2xs); font-weight: var(--weight-section-label); letter-spacing: 0.06em; color: var(--text-3); margin: 20px 0 8px; }
+.work-record h3 { font-size: var(--fs-md); font-weight: var(--weight-medium); color: var(--text-1); margin: 14px 0 6px; line-height: 1.5; }
+.work-record ul { list-style: none; padding-left: 0; margin: 0 0 4px; }
+.work-record li { padding: 3px 0 3px 10px; border-left: 2px solid var(--line); color: var(--text-2); margin: 0 0 2px; }
+.work-record li::first-line { color: var(--text-2); }
 
 .chat-body.is-hero { display: flex; align-items: center; justify-content: center; }
 .chat-body.is-hero .chat-col { gap: 0; }

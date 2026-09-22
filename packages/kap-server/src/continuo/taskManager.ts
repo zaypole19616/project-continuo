@@ -44,6 +44,18 @@ interface Attachment {
 
 const INIT_STEP_BUDGET = 8;
 
+const TASK_STATUS_LABEL: Record<TaskStatus, string> = {
+  queued: '排队中',
+  running: '进行中',
+  awaiting_user: '等你',
+  verifying: '核对产物',
+  completed: '已完成',
+  needs_review: '还差一点',
+  paused: '已暂停',
+  failed: '没能完成',
+  interrupted: '被打断',
+};
+
 function readPath(display: unknown): string | undefined {
   if (typeof display !== 'object' || display === null) return undefined;
   const view = display as { kind?: string; operation?: string; path?: string };
@@ -250,21 +262,36 @@ export class ContinuoTaskManager {
 
   async workLog(workspaceId: string): Promise<string> {
     const doc = await this.requireDoc(workspaceId);
-    const byDay = new Map<string, Array<{ at: string; text: string }>>();
-    for (const entry of doc.activity) {
-      const day = entry.at.slice(0, 10);
-      const list = byDay.get(day) ?? [];
-      list.push({ at: entry.at, text: entry.text });
-      byDay.set(day, list);
+    if (doc.tasks.length === 0) return '还没有工作记录。';
+    const byDay = new Map<string, ContinuoTask[]>();
+    for (const task of doc.tasks) {
+      const day = task.createdAt.slice(0, 10);
+      byDay.set(day, [...(byDay.get(day) ?? []), task]);
     }
     const lines: string[] = [];
-    for (const [day, items] of [...byDay.entries()].toReversed()) {
+    for (const [day, tasks] of [...byDay.entries()].toReversed()) {
       lines.push(`## ${day}`, '');
-      for (const item of items) lines.push(`- ${item.at.slice(11, 16)} ${item.text}`);
-      lines.push('');
+      for (const task of [...tasks].toReversed()) lines.push(...this.taskLog(doc, task), '');
     }
-    if (lines.length === 0) lines.push('还没有工作记录。');
     return lines.join('\n');
+  }
+
+  private taskLog(doc: ContinuoWorkspaceDoc, task: ContinuoTask): string[] {
+    const clock = (iso?: string) => (iso === undefined ? '' : iso.slice(11, 16));
+    const span = `${clock(task.createdAt)}${task.endedAt === undefined ? ' 起' : `–${clock(task.endedAt)}`}`;
+    const lines = [`### ${span} ${task.kind === 'init' ? '了解这个文件夹' : task.title}`, '', `- 状态：${TASK_STATUS_LABEL[task.status]}${task.lastError === undefined ? '' : `（${task.lastError}）`}`];
+    if (task.kind === 'user') lines.push(`- 原始要求：${task.title}`);
+    for (const item of task.supplements ?? []) lines.push(`- 后来补充：${item}`);
+    if ((task.sources ?? []).length > 0) lines.push(`- 读过的资料：${(task.sources ?? []).join('、')}`);
+    const remembered = doc.context.filter((entry) => entry.taskId === task.taskId && entry.kind !== 'progress');
+    for (const entry of remembered) lines.push(`- 记住：${entry.text}${entry.status === 'candidate' ? '（等你确认）' : ''}`);
+    if (task.report !== undefined) {
+      if (task.report.summary.length > 0) lines.push(`- 结果：${task.report.summary}`);
+      for (const item of task.report.deliverables) lines.push(`- 产出：${item.path}${item.exists === false ? '（没找到这个文件）' : ''}`);
+      for (const item of task.report.unresolved) lines.push(`- 未完成：${item}`);
+      if (task.report.nextStep !== undefined) lines.push(`- 建议的下一步：${task.report.nextStep.title}`);
+    }
+    return lines;
   }
 
   private reconcileOnOpen(task: ContinuoTask): ContinuoTask {
@@ -511,6 +538,7 @@ export class ContinuoTaskManager {
     const prints = new Map<string, string | undefined>();
     for (const entry of doc.context) {
       if (entry.status !== 'active' && entry.status !== 'candidate') continue;
+      if (entry.kind === 'progress') continue;
       const files = entry.sourceRefs.filter((ref) => !ref.includes(':') || isAbsolute(ref));
       if (files.length === 0) continue;
       prints.set(entry.id, await this.fingerprintFiles(doc.root, files));

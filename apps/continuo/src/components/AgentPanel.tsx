@@ -167,7 +167,8 @@ function UnderstandingCard({ doc, onContext, onAbout, onReunderstand }: { doc: C
 
 function ClosingCard({ task, doc, onOpenFile, onAbout }: { task: ContinuoTask; doc: ContinuoDoc; onOpenFile: (path: string) => void; onAbout: () => void }) {
   const deliverables = task.report?.deliverables ?? [];
-  const unresolved = task.report?.unresolved ?? [];
+  const nextStep = task.report?.nextStep;
+  const unresolved = (task.report?.unresolved ?? []).filter((item) => nextStep === undefined || !coveredBy(item, nextStep));
   const ok = deliverables.filter((d) => d.exists !== false).length;
   const remembered = doc.context.filter((e) => e.taskId === task.taskId && e.kind !== 'progress' && (e.status === 'active' || e.status === 'candidate'));
   const done = task.status === 'completed';
@@ -237,6 +238,13 @@ function memorySummary(doc: ContinuoDoc): string {
   const pending = doc.context.filter((e) => e.status === 'candidate').length;
   if (remembered === 0 && pending === 0) return '它已经了解了这个文件夹。';
   return pending > 0 ? `记住了 ${remembered} 件事，还有 ${pending} 条推断等你确认。` : `记住了 ${remembered} 件事。`;
+}
+
+function coveredBy(item: string, step: { title: string; reason: string }): boolean {
+  const key = step.title.replaceAll(/[\s，。、]/g, '');
+  if (key.length < 4) return false;
+  const text = item.replaceAll(/[\s，。、]/g, '');
+  return text.includes(key) || step.reason.replaceAll(/[\s，。、]/g, '').includes(text);
 }
 
 function NextStepCard({ step, busy, onStart, onAbout }: { step: { title: string; reason: string; prompt: string }; busy: boolean; onStart: () => void; onAbout: () => void }) {

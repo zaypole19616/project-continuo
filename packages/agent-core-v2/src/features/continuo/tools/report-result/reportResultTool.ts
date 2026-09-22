@@ -37,7 +37,7 @@ export class ReportResultTool implements IReportResultTool {
                   report: {
                     summary: args.summary,
                     deliverables: args.deliverables.map((item) => ({ path: item.path, note: item.note })),
-                    unresolved: args.unresolved ?? [],
+                    unresolved: joinFragments(args.unresolved ?? []),
                     nextStep: args.nextStep,
                     reportedAt,
                   },
@@ -51,4 +51,18 @@ export class ReportResultTool implements IReportResultTool {
       },
     };
   }
+}
+
+const SENTENCE_END = /[。！？!?.；;]["'」』）)]?$/;
+
+function joinFragments(items: readonly string[]): string[] {
+  const out: string[] = [];
+  for (const item of items) {
+    const text = item.trim();
+    if (text.length === 0) continue;
+    const previous = out.at(-1);
+    if (previous !== undefined && !SENTENCE_END.test(previous)) out[out.length - 1] = `${previous}${text}`;
+    else out.push(text);
+  }
+  return out;
 }
