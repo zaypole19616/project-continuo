@@ -8,7 +8,7 @@ Continuo's front-end: a Vite + React workbench served against the local kap-serv
 - `src/lib/ws.ts`: session event stream with reconnect; `src/lib/timeline.ts`: pure reducer from events to the conversation timeline.
 - `src/pages/Workspace.tsx`: the three-pane shell and all data flow (open, poll, select task, send, reply, pause, resume, context patch).
 - `src/components/Sidebar.tsx`, `AgentPanel.tsx`, `SidePanel.tsx`: the three panes (navigation, conversation, right panel). `FileTree.tsx`, `FileBrowser.tsx`, `ContextPanel.tsx`, `Timeline.tsx`, `InteractionCards.tsx` are pane children.
-- `src/pages/About.tsx`: the four product bets at `#/about`; `src/pages/OpenWorkspace.tsx`: folder picker.
+- `src/pages/About.tsx`: the four product bets at `#/about`. There is no separate home page: with no workspace selected the shell shows `src/components/StartPanel.tsx` (new folder / open folder / demo link), and `src/components/Onboarding.tsx` runs a four-step modal on first launch (`continuo.onboarded`).
 - `src/theme.css`: the only place for colors, radii, type sizes and shadows. Components use tokens, never literal colors.
 - `demo-workspace/`: the synthetic demo folder as files; the server embeds the same content and materializes it under `~/Continuo Demo/` when the user clicks the demo entry.
 

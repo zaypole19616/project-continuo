@@ -20,6 +20,7 @@ export function FileBrowser({ workspaceId, root, doc, target, agentCollapsed, se
   const revision = doc?.revision ?? 0;
 
   useEffect(() => {
+    if (revision === 0) return;
     let cancelled = false;
     continuoFiles.list(workspaceId, folderPath).then((r) => { if (!cancelled) setListing(r); }).catch((error: Error) => { if (!cancelled) onError(error.message); });
     return () => { cancelled = true; };
@@ -27,6 +28,7 @@ export function FileBrowser({ workspaceId, root, doc, target, agentCollapsed, se
 
   useEffect(() => {
     if (target.kind !== 'file') { setFile(null); return; }
+    if (revision === 0) return;
     let cancelled = false;
     continuoFiles.read(workspaceId, target.path).then((r) => { if (!cancelled) setFile(r); }).catch((error: Error) => { if (!cancelled) onError(error.message); });
     return () => { cancelled = true; };

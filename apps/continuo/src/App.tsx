@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ApiError, kimi, readToken, setToken, touchRecent, type Workspace } from '#/lib/api';
-import { OpenWorkspace } from '#/pages/OpenWorkspace';
+import { ONBOARDED_KEY, Onboarding } from '#/components/Onboarding';
 import { WorkspaceView } from '#/pages/Workspace';
 import { About, type BetId } from '#/pages/About';
 
@@ -23,6 +23,7 @@ export function App() {
   const [checking, setChecking] = useState(true);
   const [serverOk, setServerOk] = useState<string | null>(null);
   const [failure, setFailure] = useState<'auth' | 'network' | null>(null);
+  const [intro, setIntro] = useState(() => { try { return localStorage.getItem(ONBOARDED_KEY) !== '1'; } catch { return true; } });
 
   useEffect(() => {
     const onHash = () => { const t = readToken(); if (t) setTok(t); setRoute(readRoute()); };
@@ -71,8 +72,13 @@ export function App() {
       </Center>
     );
   }
-  if (!workspace) return <OpenWorkspace onOpen={(w) => { localStorage.setItem(WS_KEY, w.id); touchRecent(w.id); setWorkspace(w); }} onAbout={() => goAbout()} />;
-  return <WorkspaceView workspace={workspace} onSwitch={(w) => { localStorage.setItem(WS_KEY, w.id); touchRecent(w.id); setWorkspace(w); }} onClose={() => { localStorage.removeItem(WS_KEY); setWorkspace(null); }} onAbout={(bet) => goAbout(bet && BETS.has(bet) ? (bet as BetId) : 'index')} />;
+  const finishIntro = () => { try { localStorage.setItem(ONBOARDED_KEY, '1'); } catch {} setIntro(false); };
+  return (
+    <>
+      <WorkspaceView workspace={workspace} onSwitch={(w) => { localStorage.setItem(WS_KEY, w.id); touchRecent(w.id); setWorkspace(w); }} onClose={() => { localStorage.removeItem(WS_KEY); setWorkspace(null); }} onAbout={(bet) => goAbout(bet && BETS.has(bet) ? (bet as BetId) : 'index')} onReplayIntro={() => setIntro(true)} />
+      {intro && <Onboarding onDone={finishIntro} />}
+    </>
+  );
 }
 
 function TokenForm({ onSave }: { onSave: (t: string) => void }) {

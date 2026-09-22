@@ -8,7 +8,7 @@ const TASK_DOT: Record<ContinuoTask['status'], string> = {
 };
 
 export function Sidebar({ workspace, doc, collapsed, selectedTaskId, onToggle, onSelectTask, onSwitchWorkspace, onAddWorkspace, onNewTask, onSearch, onAbout }: {
-  workspace: Workspace; doc: ContinuoDoc | null; collapsed: boolean; selectedTaskId: string | null;
+  workspace: Workspace | null; doc: ContinuoDoc | null; collapsed: boolean; selectedTaskId: string | null;
   onToggle: () => void; onSelectTask: (task: ContinuoTask) => void; onSwitchWorkspace: (w: Workspace) => void; onAddWorkspace: () => void; onNewTask: () => void; onSearch: () => void; onAbout: () => void;
 }) {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
@@ -19,9 +19,9 @@ export function Sidebar({ workspace, doc, collapsed, selectedTaskId, onToggle, o
     setRecent(readRecent());
     kimi.workspaces().then((r) => { if (!cancelled) setWorkspaces(r.items); }).catch(() => undefined);
     return () => { cancelled = true; };
-  }, [workspace.id]);
+  }, [workspace?.id]);
   const tasks = doc ? [...doc.tasks].toReversed() : [];
-  const others = recent.filter((id) => id !== workspace.id).map((id) => workspaces.find((w) => w.id === id)).filter((w): w is Workspace => w !== undefined);
+  const others = recent.filter((id) => id !== workspace?.id).map((id) => workspaces.find((w) => w.id === id)).filter((w): w is Workspace => w !== undefined);
   const visible = showAll ? others : others.slice(0, 4);
   const forget = (id: string) => { forgetRecent(id); setRecent(readRecent()); };
 
@@ -30,8 +30,8 @@ export function Sidebar({ workspace, doc, collapsed, selectedTaskId, onToggle, o
       <aside className="pane pane-nav chrome" aria-label="导航">
         <div className="rail">
           <button className="btn btn-icon" title="展开侧栏" onClick={onToggle}><PanelLeft size={18} /></button>
-          <button className="btn btn-icon" title="新任务 ⌘N" onClick={onNewTask}><Plus size={18} /></button>
-          <button className="btn btn-icon" title="搜索 ⌘F" onClick={onSearch}><Search size={18} /></button>
+          {workspace && <button className="btn btn-icon" title="新任务 ⌘N" onClick={onNewTask}><Plus size={18} /></button>}
+          {workspace && <button className="btn btn-icon" title="搜索 ⌘F" onClick={onSearch}><Search size={18} /></button>}
         </div>
       </aside>
     );
@@ -44,13 +44,13 @@ export function Sidebar({ workspace, doc, collapsed, selectedTaskId, onToggle, o
         <button className="btn btn-icon" title="收起侧栏" onClick={onToggle}><PanelLeft size={18} /></button>
       </div>
       <div className="pane-body px-2 pb-3">
-        <button className="side-row" onClick={onNewTask}><Plus size={16} className="ic" /><span className="flex-1">新任务</span><span className="kbd">⌘N</span></button>
+        {workspace && <button className="side-row" onClick={onNewTask}><Plus size={16} className="ic" /><span className="flex-1">新任务</span><span className="kbd">⌘N</span></button>}
 
-        <div className="side-section"><span>文件夹</span><button className="btn btn-icon" style={{ width: 24, height: 24 }} title="打开别的文件夹" onClick={onAddWorkspace}><Plus size={14} /></button></div>
-        <button className="side-row is-selected" title={workspace.root}>
+        <div className="side-section"><span>文件夹</span>{workspace && <button className="btn btn-icon" style={{ width: 24, height: 24 }} title="打开别的文件夹" onClick={onAddWorkspace}><Plus size={14} /></button>}</div>
+        {workspace && <button className="side-row is-selected" title={workspace.root}>
           <FolderGlyph size={18} /><span className="flex-1 truncate font-medium">{workspace.name}</span><ChevronDown size={14} className="t3" />
-        </button>
-        <div className="py-1">
+        </button>}
+        {workspace && <div className="py-1">
           {tasks.map((t) => (
             <button key={t.taskId} className={`side-sub ${t.taskId === selectedTaskId ? 'is-selected' : ''}`} onClick={() => onSelectTask(t)} title={t.title}>
               <MessageSquareText size={14} className="flex-none" />
@@ -59,7 +59,7 @@ export function Sidebar({ workspace, doc, collapsed, selectedTaskId, onToggle, o
             </button>
           ))}
           {tasks.length === 0 && <div className="t3 xs" style={{ padding: '4px 10px 4px 34px' }}>还没有任务</div>}
-        </div>
+        </div>}
         {visible.map((w) => (
           <div key={w.id} className="side-row side-row-ws" title={w.root} onClick={() => onSwitchWorkspace(w)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter') onSwitchWorkspace(w); }}>
             <FolderGlyph size={18} /><span className="flex-1 truncate">{w.name}</span>
@@ -67,7 +67,7 @@ export function Sidebar({ workspace, doc, collapsed, selectedTaskId, onToggle, o
             <ChevronRight size={14} className="t3 ws-chev" />
           </div>
         ))}
-        {others.length === 0 && <div className="t3 xs" style={{ padding: '6px 10px' }}>这里只列你在 Continuo 里打开过的文件夹</div>}
+        {others.length === 0 && <div className="t3 xs" style={{ padding: '6px 10px' }}>{workspace ? '这里只列你在 Continuo 里打开过的文件夹' : '打开过的文件夹会列在这里'}</div>}
         {others.length > 4 && <button className="side-row t3 sm" style={{ justifyContent: 'center' }} onClick={() => setShowAll(!showAll)}>{showAll ? '收起' : `显示更多（${others.length - 4}）`}</button>}
       </div>
       <div className="side-footer">

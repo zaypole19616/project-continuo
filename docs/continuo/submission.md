@@ -84,6 +84,6 @@ node apps/kimi-code/dist/main.mjs login
 KIMI_CODE_EXPERIMENTAL_CONTINUO=1 node apps/kimi-code/dist/main.mjs web --no-open --port 58627
 ```
 
-另开一个终端 `KIMI_PORT=58627 pnpm dev:continuo`，打开 `http://127.0.0.1:5180/#token=<启动时打印的 token>`。首页可以一键用演示文件夹开始，也可以打开自己的文件夹。文件留在本机，被读取的文本会随请求发送给所配置的模型。
+另开一个终端 `KIMI_PORT=58627 pnpm dev:continuo`，打开 `http://127.0.0.1:5180/#token=<启动时打印的 token>`。打开就是产品本身：第一次启动有一个四步的新手引导，之后中栏可以新建文件夹、打开已有的文件夹，或用演示文件夹开始。文件留在本机，被读取的文本会随请求发送给所配置的模型。
 
 代码：引擎侧 `packages/agent-core-v2/src/features/continuo/`，服务侧 `packages/kap-server/src/continuo/`，界面 `apps/continuo/`，测试 `packages/agent-core-v2/test/features/continuo/`。
