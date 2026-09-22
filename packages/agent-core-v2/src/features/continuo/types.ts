@@ -124,6 +124,11 @@ export interface ContinuoWorkspaceDoc {
   readonly tasks: readonly ContinuoTask[];
 }
 
+export function currentTaskOf(doc: ContinuoWorkspaceDoc, sessionId: string): ContinuoTask | undefined {
+  const onSession = doc.tasks.filter((task) => task.sessionId === sessionId);
+  return onSession.findLast((task) => task.endedAt === undefined) ?? onSession.at(-1);
+}
+
 export const EMPTY_USAGE: TaskUsage = { steps: 0, inputTokens: 0, cacheReadTokens: 0, outputTokens: 0 };
 
 export function newWorkspaceDoc(workspaceId: string, root: string): ContinuoWorkspaceDoc {

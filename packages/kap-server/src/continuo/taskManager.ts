@@ -483,7 +483,7 @@ export class ContinuoTaskManager {
   }
 
   private async logPathFor(dir: string, task: ContinuoTask): Promise<string> {
-    const day = (task.endedAt ?? task.createdAt).slice(0, 10);
+    const day = localDay(task.endedAt ?? task.createdAt);
     const base = ['work-log', day, taskCategory(task), logSlug(taskName(task))].filter((part) => part !== undefined && part !== '').join('-');
     if (task.logPath?.startsWith(`${WORK_LOG_DIR}/${base}`) === true) return task.logPath;
     const taken = new Set(await readdir(dir).catch(() => []));
@@ -552,8 +552,22 @@ function logSlug(name: string): string {
   return cleaned === '' ? 'task' : cleaned;
 }
 
+function localDay(iso: string): string {
+  const at = new Date(iso);
+  return `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}`;
+}
+
+function localTime(iso: string): string {
+  const at = new Date(iso);
+  return `${pad(at.getHours())}:${pad(at.getMinutes())}`;
+}
+
+function pad(value: number): string {
+  return String(value).padStart(2, '0');
+}
+
 function stamp(iso: string | undefined): string {
-  return iso === undefined ? '' : `${iso.slice(0, 10)} ${iso.slice(11, 16)}`;
+  return iso === undefined ? '' : `${localDay(iso)} ${localTime(iso)}`;
 }
 
 function oneLine(text: string, max: number): string {
@@ -637,7 +651,7 @@ function renderSession(doc: ContinuoWorkspaceDoc, task: ContinuoTask): string[] 
     lines.push('', '### 工作记录');
     for (const [index, round] of rounds.entries()) {
       const label = index === 0 ? taskName(task) : oneLine(round.prompt, 16);
-      lines.push('', `#### [${round.at.slice(11, 16)}] 对话 ${index + 1} - ${label === '' ? '继续' : label}`);
+      lines.push('', `#### [${localTime(round.at)}] 对话 ${index + 1} - ${label === '' ? '继续' : label}`);
       lines.push(`**输入**: ${index === 0 ? '同原始任务描述' : oneLine(round.prompt, 200)}`);
       const handled = [round.reads.length === 0 ? '' : `读 ${round.reads.join('、')}`, oneLine(round.reply, 200)].filter((part) => part !== '');
       lines.push(`**处理**: ${handled.length === 0 ? '—' : handled.join('；')}`);

@@ -8,9 +8,15 @@ const NAME = /^work-log-(\d{4}-\d{2}-\d{2})-(?:([a-z][a-z0-9-]*)-)?(.+)\.md$/;
 
 interface LogFile { path: string; day: string; category?: string; name: string }
 
+function localDay(iso: string): string {
+  const at = new Date(iso);
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}`;
+}
+
 function parse(entry: FileEntry): LogFile | null {
   const match = NAME.exec(entry.name);
-  if (match === null) return entry.name.endsWith('.md') ? { path: entry.path, day: entry.modifiedAt.slice(0, 10), name: entry.name.replace(/\.md$/, '') } : null;
+  if (match === null) return entry.name.endsWith('.md') ? { path: entry.path, day: localDay(entry.modifiedAt), name: entry.name.replace(/\.md$/, '') } : null;
   return { path: entry.path, day: match[1]!, category: match[2], name: match[3]! };
 }
 

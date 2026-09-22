@@ -4,6 +4,7 @@ import { IAgentReminderService } from '#/features/reminder/reminderService';
 import { ISessionContext } from '#/session/sessionContext/sessionContext';
 
 import { compileContextBundle } from './contextBundle';
+import { currentTaskOf } from './types';
 import { IContinuoStore } from './store';
 
 export const CONTINUO_REMINDER_VARIANT = 'continuo';
@@ -35,7 +36,7 @@ export class AgentContinuoBridgeService extends Service implements IAgentContinu
       reminder.register<ContinuoDisclosure>(CONTINUO_REMINDER_VARIANT, async ({ isNewTurn, lastDisclosure }) => {
         const doc = await this.store.load(this.session.workspaceId);
         if (doc === undefined) return undefined;
-        const task = doc.tasks.find((candidate) => candidate.sessionId === this.session.sessionId);
+        const task = currentTaskOf(doc, this.session.sessionId);
         if (task !== undefined && task.kind === 'init') return undefined;
         const bundle = compileContextBundle(doc, task);
         if (bundle === undefined) return undefined;
