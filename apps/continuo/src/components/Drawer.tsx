@@ -35,6 +35,12 @@ type Tab = 'chat' | 'log' | 'todo';
 const RESUMABLE = new Set(['paused', 'interrupted', 'failed', 'needs_review']);
 const isFinished = (t: ContinuoTask) => t.status === 'completed' || t.status === 'needs_review';
 
+function taskLabel(task: ContinuoTask): string {
+  if (task.name !== undefined && task.name.trim() !== '') return task.name.trim();
+  const head = (task.title.split(/[\n，。,.；;!?！？]/)[0] ?? '').trim();
+  return head === '' ? task.title : head.slice(0, 16);
+}
+
 function statusLabel(task: ContinuoTask): string {
   switch (task.status) {
     case 'queued': return '排队中';
@@ -149,7 +155,7 @@ export function Drawer(p: DrawerProps) {
               <div key={task.taskId} className="todo-row">
                 <span className={`status-dot ${statusDot(task)}`} />
                 <div className="min-w-0 flex-1">
-                  <div className="todo-title">{task.title}</div>
+                  <div className="todo-title">{taskLabel(task)}</div>
                   <div className="todo-meta">{statusLabel(task)}</div>
                 </div>
                 <div className="flex shrink-0 gap-1">
@@ -175,7 +181,8 @@ function ClosingCard({ task, onOpenFile }: { task: ContinuoTask; onOpenFile: (pa
     <div className="deliverable fade-in">
       <div className="deliverable-head">
         {done ? <Check size={14} style={{ color: 'var(--ok)' }} /> : <CircleAlert size={14} style={{ color: 'var(--warn)' }} />}
-        <span className="font-medium">{done ? '做完了' : '还差一点'}</span>
+        <span className="font-medium">{taskLabel(task)}</span>
+        <span className="t3">· {done ? '做完了' : '还差一点'}</span>
         <span className="t3">· {deliverables.length > 0 ? `${deliverables.length} 份文件，${ok} 份已确认在项目里` : '没有新文件'}</span>
       </div>
       {deliverables.map((d) => (

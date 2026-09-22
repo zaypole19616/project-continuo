@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rename, stat, writeFile } from 'node:fs/promises';
 import { isAbsolute, relative, resolve } from 'node:path';
 
 import {
@@ -491,7 +491,10 @@ export class ContinuoTaskManager {
     const dir = resolve(doc.root, WORK_LOG_DIR);
     try {
       await mkdir(dir, { recursive: true });
-      const path = task.logPath ?? await this.pickLogPath(dir, task);
+      const path = await this.logPathFor(dir, task);
+      if (task.logPath !== undefined && task.logPath !== path) {
+        await rename(resolve(doc.root, task.logPath), resolve(doc.root, path)).catch(() => undefined);
+      }
       await writeFile(resolve(doc.root, path), renderWorkLog(doc, task), 'utf8');
       if (task.logPath !== path) await this.patchTask(workspaceId, taskId, (current) => ({ ...current, logPath: path }));
     } catch {
@@ -499,9 +502,10 @@ export class ContinuoTaskManager {
     }
   }
 
-  private async pickLogPath(dir: string, task: ContinuoTask): Promise<string> {
+  private async logPathFor(dir: string, task: ContinuoTask): Promise<string> {
     const day = (task.endedAt ?? task.createdAt).slice(0, 10);
-    const base = `work-log-${day}-${logSlug(task.kind === 'init' ? '了解这个文件夹' : task.title)}`;
+    const base = ['work-log', day, taskCategory(task), logSlug(taskName(task))].filter((part) => part !== undefined && part !== '').join('-');
+    if (task.logPath?.startsWith(`${WORK_LOG_DIR}/${base}`) === true) return task.logPath;
     const taken = new Set(await readdir(dir).catch(() => []));
     let name = `${base}.md`;
     for (let index = 2; taken.has(name); index += 1) name = `${base}-${index}.md`;
@@ -550,62 +554,124 @@ export class ContinuoTaskManager {
   }
 }
 
-function logSlug(title: string): string {
-  const head = (title.split(/[\n，。,.；;!?！？]/)[0] ?? '').trim();
-  const cleaned = head.replaceAll(/[\\/:*?"<>|]/g, '').replaceAll(/\s+/g, '-').slice(0, 20).replaceAll(/^[-.]+|[-.]+$/g, '');
-  return cleaned.length === 0 ? 'task' : cleaned;
+const DONE = new Set<TaskStatus>(['completed', 'needs_review']);
+
+function taskName(task: ContinuoTask): string {
+  if (task.kind === 'init') return '了解项目';
+  if (task.name !== undefined && task.name.trim() !== '') return task.name.trim();
+  const head = (task.title.split(/[\n，。,.；;!?！？]/)[0] ?? '').trim();
+  return head === '' ? '任务' : head.slice(0, 12);
 }
 
-function clock(iso: string | undefined): string {
+function taskCategory(task: ContinuoTask): string | undefined {
+  return task.kind === 'init' ? 'init' : task.category;
+}
+
+function logSlug(name: string): string {
+  const cleaned = name.replaceAll(/[\\/:*?"<>|]/g, '').replaceAll(/\s+/g, '-').slice(0, 20).replaceAll(/^[-.]+|[-.]+$/g, '');
+  return cleaned === '' ? 'task' : cleaned;
+}
+
+function stamp(iso: string | undefined): string {
   return iso === undefined ? '' : `${iso.slice(0, 10)} ${iso.slice(11, 16)}`;
 }
 
+function oneLine(text: string, max: number): string {
+  const line = text.split('\n').map((part) => part.trim()).filter((part) => part !== '').join(' ');
+  return line.length > max ? `${line.slice(0, max)}…` : line;
+}
+
 function renderWorkLog(doc: ContinuoWorkspaceDoc, task: ContinuoTask): string {
-  const title = task.kind === 'init' ? '了解这个文件夹' : task.title;
-  const deliverables = task.report?.deliverables ?? [];
-  const lines = [`# 工作日志：${title}`, '', '| 字段 | 值 |', '| --- | --- |'];
-  lines.push(`| 开始 | ${clock(task.createdAt)} |`);
-  if (task.endedAt !== undefined) lines.push(`| 结束 | ${clock(task.endedAt)} |`);
-  lines.push(`| 状态 | ${TASK_STATUS_LABEL[task.status]}${task.lastError === undefined ? '' : `（${task.lastError}）`} |`);
-  lines.push(`| 项目目录 | ${doc.root} |`);
-  if ((task.sources ?? []).length > 0) lines.push(`| 读过的文件 | ${(task.sources ?? []).join('、')} |`);
-  if (deliverables.length > 0) lines.push(`| 产出文件 | ${deliverables.map((item) => item.path).join('、')} |`);
+  const name = taskName(task);
+  const category = taskCategory(task);
+  const lines = [`# 工作日志：${name}${category === undefined ? '' : `（${category}）`}`, ''];
   if (task.kind === 'init') {
-    if (doc.understanding !== undefined) lines.push('', '## 它理解到的', '', doc.understanding.text.trim());
-    if (doc.context.length > 0) {
-      lines.push('', '## 记下的项目要点', '');
-      for (const entry of doc.context) lines.push(`- ${entry.text}${entry.sourceRefs.length > 0 ? `（来源：${entry.sourceRefs.join('、')}）` : ''}`);
-    }
+    lines.push(...renderInitLog(doc, task));
     return `${lines.join('\n')}\n`;
   }
-  const rounds = task.rounds ?? [];
-  lines.push('', '## 原始要求', '', `> ${(rounds[0]?.prompt ?? task.title).replaceAll('\n', '\n> ')}`);
-  if (rounds.length > 0) {
-    lines.push('', '## 过程');
-    for (const [index, round] of rounds.entries()) {
-      const label = index === 0 ? '开始' : round.prompt.split('\n')[0];
-      lines.push('', `### ${clock(round.at)} ${label}`, '');
-      if (round.reads.length > 0) lines.push(`- 读：${round.reads.join('、')}`);
-      if (round.writes.length > 0) lines.push(`- 写：${round.writes.join('、')}`);
-      if (round.reply !== '') {
-        const reply = round.reply.split('\n').filter((part) => part.trim() !== '').join(' ');
-        lines.push(`- 回复：${reply.length > 240 ? `${reply.slice(0, 240)}…` : reply}`);
-      }
-    }
-  }
-  if (task.report !== undefined) {
-    if (task.report.summary.trim() !== '') lines.push('', '## 结果', '', task.report.summary.trim());
-    if (deliverables.length > 0) {
-      lines.push('', '## 产出', '');
-      for (const item of deliverables) lines.push(`- ${item.path}${item.exists === false ? '（没找到这个文件）' : ''}${item.note === undefined || item.note === '' ? '' : `：${item.note}`}`);
-    }
-    if (task.report.unresolved.length > 0) {
-      lines.push('', '## 未完成', '');
-      for (const item of task.report.unresolved) lines.push(`- ${item}`);
-    }
-    if (task.report.nextStep !== undefined) {
-      lines.push('', '## 建议的下一步', '', `- ${task.report.nextStep.title}：${task.report.nextStep.reason}`);
-    }
-  }
+  lines.push(...renderStar(doc, task), '', '---', '', `## Session: ${stamp(task.createdAt)} - ${name}`, '', ...renderSession(doc, task));
   return `${lines.join('\n')}\n`;
+}
+
+function renderInitLog(doc: ContinuoWorkspaceDoc, task: ContinuoTask): string[] {
+  const lines = ['| 字段 | 值 |', '|------|-----|', `| 开始时间 | ${stamp(task.createdAt)} |`];
+  if (task.endedAt !== undefined) lines.push(`| 结束时间 | ${stamp(task.endedAt)} |`);
+  lines.push(`| 状态 | ${TASK_STATUS_LABEL[task.status]} |`, `| 项目目录 | ${doc.root} |`);
+  if (doc.understanding !== undefined) lines.push('', '## 这个项目是什么', '', doc.understanding.text.trim());
+  if (doc.context.length > 0) {
+    lines.push('', '## 项目要点', '');
+    for (const entry of doc.context) lines.push(`- ${entry.text}${entry.sourceRefs.length > 0 ? `（来源：${entry.sourceRefs.join('、')}）` : ''}`);
+  }
+  return lines;
+}
+
+function renderStar(doc: ContinuoWorkspaceDoc, task: ContinuoTask): string[] {
+  const rounds = task.rounds ?? [];
+  const points = doc.context.slice(0, 3).map((entry) => entry.text.trim().replace(/[。.；;]$/, '')).join('；');
+  const situation = [
+    `${stamp(task.createdAt)}，在项目 ${doc.root.split('/').filter(Boolean).pop() ?? doc.root}${task.category === undefined ? '' : `，分类 ${task.category}`}。`,
+    doc.understanding === undefined ? '' : oneLine(doc.understanding.text, 200),
+    points === '' ? '' : `项目约定：${points}`,
+  ].filter((part) => part !== '').join(' ');
+  const pending = !DONE.has(task.status);
+  const reads = [...new Set(rounds.flatMap((round) => round.reads))];
+  const writes = [...new Set(rounds.flatMap((round) => round.writes))];
+  const action = pending
+    ? '⏳ 待阶段完成'
+    : [
+        `共 ${rounds.length} 轮。`,
+        reads.length === 0 ? '' : `读了 ${reads.join('、')}。`,
+        writes.length === 0 ? '' : `写出 ${writes.join('、')}。`,
+        (task.supplements ?? []).length === 0 ? '' : `中途补充：${(task.supplements ?? []).map((item) => oneLine(item, 60)).join('；')}。`,
+      ].filter((part) => part !== '').join('');
+  const deliverables = task.report?.deliverables ?? [];
+  const missing = deliverables.filter((item) => item.exists === false).length;
+  const result = pending
+    ? '⏳ 待阶段完成'
+    : [
+        task.report === undefined ? '' : oneLine(task.report.summary, 300),
+        deliverables.length === 0 ? '' : `产物 ${deliverables.length} 份，${missing === 0 ? '已逐个核对存在' : `其中 ${missing} 份没找到`}。`,
+        (task.report?.unresolved ?? []).length === 0 ? '' : `遗留：${(task.report?.unresolved ?? []).join('；')}。`,
+      ].filter((part) => part !== '').join(' ');
+  return [
+    '## STAR',
+    `- **Situation**: ${situation}`,
+    `- **Task**: ${oneLine(rounds[0]?.prompt ?? task.title, 300)}`,
+    `- **Action**: ${action}`,
+    `- **Result**: ${result}`,
+  ];
+}
+
+function renderSession(doc: ContinuoWorkspaceDoc, task: ContinuoTask): string[] {
+  const rounds = task.rounds ?? [];
+  const sources = task.sources ?? [];
+  const deliverables = task.report?.deliverables ?? [];
+  const lines = ['### Meta Data', '', '| 字段 | 值 |', '|------|-----|', `| 开始时间 | ${stamp(task.createdAt)} |`];
+  if (task.endedAt !== undefined) lines.push(`| 结束时间 | ${stamp(task.endedAt)} |`);
+  lines.push(`| 状态 | ${TASK_STATUS_LABEL[task.status]}${task.lastError === undefined ? '' : `（${task.lastError}）`} |`);
+  lines.push(`| 输入目录 | ${doc.root} |`);
+  lines.push(`| 输入文件 | ${sources.length === 0 ? '—' : sources.join(', ')} |`);
+  lines.push(`| 输出文件 | ${deliverables.length === 0 ? '—' : deliverables.map((item) => item.path).join(', ')} |`);
+  lines.push('', '### 原始任务描述', '', `> ${oneLine(rounds[0]?.prompt ?? task.title, 600)}`);
+  if (rounds.length > 0) {
+    lines.push('', '### 工作记录');
+    for (const [index, round] of rounds.entries()) {
+      const label = index === 0 ? taskName(task) : oneLine(round.prompt, 16);
+      lines.push('', `#### [${round.at.slice(11, 16)}] 对话 ${index + 1} - ${label === '' ? '继续' : label}`);
+      lines.push(`**输入**: ${index === 0 ? '同原始任务描述' : oneLine(round.prompt, 200)}`);
+      const handled = [round.reads.length === 0 ? '' : `读 ${round.reads.join('、')}`, oneLine(round.reply, 200)].filter((part) => part !== '');
+      lines.push(`**处理**: ${handled.length === 0 ? '—' : handled.join('；')}`);
+      lines.push(`**产出**: ${round.writes.length === 0 ? '无文件产出' : round.writes.join('、')}`);
+    }
+  }
+  if (deliverables.length > 0) {
+    lines.push('', '### 最终产出', '', '| 文件 | 说明 | 状态 |', '|------|------|------|');
+    for (const item of deliverables) lines.push(`| ${item.path} | ${item.note === undefined || item.note === '' ? '—' : item.note} | ${item.exists === false ? '❌ 没找到' : '✅'} |`);
+  }
+  const notes = [
+    ...(task.report?.unresolved ?? []).map((item) => `- 未完成：${item}`),
+    ...(task.report?.nextStep === undefined ? [] : [`- 建议的下一步：${task.report.nextStep.title}——${task.report.nextStep.reason}`]),
+  ];
+  if (notes.length > 0) lines.push('', '### 备注', '', ...notes);
+  return lines;
 }

@@ -61,6 +61,8 @@ export interface ContinuoTask {
   readonly taskId: string;
   readonly kind: TaskKind;
   readonly title: string;
+  readonly name?: string;
+  readonly category?: string;
   readonly trigger: TaskTrigger;
   readonly sessionId: string;
   readonly promptIds: readonly string[];
