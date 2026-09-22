@@ -3,7 +3,7 @@ import { BookOpen, FileText, UserCheck, Wand2 } from 'lucide-react';
 import type { ContextEntry, ContinuoDoc } from '#/lib/api';
 
 const KIND_LABEL: Record<ContextEntry['kind'], string> = { convention: '约定', background: '背景', decision: '决定', progress: '进度', material: '材料' };
-const ORIGIN_LABEL: Record<ContextEntry['origin'], string> = { user: '你确认的', file: '来自文件', agent: 'Agent 推断' };
+const ORIGIN_LABEL: Record<ContextEntry['origin'], string> = { user: '你确认的', file: '来自文件', agent: '它的推断' };
 
 type Patch = { text?: string; status?: 'active' | 'inactive' };
 
@@ -15,7 +15,7 @@ export function ContextPanel({ doc, onPatch, onOpenFile }: { doc: ContinuoDoc; o
   return (
     <div className="space-y-5">
       <section className="space-y-2">
-        <div className="nav-section" style={{ padding: '0 2px' }}>工作空间理解</div>
+        <div className="nav-section" style={{ padding: '0 2px' }}>它对这个文件夹的理解</div>
         {doc.understanding ? (
           <div className="card-quiet p-3 space-y-2" style={{ fontSize: 'var(--fs-body)' }}>
             <div className="whitespace-pre-wrap">{doc.understanding.text}</div>
@@ -33,18 +33,18 @@ export function ContextPanel({ doc, onPatch, onOpenFile }: { doc: ContinuoDoc; o
       )}
       {stale.length > 0 && (
         <section className="space-y-2">
-          <div className="nav-section flex items-center justify-between" style={{ padding: '0 2px', color: 'var(--warn)' }}><span>来源已变化，暂不生效</span><span>{stale.length}</span></div>
+          <div className="nav-section flex items-center justify-between" style={{ padding: '0 2px', color: 'var(--warn)' }}><span>来源变了，先不用</span><span>{stale.length}</span></div>
           {stale.map((e) => <EntryCard key={e.id} e={e} mode="stale" onPatch={onPatch} onOpenFile={onOpenFile} />)}
         </section>
       )}
       <section className="space-y-2">
-        <div className="nav-section flex items-center justify-between" style={{ padding: '0 2px' }}><span>生效中</span><span>{active.length}</span></div>
+        <div className="nav-section flex items-center justify-between" style={{ padding: '0 2px' }}><span>正在用的</span><span>{active.length}</span></div>
         {active.map((e) => <EntryCard key={e.id} e={e} mode="active" onPatch={onPatch} onOpenFile={onOpenFile} />)}
-        {active.length === 0 && <div className="text-3 fs-meta">还没有生效的条目。</div>}
+        {active.length === 0 && <div className="text-3 fs-meta">还没记住任何事。</div>}
       </section>
       {retired.length > 0 && (
         <details className="text-3 fs-meta">
-          <summary className="chrome" style={{ cursor: 'pointer' }}>已停用或被替代 · {retired.length}</summary>
+          <summary className="chrome" style={{ cursor: 'pointer' }}>不再用的 · {retired.length}</summary>
           <div className="space-y-1 mt-2">{retired.map((e) => <div key={e.id} className="line-through px-1">{e.text}</div>)}</div>
         </details>
       )}
@@ -86,13 +86,13 @@ function EntryCard({ e, mode, onPatch, onOpenFile }: { e: ContextEntry; mode: 'a
         {mode === 'stale' && <button className="btn btn-sm btn-primary" disabled={busy} onClick={() => { void run({ status: 'active' }); }}>仍然有效</button>}
         {editing ? (
           <>
-            <button className="btn btn-sm btn-primary" disabled={busy || !text.trim()} onClick={() => { void run({ text: text.trim() }); }}>保存为纠正</button>
+            <button className="btn btn-sm btn-primary" disabled={busy || !text.trim()} onClick={() => { void run({ text: text.trim() }); }}>保存</button>
             <button className="btn btn-sm" disabled={busy} onClick={() => { setEditing(false); setText(e.text); }}>取消</button>
           </>
         ) : (
-          <button className="btn btn-sm" disabled={busy} onClick={() => setEditing(true)}>纠正</button>
+          <button className="btn btn-sm" disabled={busy} onClick={() => setEditing(true)}>改一下</button>
         )}
-        <button className="btn btn-sm btn-ghost" disabled={busy} onClick={() => { void run({ status: 'inactive' }); }}>{mode === 'candidate' ? '忽略' : '停用'}</button>
+        <button className="btn btn-sm btn-ghost" disabled={busy} onClick={() => { void run({ status: 'inactive' }); }}>{mode === 'candidate' ? '忽略' : '不再用'}</button>
       </div>
     </div>
   );

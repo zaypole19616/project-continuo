@@ -47,7 +47,8 @@ export function OpenWorkspace({ onOpen, onAbout }: { onOpen: (w: Workspace) => v
       <div className="open-hero">
         <FolderGlyph size={72} />
         <h1>把一个文件夹交给 Continuo</h1>
-        <p>它先理解这个文件夹，再开始干活；需要你决定时才来问；做完的东西放回文件夹里，下次打开接着干。</p>
+        <p className="open-tagline">Kimi Work 帮你把工作交出去；Continuo 让你下次不用再交代一遍。</p>
+        <p>先理解再动手，要你决定时才问，做完的放回文件夹，下次接着干。</p>
       </div>
       <div className="mx-auto space-y-8" style={{ maxWidth: 760, padding: '0 32px 80px' }}>
         {error && <div className="banner banner-err">{error}</div>}
@@ -125,6 +126,7 @@ export function OpenWorkspace({ onOpen, onAbout }: { onOpen: (w: Workspace) => v
         )}
 
         <button className="btn btn-ghost w-full" onClick={onAbout}><Sparkles size={14} />这个产品背后的四个判断</button>
+        <div className="t3 xs" style={{ textAlign: 'center' }}>基于 Kimi Code 内核 · 文件只在本机，读到的内容会发给所配置的模型</div>
       </div>
     </div>
   );

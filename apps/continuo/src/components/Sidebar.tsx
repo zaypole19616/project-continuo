@@ -46,7 +46,7 @@ export function Sidebar({ workspace, doc, collapsed, selectedTaskId, onToggle, o
       <div className="pane-body px-2 pb-3">
         <button className="side-row" onClick={onNewTask}><Plus size={16} className="ic" /><span className="flex-1">新任务</span><span className="kbd">⌘N</span></button>
 
-        <div className="side-section"><span>工作空间</span><button className="btn btn-icon" style={{ width: 24, height: 24 }} title="打开别的文件夹" onClick={onAddWorkspace}><Plus size={14} /></button></div>
+        <div className="side-section"><span>文件夹</span><button className="btn btn-icon" style={{ width: 24, height: 24 }} title="打开别的文件夹" onClick={onAddWorkspace}><Plus size={14} /></button></div>
         <button className="side-row is-selected" title={workspace.root}>
           <FolderGlyph size={18} /><span className="flex-1 truncate font-medium">{workspace.name}</span><ChevronDown size={14} className="t3" />
         </button>
@@ -54,7 +54,7 @@ export function Sidebar({ workspace, doc, collapsed, selectedTaskId, onToggle, o
           {tasks.map((t) => (
             <button key={t.taskId} className={`side-sub ${t.taskId === selectedTaskId ? 'is-selected' : ''}`} onClick={() => onSelectTask(t)} title={t.title}>
               <MessageSquareText size={14} className="flex-none" />
-              <span className="flex-1 truncate">{t.kind === 'init' ? '了解这个工作空间' : t.title}</span>
+              <span className="flex-1 truncate">{t.kind === 'init' ? '了解这个文件夹' : t.title}</span>
               {TASK_DOT[t.status] ? <span className={`status-dot ${TASK_DOT[t.status]}`} /> : <span className="t3 xs">{shortDate(t.createdAt)}</span>}
             </button>
           ))}
@@ -74,7 +74,7 @@ export function Sidebar({ workspace, doc, collapsed, selectedTaskId, onToggle, o
         <span className="avatar">K</span>
         <div className="min-w-0 flex-1">
           <div className="truncate sm font-medium">Kimi 账号</div>
-          <div className="t3 xs truncate">{DEFAULT_MODEL.split('/').pop()}{doc ? ` · 第 ${doc.openCount} 次打开` : ''}</div>
+          <div className="t3 xs truncate">基于 Kimi Code · {DEFAULT_MODEL.split('/').pop()}{doc ? ` · 第 ${doc.openCount} 次打开` : ''}</div>
         </div>
         <button className="btn btn-icon" title="四个判断" onClick={onAbout}><HelpCircle size={18} /></button>
       </div>

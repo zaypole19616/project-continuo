@@ -298,6 +298,14 @@ exports[`API surface snapshot > matches the documented v2 route table and meta e
     ],
     [
       "GET",
+      "/api/v1/workspaces/{workspace_id}/continuo/file",
+    ],
+    [
+      "GET",
+      "/api/v1/workspaces/{workspace_id}/continuo/files",
+    ],
+    [
+      "GET",
       "/api/v1/workspaces/{workspace_id}/continuo/work-log",
     ],
     [
@@ -343,6 +351,10 @@ exports[`API surface snapshot > matches the documented v2 route table and meta e
     [
       "POST",
       "/api/v1/config",
+    ],
+    [
+      "POST",
+      "/api/v1/continuo:demo",
     ],
     [
       "POST",

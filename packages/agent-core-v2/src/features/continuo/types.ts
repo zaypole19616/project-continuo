@@ -21,6 +21,7 @@ export interface ContextEntry {
   readonly status: ContextStatus;
   readonly revision: number;
   readonly supersedes?: string;
+  readonly taskId?: string;
   readonly createdAt: string;
   readonly updatedAt: string;
 }

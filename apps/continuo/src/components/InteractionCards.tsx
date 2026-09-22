@@ -42,16 +42,16 @@ export function QuestionCard({ q, onAnswer }: { q: QuestionRequest; onAnswer: (a
   );
 }
 
-export function ApprovalCard({ a, onDecide }: { a: ApprovalRequest; onDecide: (d: 'approved' | 'rejected', scope?: 'session') => Promise<void> }) {
+export function ApprovalCard({ a, root, onDecide }: { a: ApprovalRequest; root?: string; onDecide: (d: 'approved' | 'rejected', scope?: 'session') => Promise<void> }) {
   const [busy, setBusy] = useState(false);
   const run = async (d: 'approved' | 'rejected', scope?: 'session') => { setBusy(true); try { await onDecide(d, scope); } finally { setBusy(false); } };
-  const display = a.tool_input_display as { operation?: string; path?: string; command?: string; kind?: string; summary?: string } | undefined;
-  const detail = display?.command ?? display?.path ?? display?.summary;
+  const { headline, detail } = describeApproval(a, root);
   return (
     <div className="card p-4 space-y-3 fade-in" style={{ borderColor: 'var(--warn)' }}>
-      <div className="flex items-center gap-2 fs-meta" style={{ color: 'var(--warn)' }}><ShieldAlert size={16} />等待你批准</div>
-      <div className="font-medium" style={{ fontSize: 'var(--fs-chat)' }}>{a.action || a.tool_name}</div>
+      <div className="flex items-center gap-2 fs-meta" style={{ color: 'var(--warn)' }}><ShieldAlert size={16} />要动你的文件，先问你一声</div>
+      <div className="font-medium" style={{ fontSize: 'var(--fs-chat)' }}>{headline}</div>
       {detail && <pre className="p-2 overflow-auto" style={{ background: 'var(--row-hover)', borderRadius: 'var(--r-2)' }}>{detail}</pre>}
+      <div className="text-3 fs-meta">它自己的记事本不用你批；只有要写你的文件、跑命令时才会问。</div>
       <div className="flex gap-2 flex-wrap justify-end">
         <button className="btn" disabled={busy} onClick={() => { void run('rejected'); }}>拒绝</button>
         <button className="btn" disabled={busy} onClick={() => { void run('approved', 'session'); }}>本次任务都允许</button>
@@ -60,3 +60,21 @@ export function ApprovalCard({ a, onDecide }: { a: ApprovalRequest; onDecide: (d
     </div>
   );
 }
+
+function describeApproval(a: ApprovalRequest, root?: string): { headline: string; detail?: string } {
+  const display = a.tool_input_display as { kind?: string; operation?: string; path?: string; command?: string; summary?: string } | undefined;
+  const path = display?.path === undefined ? undefined : relativeTo(display.path, root);
+  if (path && (display?.kind === 'diff' || display?.operation === 'edit')) return { headline: `要修改 ${fileName(path)}`, detail: path };
+  if (path && display?.operation === 'write') return { headline: `要在 ${dirName(path)} 里写一份 ${fileName(path)}`, detail: path };
+  if (display?.command) return { headline: '要运行一条命令', detail: display.command };
+  return { headline: a.action || a.tool_name, detail: display?.summary ?? path };
+}
+
+function relativeTo(path: string, root?: string): string {
+  if (!root) return path;
+  const base = root.endsWith('/') ? root : root + '/';
+  return path.startsWith(base) ? path.slice(base.length) : path;
+}
+
+function fileName(path: string): string { return path.split('/').filter(Boolean).pop() ?? path; }
+function dirName(path: string): string { const parts = path.split('/').filter(Boolean); parts.pop(); return parts.length > 0 ? parts.join('/') + '/' : '文件夹根目录'; }

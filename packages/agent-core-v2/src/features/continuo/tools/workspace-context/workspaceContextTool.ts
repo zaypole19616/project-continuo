@@ -71,6 +71,7 @@ export class WorkspaceContextTool implements IWorkspaceContextTool {
               status: isUser || fromGuide ? 'active' : 'candidate',
               revision: 1,
               supersedes: args.supersedes,
+              taskId,
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString(),
             };
@@ -127,7 +128,7 @@ function renderList(doc: ContinuoWorkspaceDoc, taskId: string | undefined): stri
   const effective = doc.context.filter((entry) => isEffectiveEntry(entry, taskId));
   const candidates = doc.context.filter((entry) => entry.status === 'candidate');
   lines.push(`Effective entries (${effective.length}):`);
-  for (const entry of effective) lines.push(`- [${entry.id}] ${entry.kind}: ${entry.text}${entry.sourceRefs.length ? ` (source: ${entry.sourceRefs.join(', ')})` : ''}`);
+  for (const entry of effective) lines.push(`- [${entry.id}] ${entry.kind}: ${entry.text}${entry.sourceRefs.length > 0 ? ` (source: ${entry.sourceRefs.join(', ')})` : ''}`);
   if (candidates.length > 0) {
     lines.push(`Candidates awaiting confirmation (${candidates.length}):`);
     for (const entry of candidates) lines.push(`- [${entry.id}] ${entry.kind}: ${entry.text}`);
