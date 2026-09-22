@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { ChevronRight, CircleHelp, Folder, FolderOpen, PanelLeft, Plus, Search, SquarePen } from 'lucide-react';
 import { continuo, DEFAULT_MODEL, type ContinuoDoc, type ContinuoTask, type Workspace } from '#/lib/api';
 import { FolderMenu } from './FolderMenu';
+import { Button } from '#/components/ui/button';
 
 const TASK_DOT: Record<ContinuoTask['status'], string> = {
   queued: '', running: 'running', verifying: 'running', awaiting_user: 'waiting', needs_review: 'waiting', completed: '', paused: '', interrupted: 'failed', failed: 'failed',
@@ -12,7 +13,6 @@ export function Sidebar({ workspace, doc, workspaces, collapsed, selectedTaskId,
   onToggle: () => void; onSelectTask: (task: ContinuoTask) => void; onPickWorkspace: (w: Workspace) => void;
   onNewTask: () => void; onSearch: () => void; onGuide: () => void;
 }) {
-  const [adding, setAdding] = useState<DOMRect | null>(null);
   const [folded, setFolded] = useState<Record<string, boolean>>(() => readFolded());
   const tasks = doc ? [...doc.tasks].toReversed() : [];
   const toggle = (id: string) => setFolded((current) => { const next = { ...current, [id]: !current[id] }; writeFolded(next); return next; });
@@ -21,9 +21,9 @@ export function Sidebar({ workspace, doc, workspaces, collapsed, selectedTaskId,
     return (
       <aside className="pane pane-nav chrome" aria-label="导航">
         <div className="rail">
-          <button className="btn btn-icon" title="展开侧栏" onClick={onToggle}><PanelLeft size={18} /></button>
-          {workspace && <button className="btn btn-icon" title="新会话 ⌘N" onClick={onNewTask}><SquarePen size={18} /></button>}
-          {workspace && <button className="btn btn-icon" title="搜索 ⌘F" onClick={onSearch}><Search size={18} /></button>}
+          <Button variant="ghost" size="icon" title="展开侧栏" onClick={onToggle}><PanelLeft size={18} /></Button>
+          {workspace && <Button variant="ghost" size="icon" title="新会话 ⌘N" onClick={onNewTask}><SquarePen size={18} /></Button>}
+          {workspace && <Button variant="ghost" size="icon" title="搜索 ⌘F" onClick={onSearch}><Search size={18} /></Button>}
         </div>
       </aside>
     );
@@ -33,7 +33,7 @@ export function Sidebar({ workspace, doc, workspaces, collapsed, selectedTaskId,
       <div className="side-top">
         <span className="brand"><span className="brand-mark" />Continuo</span>
         <span className="flex-1" />
-        <button className="btn btn-icon" title="收起侧栏" onClick={onToggle}><PanelLeft size={18} /></button>
+        <Button variant="ghost" size="icon" title="收起侧栏" onClick={onToggle}><PanelLeft size={18} /></Button>
       </div>
       <div className="px-2">
         <button className="side-row" onClick={onNewTask}><SquarePen size={16} className="ic" /><span className="flex-1">新会话</span><span className="kbd">⌘N</span></button>
@@ -42,10 +42,11 @@ export function Sidebar({ workspace, doc, workspaces, collapsed, selectedTaskId,
       <div className="pane-body px-2 pb-3">
         <div className="side-section">
           <span>会话</span>
-          <>
-            <button className="btn btn-icon" style={{ width: 22, height: 22 }} title="添加文件夹" onClick={(e) => setAdding(adding ? null : e.currentTarget.getBoundingClientRect())}><Plus size={13} /></button>
-            {adding && <FolderMenu anchor={adding} currentId={workspace?.id} onPick={onPickWorkspace} onClose={() => setAdding(null)} />}
-          </>
+          <FolderMenu
+            currentId={workspace?.id}
+            onPick={onPickWorkspace}
+            trigger={<Button variant="ghost" size="icon-sm" className="size-5.5" title="添加文件夹"><Plus className="size-3.5" /></Button>}
+          />
         </div>
         {workspaces.map((w) => (
           <FolderGroup

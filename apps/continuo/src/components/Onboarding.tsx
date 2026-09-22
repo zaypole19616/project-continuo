@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '#/components/ui/dialog';
+import { Button } from '#/components/ui/button';
 import { BookMarked, CheckCircle2, FolderOpen, MessageCircleQuestion } from 'lucide-react';
 
 const STEPS = [
@@ -21,17 +23,17 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   });
   const Icon = STEPS[step]!.icon;
   return (
-    <div className="onboard-backdrop" role="dialog" aria-modal="true" aria-label="新手引导">
-      <div className="onboard fade-in" key={step}>
+    <Dialog open onOpenChange={() => undefined}>
+      <DialogContent onEscapeKeyDown={(e) => { e.preventDefault(); }} onInteractOutside={(e) => { e.preventDefault(); }} className="flex flex-col items-center gap-3 text-center">
         <span className="onboard-icon"><Icon size={26} /></span>
         <div className="onboard-kicker">{STEPS[step]!.kicker}</div>
-        <div className="onboard-title">{STEPS[step]!.title}</div>
-        <div className="onboard-body">{STEPS[step]!.body}</div>
-        <div className="onboard-foot">
+        <DialogTitle>{STEPS[step]!.title}</DialogTitle>
+        <DialogDescription className="min-h-19">{STEPS[step]!.body}</DialogDescription>
+        <div className="mt-3.5 flex w-full items-center justify-between">
           <span className="onboard-dots">{STEPS.map((_, i) => <i key={i} className={i === step ? 'is-active' : ''} />)}</span>
-          <button className="btn btn-primary" onClick={next} autoFocus>{last ? '开始使用' : '下一步'}</button>
+          <Button variant="default" autoFocus onClick={next}>{last ? '开始使用' : '下一步'}</Button>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

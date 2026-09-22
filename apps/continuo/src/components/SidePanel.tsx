@@ -1,4 +1,5 @@
 import { FolderOpen, History, Layers } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '#/components/ui/tabs';
 import type { ContextEntry, ContinuoDoc, ContinuoTask } from '#/lib/api';
 import { ContextPanel } from './ContextPanel';
 import { FileBrowser, type NavTarget } from './FileBrowser';
@@ -17,33 +18,25 @@ export function SidePanel({ mode, onMode, workspaceId, root, doc, target, onNavi
   const rootName = root.split('/').filter(Boolean).pop() ?? '根目录';
   const pending = doc?.context.filter((e) => e.status === 'candidate' || e.status === 'stale').length ?? 0;
   return (
-    <aside className="pane pane-side" aria-label="右侧面板">
-      <header className="pane-header chrome" style={{ padding: '0 8px 0 12px' }}>
-        <div className="seg" role="tablist">
-          <ModeTab active={mode === 'files'} label="文件" onClick={() => onMode('files')}><FolderOpen size={15} /></ModeTab>
-          <ModeTab active={mode === 'context'} label="记住的事" badge={pending || undefined} onClick={() => onMode('context')}><Layers size={15} /></ModeTab>
-          <ModeTab active={mode === 'log'} label="工作记录" onClick={() => onMode('log')}><History size={15} /></ModeTab>
-        </div>
-      </header>
-      {mode === 'files' && (
-        <div className="side-files">
+    <Tabs value={mode} onValueChange={(v) => onMode(v as SideMode)} className="pane pane-side" aria-label="右侧面板" asChild>
+      <aside>
+        <header className="pane-header chrome" style={{ padding: '0 8px 0 12px' }}>
+          <TabsList>
+            <TabsTrigger value="files"><FolderOpen />文件</TabsTrigger>
+            <TabsTrigger value="context"><Layers />记住的事{pending > 0 && <span className="mode-badge">{pending}</span>}</TabsTrigger>
+            <TabsTrigger value="log"><History />工作记录</TabsTrigger>
+          </TabsList>
+        </header>
+        <TabsContent value="files" className="side-files">
           <div className="side-tree">
             <FileTree workspaceId={workspaceId} rootName={rootName} revision={doc?.revision ?? 0} target={target} onNavigate={onNavigate} />
           </div>
           <FileBrowser workspaceId={workspaceId} root={root} doc={doc} target={target} agentCollapsed={false} searchRef={searchRef} onNavigate={onNavigate} onOpenAgent={() => undefined} onSelectTask={(id) => { const t = doc?.tasks.find((x) => x.taskId === id); if (t) onSelectTask(t); }} onError={onError} />
-        </div>
-      )}
-      {mode === 'context' && <div className="pane-body p-4">{doc ? <ContextPanel doc={doc} onPatch={onPatchContext} onOpenFile={(p) => onNavigate({ kind: 'file', path: p })} /> : <Loading />}</div>}
-      {mode === 'log' && <div className="pane-body p-4">{doc ? <WorkRecord workspaceId={workspaceId} revision={doc.revision} onError={onError} /> : <Loading />}</div>}
-    </aside>
-  );
-}
-
-function ModeTab({ active, label, badge, onClick, children }: { active: boolean; label: string; badge?: number; onClick: () => void; children: React.ReactNode }) {
-  return (
-    <button role="tab" aria-selected={active} className={`mode-tab ${active ? 'is-active' : ''}`} onClick={onClick} title={label}>
-      {children}<span>{label}</span>{badge !== undefined && <span className="mode-badge">{badge}</span>}
-    </button>
+        </TabsContent>
+        <TabsContent value="context" className="pane-body p-4">{doc ? <ContextPanel doc={doc} onPatch={onPatchContext} onOpenFile={(p) => onNavigate({ kind: 'file', path: p })} /> : <Loading />}</TabsContent>
+        <TabsContent value="log" className="pane-body p-4">{doc ? <WorkRecord workspaceId={workspaceId} revision={doc.revision} onError={onError} /> : <Loading />}</TabsContent>
+      </aside>
+    </Tabs>
   );
 }
 

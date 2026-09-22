@@ -4,6 +4,7 @@ import { continuoFiles, type ContinuoDoc, type ContinuoTask, type FileContent, t
 import { renderMarkdown } from '#/lib/markdown';
 import { collapseUnchanged, diffLines } from '#/lib/diff';
 import { FileGlyph, FolderGlyph, fileTypeLabel } from './icons';
+import { Button } from '#/components/ui/button';
 
 export type NavTarget = { kind: 'folder'; path: string } | { kind: 'file'; path: string };
 type SortKey = 'name' | 'time' | 'size';
@@ -76,7 +77,7 @@ export function FileBrowser({ workspaceId, root, doc, target, agentCollapsed, se
           <button className={view === 'grid' ? 'is-active' : ''} title="网格" onClick={() => switchView('grid')}><LayoutGrid size={16} /></button>
           <button className={view === 'list' ? 'is-active' : ''} title="列表" onClick={() => switchView('list')}><List size={16} /></button>
         </div>
-        {agentCollapsed && <button className="btn btn-icon" title="打开 Agent 面板" onClick={onOpenAgent}><PanelRightOpen size={18} /></button>}
+        {agentCollapsed && <Button variant="ghost" size="icon" title="打开 Agent 面板" onClick={onOpenAgent}><PanelRightOpen size={18} /></Button>}
       </header>
 
       {target.kind === 'file' ? (
@@ -175,10 +176,10 @@ function FilePreview({ file, producer, taskTitle, onBack, onSelectTask, onError 
   return (
     <div className="p-8 space-y-5 fade-in">
       <div className="flex items-center gap-3 flex-wrap chrome">
-        <button className="btn btn-sm btn-ghost" onClick={onBack}><ArrowLeft size={14} />返回文件夹</button>
+        <Button variant="ghost" size="sm" onClick={onBack}><ArrowLeft size={14} />返回文件夹</Button>
         <span className="text-3 fs-meta">{formatSize(file.size)} · {formatTime(file.modifiedAt)}</span>
         {file.producedBy && <button className="tag tag-done" onClick={() => onSelectTask(file.producedBy!)} title={taskTitle(file.producedBy)}><Sparkles size={12} />由任务产出 · 查看过程</button>}
-        {canCompare && <button className="btn btn-sm" disabled={loading} onClick={() => { void compare(); }}><GitCompare size={13} />{comparing ? '看正文' : '对比上一版'}</button>}
+        {canCompare && <Button size="sm" disabled={loading} onClick={() => { void compare(); }}><GitCompare size={13} />{comparing ? '看正文' : '对比上一版'}</Button>}
         {file.truncated && <span className="tag tag-wait">只显示前 256KB</span>}
       </div>
       {comparing && before !== null
