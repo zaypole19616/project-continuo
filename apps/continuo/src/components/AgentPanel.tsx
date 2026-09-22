@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { ArrowUp, Check, CircleAlert, FolderOpen, Loader2, PanelRight, PanelRightClose, Play, RotateCcw, Square } from 'lucide-react';
+import { ArrowUp, Check, CircleAlert, FolderOpen, Loader2, PanelRight, PanelRightClose, Play, RotateCcw, Sparkles, Square } from 'lucide-react';
 import { DEFAULT_MODEL, DEMO_WORKSPACE_NAME, type ApprovalRequest, type ContextEntry, type ContinuoDoc, type ContinuoTask, type QuestionRequest } from '#/lib/api';
 import type { TimelineState } from '#/lib/timeline';
 import { Timeline } from './Timeline';
 import { ApprovalCard, QuestionCard } from './InteractionCards';
 import type { SideMode } from './SidePanel';
+import { shortDate } from './Sidebar';
 
 export interface AgentPanelProps {
   workspaceName: string;
@@ -28,15 +29,24 @@ export interface AgentPanelProps {
   onOpenFile: (path: string) => void;
   onAbout: (bet: string) => void;
   onPatchContext: (entry: ContextEntry, body: { text?: string; status?: 'active' | 'inactive' }) => Promise<void>;
+  onReunderstand: () => void;
 }
 
 export type BetKey = 'legibility' | 'proactiveness' | 'clarity';
 export const BET_LABEL: Record<BetKey, string> = { legibility: '有章法', proactiveness: '不乱打扰', clarity: '说清楚' };
 
-const DEMOS: Array<{ bet: BetKey; title: string; desc: string; prompt: string; generic: string }> = [
-  { bet: 'legibility', title: '它按你的规矩干活', desc: '先在右侧「记住的事」里改一条约定，再交代任务，看它做出的文件是否照改后的规矩放好、命名。', prompt: '起草一份 Q2 经营复盘初稿，放到 drafts/。', generic: '基于这个文件夹里的材料，起草一份总结初稿，按这里的约定放好、命名好。' },
-  { bet: 'proactiveness', title: '缺决定时它停下来问', desc: '材料里没有的决定它不编。你回一句，它接着干，中途可停可续。', prompt: '给 Q2 复盘初稿补一节「下季度价格动作」，价格方向和幅度按我的决定写，材料里没有的不要编。', generic: '找出这个文件夹里需要我拍板的事，列出来问我，不要自己替我决定。' },
-  { bet: 'clarity', title: '做完了才说做完', desc: '任务结束时核对文件是不是真的在文件夹里；没做到的如实列出，不假装完成。', prompt: '基于 Q2 复盘初稿写一份 200 字以内的高管摘要，放到 drafts/。', generic: '把这个文件夹里最新的一份产物压缩成 200 字以内的摘要，另存为新文件。' },
+interface Card { bet: BetKey; title: string; desc: string; prompt: string }
+
+const DEMO_CARDS: Card[] = [
+  { bet: 'legibility', title: '接着上次干', desc: '上次的初稿、上周定的定价方案、改稿另存的规矩，它都记得。看它一句话接上，不用重新交代。', prompt: '接着上次的 Q2 复盘初稿，把定价那节改成上周定的方案，另存新文件。' },
+  { bet: 'proactiveness', title: '缺决定时它停下来问', desc: '材料里没有招聘决定，它会停下来问你，而不是编一个。你回一句，它接着干。', prompt: '给最新的 Q2 复盘稿补一节「Q3 招聘计划」，人数和岗位按我的决定写，材料里没有的不要编。' },
+  { bet: 'clarity', title: '做完了才说做完', desc: '任务结束时核对文件是不是真的在文件夹里；没做到的如实列出，不假装完成。', prompt: '基于最新的 Q2 复盘稿写一份 200 字以内的高管摘要，放到 drafts/。' },
+];
+
+const GENERIC_CARDS: Card[] = [
+  { bet: 'legibility', title: '它按你的规矩干活', desc: '先在右侧「记住的事」里改一条约定，再交代任务，看它做出的文件是否照改后的规矩放好、命名。', prompt: '基于这个文件夹里的材料，起草一份总结初稿，按这里的约定放好、命名好。' },
+  { bet: 'proactiveness', title: '缺决定时它停下来问', desc: '材料里没有的决定它不编。你回一句，它接着干，中途可停可续。', prompt: '找出这个文件夹里需要我拍板的事，列出来问我，不要自己替我决定。' },
+  { bet: 'clarity', title: '做完了才说做完', desc: '任务结束时核对文件是不是真的在文件夹里；没做到的如实列出，不假装完成。', prompt: '把这个文件夹里最新的一份产物压缩成 200 字以内的摘要，另存为新文件。' },
 ];
 
 const isAwaitingReply = (t: ContinuoTask | null) => !!t && t.status === 'awaiting_user' && t.pendingInteraction === 'reply';
@@ -80,13 +90,14 @@ export function AgentPanel(p: AgentPanelProps) {
               <div className="t2 sm" style={{ marginTop: 4 }}>{p.doc.scan ? `${p.doc.scan.counts.dirs} 个文件夹、${p.doc.scan.counts.files} 个文件${p.doc.scan.guideFiles.length > 0 ? `，先读 ${p.doc.scan.guideFiles.join('、')}` : ''}。` : ''}只读，不会改动任何文件。</div>
             </div>
           )}
-          {showEmpty && (
+          {showEmpty && p.doc && (
             <div className="empty-hero fade-in">
               <h2>把工作交给 Continuo</h2>
-              <p className="t2" style={{ margin: '0 0 22px' }}>它已经了解了这个文件夹。下面三张卡各演示一件事，点一下就开始。</p>
+              <p className="t2" style={{ margin: '0 0 6px' }}>{memorySummary(p.doc)}</p>
+              <p className="t3 sm" style={{ margin: '0 0 22px' }}>下面三张卡各演示一件事，点一下就开始。<button className="link" onClick={() => p.onSide('context')}>看看它记住了什么</button></p>
               <div className="demo-grid">
-                {DEMOS.map((d) => (
-                  <button key={d.bet} className="demo-card" onClick={() => fill(isDemo ? d.prompt : d.generic)}>
+                {(isDemo ? DEMO_CARDS : GENERIC_CARDS).map((d) => (
+                  <button key={d.bet} className="demo-card" onClick={() => fill(d.prompt)}>
                     <span className="demo-en">{BET_LABEL[d.bet]}</span>
                     <span className="demo-title">{d.title}</span>
                     <span className="demo-desc">{d.desc}</span>
@@ -96,9 +107,9 @@ export function AgentPanel(p: AgentPanelProps) {
             </div>
           )}
           {p.selected && p.selected.kind === 'init' && p.doc?.understanding && (
-            <UnderstandingCard doc={p.doc} onContext={() => p.onSide('context')} onAbout={() => p.onAbout('clarity')} onPatch={p.onPatchContext} />
+            <UnderstandingCard doc={p.doc} onContext={() => p.onSide('context')} onAbout={() => p.onAbout('clarity')} onPatch={p.onPatchContext} onReunderstand={p.onReunderstand} />
           )}
-          {!showEmpty && <Timeline items={p.selected?.kind === 'init' ? p.state.items.filter((it) => it.kind !== 'user') : p.state.items} emptyHint={p.selected ? (p.selected.kind === 'init' ? undefined : '这个任务还没有对话。') : undefined} />}
+          {!showEmpty && <Timeline items={p.selected?.kind === 'init' ? p.state.items.filter((it) => it.kind !== 'user') : p.state.items} emptyHint={p.selected ? (p.selected.kind === 'init' ? undefined : p.selected.sessionId === '' ? `这是演示夹自带的上次任务（${shortDate(p.selected.createdAt)}），对话没有随演示夹保存；下面是它当时的收尾。` : '这个任务还没有对话。') : undefined} />}
           {p.selected && p.doc && p.selected.kind === 'user' && (p.selected.status === 'completed' || p.selected.status === 'needs_review') && (
             <ClosingCard task={p.selected} doc={p.doc} onOpenFile={p.onOpenFile} onAbout={() => p.onAbout('clarity')} />
           )}
@@ -151,7 +162,7 @@ export function BetChip({ bet, note, onClick }: { bet: BetKey; note?: string; on
   return <button className="bet-chip chrome" onClick={onClick} title="这背后的想法">{BET_LABEL[bet]}{note ? <span className="t3"> · {note}</span> : null}</button>;
 }
 
-function UnderstandingCard({ doc, onContext, onAbout, onPatch }: { doc: ContinuoDoc; onContext: () => void; onAbout: () => void; onPatch: (entry: ContextEntry, body: { text?: string; status?: 'active' | 'inactive' }) => Promise<void> }) {
+function UnderstandingCard({ doc, onContext, onAbout, onPatch, onReunderstand }: { doc: ContinuoDoc; onContext: () => void; onAbout: () => void; onPatch: (entry: ContextEntry, body: { text?: string; status?: 'active' | 'inactive' }) => Promise<void>; onReunderstand: () => void }) {
   const active = doc.context.filter((e) => e.status === 'active');
   const candidates = doc.context.filter((e) => e.status === 'candidate');
   const [busy, setBusy] = useState<string | null>(null);
@@ -185,6 +196,7 @@ function UnderstandingCard({ doc, onContext, onAbout, onPatch }: { doc: Continuo
         <span className="tag tag-done">记住了 {active.length} 件事</span>
         {candidates.length > 0 && <span className="tag tag-wait">{candidates.length} 条待确认</span>}
         <span className="flex-1" />
+        <button className="btn btn-sm btn-ghost" title="再读一遍文件夹，重新形成理解（约一分钟）" onClick={onReunderstand}><RotateCcw size={12} />重新了解</button>
         <button className="btn btn-sm" onClick={onContext}>查看或修改</button>
       </div>
     </div>
@@ -206,6 +218,12 @@ function ClosingCard({ task, doc, onOpenFile, onAbout }: { task: ContinuoTask; d
           <span className="font-medium">{done ? '这个任务做完了' : '还差一点'}</span>
           <span className="t3">· {deliverables.length > 0 ? `做出 ${deliverables.length} 份文件，${ok} 份已确认在文件夹里` : '没有新文件'}</span>
         </div>
+        {task.reuse && (
+          <div className="deliverable-row reuse-row">
+            <Sparkles size={13} />
+            <span>这次没让你重新交代：用上了 <b>{task.reuse.entries}</b> 条记住的事，追问 <b>{task.reuse.questions}</b> 次。</span>
+          </div>
+        )}
         {deliverables.map((d) => (
           <div key={d.path} className="deliverable-row">
             {d.exists === false ? <CircleAlert size={13} style={{ color: 'var(--err)' }} /> : <Check size={13} style={{ color: 'var(--ok)' }} />}
@@ -232,6 +250,17 @@ function ClosingCard({ task, doc, onOpenFile, onAbout }: { task: ContinuoTask; d
       </div>
     </div>
   );
+}
+
+function memorySummary(doc: ContinuoDoc): string {
+  const remembered = doc.context.filter((e) => e.status === 'active').length;
+  const saved = doc.tasks.filter((t) => t.kind === 'user' && t.reuse !== undefined && t.reuse.entries > 0 && (t.status === 'completed' || t.status === 'needs_review')).length;
+  const last = doc.tasks.filter((t) => t.kind === 'user' && (t.status === 'completed' || t.status === 'needs_review')).at(-1);
+  if (remembered === 0 && !last) return '它已经了解了这个文件夹。';
+  const parts = [`它记住了 ${remembered} 件事`];
+  if (saved > 0) parts.push(`已为 ${saved} 个任务省去重新交代`);
+  const head = parts.join('，');
+  return last ? `${head}；上次（${shortDate(last.createdAt)}）做的是「${last.title.length > 24 ? `${last.title.slice(0, 24)}…` : last.title}」。` : `${head}。`;
 }
 
 function HeaderIcon({ label, active, badge, onClick, children }: { label: string; active: boolean; badge?: number; onClick: () => void; children: ReactNode }) {

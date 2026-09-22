@@ -15,7 +15,10 @@ const newRequestId = () => `req_${Date.now().toString(36)}_${Math.random().toStr
 
 function pickDefaultTask(doc: ContinuoDoc): ContinuoTask | null {
   const users = doc.tasks.filter((t) => t.kind === 'user');
-  return users.find(isActive) ?? users.at(-1) ?? doc.tasks.at(-1) ?? null;
+  const active = users.find(isActive);
+  if (active) return active;
+  if (users.length === 0) return doc.tasks.find((t) => t.kind === 'init' && t.sessionId !== '') ?? null;
+  return null;
 }
 
 function useMediaQuery(query: string): boolean {
@@ -118,7 +121,7 @@ export function WorkspaceView({ workspace, onSwitch, onClose, onAbout }: { works
   });
 
   const activeUserTask = doc?.tasks.find((t) => t.kind === 'user' && isBlocking(t)) ?? null;
-  const continueTarget = selected && selected.kind === 'user' && !isBlocking(selected) ? selected : null;
+  const continueTarget = selected && selected.kind === 'user' && selected.sessionId !== '' && !isBlocking(selected) ? selected : null;
 
   const send = async () => {
     const text = (composerRef.current?.value ?? '').trim();
@@ -140,6 +143,11 @@ export function WorkspaceView({ workspace, onSwitch, onClose, onAbout }: { works
   const action = async (task: ContinuoTask, a: 'pause' | 'resume' | 'complete') => {
     setError(null);
     try { const d = await continuo.taskAction(workspace.id, task.taskId, a); setDoc(d); userPicked.current = false; setSelectedId(task.taskId); } catch (error) { setError((error as Error).message); }
+  };
+
+  const reunderstand = async () => {
+    setError(null);
+    try { const d = await continuo.reunderstand(workspace.id); setDoc(d); userPicked.current = false; setSelectedId(d.init.taskId ?? null); } catch (error) { setError((error as Error).message); }
   };
 
   const patchContext = async (entry: ContextEntry, body: { text?: string; status?: 'active' | 'inactive' }) => {
@@ -164,7 +172,7 @@ export function WorkspaceView({ workspace, onSwitch, onClose, onAbout }: { works
         onSend={() => { void send(); }}
         onAnswer={async (q, answers, note) => { if (!sessionId) return; await kimi.resolveQuestion(sessionId, q.question_id, answers, note); await refreshPending(sessionId); void refresh(); }}
         onDecide={async (a, d, scope) => { if (!sessionId) return; await kimi.resolveApproval(sessionId, a.approval_id, d, scope); await refreshPending(sessionId); void refresh(); }}
-        onAction={(t, a) => { void action(t, a); }} onOpenFile={openFile} onAbout={(bet) => onAbout(bet)} onPatchContext={patchContext}
+        onAction={(t, a) => { void action(t, a); }} onOpenFile={openFile} onAbout={(bet) => onAbout(bet)} onPatchContext={patchContext} onReunderstand={() => { void reunderstand(); }}
       />
       {sideMode !== null && (
         <SidePanel mode={sideMode} onMode={setSide} workspaceId={workspace.id} root={workspace.root} doc={doc} target={target} onNavigate={setTarget} onSelectTask={selectTask} onPatchContext={patchContext} onError={setError} searchRef={searchRef} />
