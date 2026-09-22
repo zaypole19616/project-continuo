@@ -38,6 +38,7 @@ export { ContinuoError } from './errors';
 interface Attachment {
   readonly dispose: () => void;
   readonly writes: Map<string, { path: string; turnId?: number }>;
+  readonly sessionId: string;
   readonly reads: Set<string>;
   reply: string;
 }
@@ -140,7 +141,9 @@ export class ContinuoTaskManager {
     if (running !== undefined) {
       throw new ContinuoError('invalid_state', `task ${running.taskId} is still ${running.status}; one task runs at a time`);
     }
-    const session = await this.core.accessor.get(ISessionManager).create({ workspaceId, workDir: doc.root, mainAgentBinding: { profile: CONTINUO_WORKER_PROFILE } });
+    const prior = doc.tasks.findLast((task) => task.kind === 'user' && task.sessionId !== '');
+    const session = (prior === undefined ? undefined : await resumeSessionById(this.core.accessor, prior.sessionId))
+      ?? await this.core.accessor.get(ISessionManager).create({ workspaceId, workDir: doc.root, mainAgentBinding: { profile: CONTINUO_WORKER_PROFILE } });
     const agent = await ensureMainAgent(session);
     await this.ensureModel(agent);
     const sessionId = session.accessor.get(ISessionContext).sessionId;
@@ -378,6 +381,12 @@ export class ContinuoTaskManager {
 
   private attach(workspaceId: string, taskId: string, session: ISessionScopeHandle, agent: IAgentScopeHandle): void {
     this.attachments.get(taskId)?.dispose();
+    const sessionId = session.accessor.get(ISessionContext).sessionId;
+    for (const [other, attachment] of this.attachments) {
+      if (attachment.sessionId !== sessionId || other === taskId) continue;
+      attachment.dispose();
+      this.attachments.delete(other);
+    }
     const events = agent.accessor.get(IEventBus);
     const activity = session.accessor.get(ISessionActivityView);
     const onEvent = events.subscribe((event) => { void this.onAgentEvent(workspaceId, taskId, event as unknown as Record<string, unknown>); });
@@ -390,7 +399,7 @@ export class ContinuoTaskManager {
         return current;
       }, { silent: true });
     });
-    this.attachments.set(taskId, { dispose: () => { onEvent.dispose(); onActivity.dispose(); }, writes: new Map(), reads: new Set(), reply: '' });
+    this.attachments.set(taskId, { dispose: () => { onEvent.dispose(); onActivity.dispose(); }, writes: new Map(), reads: new Set(), reply: '', sessionId });
   }
 
   private async onAgentEvent(workspaceId: string, taskId: string, event: Record<string, unknown>): Promise<void> {

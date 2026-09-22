@@ -57,7 +57,10 @@ export function applyEvent(state: TimelineState, ev: WsEvent): TimelineState {
       const content = (p['content'] as Array<{ type: string; text?: string }> | undefined) ?? [];
       const text = content.filter((c) => c.type === 'text').map((c) => c.text ?? '').join('\n');
       const id = str(p['promptId']) || str(p['userMessageId']) || String(Date.now());
-      if (!items.some((i) => i.id === id)) items.push({ kind: 'user', id, text, at: Date.now() });
+      const local = items.findIndex((i) => i.kind === 'user' && i.id.startsWith('local_') && i.text === text);
+      const existing = local >= 0 ? items[local] : undefined;
+      if (existing?.kind === 'user') items[local] = { ...existing, id };
+      else if (!items.some((i) => i.id === id)) items.push({ kind: 'user', id, text, at: Date.now() });
       return { ...state, items, busy: true };
     }
     case 'turn.started': { currentTurn(items, turnId); return { ...state, items, busy: true }; }

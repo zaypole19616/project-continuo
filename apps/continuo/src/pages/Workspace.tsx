@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { continuo, kimi, type ApprovalRequest, type ContextEntry, type ContinuoDoc, type ContinuoTask, type QuestionRequest, type Workspace } from '#/lib/api';
+import { ChevronLeft, Moon, Sun } from 'lucide-react';
+import { continuo, kimi, type ApprovalRequest, type ContinuoDoc, type ContinuoTask, type QuestionRequest, type Workspace } from '#/lib/api';
 import { SessionStream } from '#/lib/ws';
 import { applyEvent, emptyTimeline, fromMessages, withUserMessage, type TimelineState } from '#/lib/timeline';
-import type { ThemePref } from '#/lib/theme';
+import { resolveTheme, type ThemePref } from '#/lib/theme';
 import type { NavTarget } from '#/components/FileBrowser';
 import { Finder } from '#/components/Finder';
 import { Drawer } from '#/components/Drawer';
@@ -14,14 +15,9 @@ const isAwaitingReply = (t: ContinuoTask) => t.status === 'awaiting_user' && t.p
 const isBlocking = (t: ContinuoTask) => isActive(t) && !isAwaitingReply(t);
 const newRequestId = () => `req_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 
-function pickDefaultTask(doc: ContinuoDoc): ContinuoTask | null {
-  return doc.tasks.filter((t) => t.kind === 'user').findLast(isActive) ?? null;
-}
-
 export function WorkspaceView({ workspace, onClose, themePref, onTheme }: { workspace: Workspace; onClose: () => void; themePref: ThemePref; onTheme: (pref: ThemePref) => void }) {
   const workspaceId = workspace.id;
   const [doc, setDoc] = useState<ContinuoDoc | null>(null);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [target, setTarget] = useState<NavTarget>({ kind: 'folder', path: '' });
   const [error, setError] = useState<string | null>(null);
   const [state, setState] = useState<TimelineState>(emptyTimeline());
@@ -31,7 +27,6 @@ export function WorkspaceView({ workspace, onClose, themePref, onTheme }: { work
   const streamRef = useRef<SessionStream | null>(null);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const searchRef = useRef<HTMLInputElement | null>(null);
-  const userPicked = useRef(false);
   const pendingUser = useRef<{ sessionId: string; text: string } | null>(null);
 
   const refresh = useCallback(async () => {
@@ -40,7 +35,7 @@ export function WorkspaceView({ workspace, onClose, themePref, onTheme }: { work
 
   useEffect(() => {
     let cancelled = false;
-    setDoc(null); setSelectedId(null); userPicked.current = false; setTarget({ kind: 'folder', path: '' }); setError(null);
+    setDoc(null); setTarget({ kind: 'folder', path: '' }); setError(null);
     void (async () => {
       try { const d = await continuo.open(workspaceId, newRequestId()); if (!cancelled) setDoc(d); } catch (error) { if (!cancelled) setError((error as Error).message); }
     })();
@@ -54,15 +49,8 @@ export function WorkspaceView({ workspace, onClose, themePref, onTheme }: { work
     return () => window.clearInterval(timer);
   }, [doc, refresh]);
 
-  useEffect(() => {
-    if (!doc) return;
-    if (userPicked.current && (selectedId === null || doc.tasks.some((t) => t.taskId === selectedId))) return;
-    const pick = pickDefaultTask(doc);
-    if (pick && pick.taskId !== selectedId) setSelectedId(pick.taskId);
-  }, [doc, selectedId]);
-
-  const selected = doc?.tasks.find((t) => t.taskId === selectedId) ?? null;
-  const sessionId = selected?.sessionId ?? null;
+  const latest = doc?.tasks.findLast((t) => t.kind === 'user' && t.sessionId !== '') ?? null;
+  const sessionId = latest?.sessionId ?? null;
 
   const refreshPending = useCallback(async (sid: string) => {
     const [q, a] = await Promise.all([kimi.pendingQuestions(sid), kimi.pendingApprovals(sid)]);
@@ -97,86 +85,63 @@ export function WorkspaceView({ workspace, onClose, themePref, onTheme }: { work
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'n') { e.preventDefault(); newSession(); }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'f') { e.preventDefault(); searchRef.current?.focus(); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  });
+  }, []);
 
   const activeUserTask = doc?.tasks.find((t) => t.kind === 'user' && isBlocking(t)) ?? null;
-  const continueTarget = selected && selected.kind === 'user' && selected.sessionId !== '' && !isBlocking(selected) ? selected : null;
-  const sessions = doc ? doc.tasks.filter((t) => t.kind === 'user').toReversed() : [];
+  const replyTarget = latest !== null && isAwaitingReply(latest) ? latest : null;
 
-  const send = async () => {
-    const text = (composerRef.current?.value ?? '').trim();
-    if (!text || sending) return;
+  const submit = async (text: string, reply: ContinuoTask | null) => {
     setSending(true); setError(null);
     try {
-      if (continueTarget) {
-        const d = await continuo.taskAction(workspaceId, continueTarget.taskId, 'reply', { text });
-        if (composerRef.current) composerRef.current.value = '';
-        setDoc(d); userPicked.current = true; setSelectedId(continueTarget.taskId);
+      if (sessionId !== null) setState((prev) => withUserMessage(prev, `local_${Date.now()}`, text));
+      if (reply !== null) {
+        setDoc(await continuo.taskAction(workspaceId, reply.taskId, 'reply', { text }));
       } else {
         const r = await continuo.createTask(workspaceId, text, newRequestId());
-        if (composerRef.current) composerRef.current.value = '';
-        setDoc(r.doc); userPicked.current = true; setSelectedId(r.task.taskId);
-        pendingUser.current = { sessionId: r.task.sessionId, text };
+        if (sessionId === null) pendingUser.current = { sessionId: r.task.sessionId, text };
+        setDoc(r.doc);
       }
+      if (composerRef.current) composerRef.current.value = '';
     } catch (error) { setError((error as Error).message); } finally { setSending(false); }
   };
 
-  const startStep = async (text: string) => {
-    if (sending) return;
-    setSending(true); setError(null);
-    try { const r = await continuo.createTask(workspaceId, text, newRequestId()); setDoc(r.doc); userPicked.current = true; setSelectedId(r.task.taskId); pendingUser.current = { sessionId: r.task.sessionId, text }; } catch (error) { setError((error as Error).message); } finally { setSending(false); }
+  const send = () => {
+    const text = (composerRef.current?.value ?? '').trim();
+    if (!text || sending) return;
+    void submit(text, replyTarget);
   };
 
   const action = async (task: ContinuoTask, a: 'pause' | 'resume' | 'complete') => {
     setError(null);
-    try { const d = await continuo.taskAction(workspaceId, task.taskId, a); setDoc(d); userPicked.current = true; setSelectedId(task.taskId); } catch (error) { setError((error as Error).message); }
+    try { setDoc(await continuo.taskAction(workspaceId, task.taskId, a)); } catch (error) { setError((error as Error).message); }
   };
 
-  const reunderstand = async () => {
-    setError(null);
-    try { setDoc(await continuo.reunderstand(workspaceId)); } catch (error) { setError((error as Error).message); }
-  };
-
-  const patchContext = async (entry: ContextEntry, body: { text?: string; status?: 'active' | 'inactive' }) => {
-    setError(null);
-    try { const d = await continuo.patchContext(workspaceId, entry.id, { ...body, expected_revision: entry.revision }); setDoc(d); } catch (error) { setError((error as Error).message); throw error; }
-  };
-
-  const selectTask = (task: ContinuoTask) => { userPicked.current = true; setSelectedId(task.taskId); };
-  const newSession = () => { userPicked.current = true; setSelectedId(null); setTimeout(() => composerRef.current?.focus(), 50); };
-  const openFile = (path: string) => { setTarget({ kind: 'file', path }); };
+  const dark = resolveTheme(themePref) === 'dark';
 
   return (
     <div className="project">
       <div className="project-top chrome">
-        <span className="brand"><span className="brand-mark" />Continuo</span>
-        <span className="sep">›</span>
+        <Button variant="ghost" size="sm" onClick={onClose} title="回到项目列表"><ChevronLeft size={15} />项目</Button>
+        <span className="sep">/</span>
         <span className="project-name">{workspace.name}</span>
         <span className="project-path" title={workspace.root}>{workspace.root}</span>
         <span className="flex-1" />
-        <select className="theme-select" value={themePref} onChange={(e) => onTheme(e.target.value as ThemePref)} aria-label="外观">
-          <option value="dark">深色</option>
-          <option value="light">浅色</option>
-          <option value="system">跟随系统</option>
-        </select>
-        <Button variant="ghost" size="sm" onClick={onClose}>项目列表</Button>
+        <button className="icon-btn" title={dark ? '切换到浅色' : '切换到深色'} onClick={() => onTheme(dark ? 'light' : 'dark')}>{dark ? <Sun size={16} /> : <Moon size={16} />}</button>
       </div>
       <div className="project-body">
-        <Finder workspaceId={workspaceId} root={workspace.root} doc={doc} target={target} onNavigate={setTarget} onSelectTask={selectTask} onError={setError} searchRef={searchRef} />
+        <Finder workspaceId={workspaceId} root={workspace.root} doc={doc} target={target} onNavigate={setTarget} onError={setError} searchRef={searchRef} />
         <Drawer
-          workspace={workspace} doc={doc} selected={selected} sessions={sessions}
-          state={state} questions={questions} approvals={approvals} error={error}
-          activeUserTask={activeUserTask} continueTarget={continueTarget} composerRef={composerRef} sending={sending}
-          onSend={() => { void send(); }}
+          workspace={workspace} doc={doc} latest={latest} state={state} questions={questions} approvals={approvals} error={error}
+          activeUserTask={activeUserTask} replyTarget={replyTarget} composerRef={composerRef} sending={sending}
+          onSend={send}
           onAnswer={async (q, answers, note) => { if (!sessionId) return; await kimi.resolveQuestion(sessionId, q.question_id, answers, note); await refreshPending(sessionId); void refresh(); }}
           onDecide={async (a, d, scope) => { if (!sessionId) return; await kimi.resolveApproval(sessionId, a.approval_id, d, scope); await refreshPending(sessionId); void refresh(); }}
-          onAction={(t, a) => { void action(t, a); }} onOpenFile={openFile} onPatchContext={patchContext} onReunderstand={() => { void reunderstand(); }}
-          onStartStep={(text) => { void startStep(text); }} onSelectTask={selectTask} onNewSession={newSession} onError={setError}
+          onAction={(t, a) => { void action(t, a); }} onOpenFile={(path) => setTarget({ kind: 'file', path })}
+          onStartStep={(text) => { if (!sending) void submit(text, null); }} onError={setError}
         />
       </div>
     </div>

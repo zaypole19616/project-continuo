@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Loader2, RotateCcw } from 'lucide-react';
-import { Button } from '#/components/ui/button';
+import { Loader2 } from 'lucide-react';
 import type { ContinuoDoc } from '#/lib/api';
 
 const STAGES: Array<[number, string]> = [
@@ -10,7 +9,7 @@ const STAGES: Array<[number, string]> = [
   [55, '快好了，请稍候…'],
 ];
 
-export function InitStatus({ doc, onReunderstand }: { doc: ContinuoDoc; onReunderstand: () => void }) {
+export function InitStatus({ doc }: { doc: ContinuoDoc }) {
   const [now, setNow] = useState(() => Date.now());
   const running = doc.init.status === 'running';
   useEffect(() => {
@@ -18,21 +17,13 @@ export function InitStatus({ doc, onReunderstand }: { doc: ContinuoDoc; onReunde
     const t = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(t);
   }, [running]);
-  if (running) {
-    const started = doc.init.startedAt;
-    const elapsed = started === undefined ? 0 : (now - new Date(started).getTime()) / 1000;
-    return (
-      <div className="init-status">
-        <Loader2 className="size-4 shrink-0 animate-spin text-accent" />
-        <div className="min-w-0">
-          <div className="text-sm font-medium">{STAGES.findLast(([at]) => elapsed >= at)![1]}</div>
-        </div>
-      </div>
-    );
-  }
+  if (!running) return null;
+  const started = doc.init.startedAt;
+  const elapsed = started === undefined ? 0 : (now - new Date(started).getTime()) / 1000;
   return (
-    <div className="flex justify-end">
-      <Button variant="ghost" size="sm" title="再读一遍文件夹，重新形成理解（约一分钟）" onClick={onReunderstand}><RotateCcw />重新了解</Button>
+    <div className="init-status">
+      <Loader2 className="size-4 shrink-0 animate-spin text-accent" />
+      <div className="text-sm font-medium">{STAGES.findLast(([at]) => elapsed >= at)![1]}</div>
     </div>
   );
 }
