@@ -50,7 +50,7 @@ export function AgentPanel(p: AgentPanelProps) {
   const pendingContext = p.doc?.context.filter((e) => e.status === 'candidate' || e.status === 'stale').length ?? 0;
   const continuing = p.continueTarget !== null;
   const awaitingReply = isAwaitingReply(p.continueTarget);
-  const title = p.selected ? (p.selected.kind === 'init' ? '了解这个文件夹' : p.selected.title) : '新对话';
+  const title = p.selected ? (p.selected.kind === 'init' ? '了解这个文件夹' : p.selected.title) : '新会话';
   const modelName = DEFAULT_MODEL.split('/').pop();
   const initRunning = p.doc?.init.status === 'running';
   const hero = !p.selected && !initRunning;
@@ -73,22 +73,24 @@ export function AgentPanel(p: AgentPanelProps) {
           <button className="btn btn-sm btn-primary" onClick={() => p.onAction(p.continueTarget!, 'resume')}>{p.continueTarget.status === 'failed' ? <><RotateCcw size={12} />重试</> : <><Play size={12} />继续</>}</button>
         </div>
       )}
+      <div className="hero-chip-row">
+        <div className="chip-anchor">
+          <button className={`ws-chip ws-chip-btn ${p.workspace === null ? 'is-empty' : ''}`} onClick={() => setPicking(!picking)} title="选择文件夹">
+            <FolderOpen size={13} />{p.workspace?.name ?? '选择文件夹'}<ChevronDown size={12} />
+          </button>
+          {picking && <FolderMenu currentId={p.workspace?.id} onPick={p.onPickWorkspace} onClose={() => setPicking(false)} />}
+        </div>
+      </div>
       <div className="composer">
         <textarea ref={p.composerRef} rows={hero ? 3 : 2} placeholder={p.workspace === null ? '先选一个文件夹，再交代任务…' : awaitingReply ? '回复它…' : continuing ? '有新的要求？直接说…' : '这次想完成什么？'} value={draft} disabled={p.workspace === null} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send(); } }} />
         <div className="composer-footer chrome">
           <span className="model-chip">✳ {modelName}</span>
-          <div className="chip-anchor">
-            <button className={`ws-chip ws-chip-btn ${p.workspace === null ? 'is-empty' : ''}`} onClick={() => setPicking(!picking)} title="选择文件夹">
-              <FolderOpen size={13} />{p.workspace?.name ?? '选择文件夹'}<ChevronDown size={12} />
-            </button>
-            {picking && <FolderMenu currentId={p.workspace?.id} onPick={p.onPickWorkspace} onClose={() => setPicking(false)} />}
-          </div>
           <span className="flex-1" />
           <button className="send" title="发送" disabled={!p.doc || p.sending} onClick={send}><ArrowUp size={16} /></button>
         </div>
       </div>
       <div className="chat-status chrome">
-        <span className="t3 xs">{p.workspace === null ? '先从右下角选一个文件夹' : p.connection === 'connecting' ? '连接中…' : continuing ? '会在这个对话里接着干；要另起一个，点左上角「新对话」' : 'Enter 发送 · Shift + Enter 换行'}</span>
+        <span className="t3 xs">{p.workspace === null ? '先在上面选一个文件夹' : p.connection === 'connecting' ? '连接中…' : continuing ? '会在这个会话里接着干；要另起一个，点左上角「新会话」' : 'Enter 发送 · Shift + Enter 换行'}</span>
       </div>
     </>
   );
@@ -108,13 +110,10 @@ export function AgentPanel(p: AgentPanelProps) {
         <div className="chat-col">
           {hero && (
             <div className="hero fade-in">
-              <h2>{p.workspace === null ? '从一个文件夹开始' : p.doc?.tasks.some((t) => t.kind === 'user') ? '这次，想做什么？' : '准备好了，开始吧。'}</h2>
+              <div className="wordmark">Contin<i>uo</i></div>
               {p.workspace === null
-                ? <p className="t2 hero-brief">选一个文件夹交给 Continuo：它先了解这个文件夹，再接你交代的任务，做完的东西放回文件夹。</p>
-                : <>
-                    {p.doc?.understanding && <p className="t2 hero-brief">{p.doc.understanding.text}</p>}
-                    {p.doc && <p className="t3 sm" style={{ margin: 0 }}>{memorySummary(p.doc)}<button className="link" onClick={() => p.onSide('context')}>{p.doc.context.some((e) => e.status === 'candidate') ? '去确认' : '查看'}</button></p>}
-                  </>}
+                ? <p className="t2 hero-brief">选一个文件夹交给它：先了解这个文件夹，再接你交代的任务，做完的东西放回文件夹。</p>
+                : p.doc && <p className="t3 sm hero-brief">{memorySummary(p.doc)}<button className="link" onClick={() => p.onSide('context')}>{p.doc.context.some((e) => e.status === 'candidate') ? '去确认' : '查看'}</button></p>}
               <div className="hero-composer">{composer}</div>
             </div>
           )}
@@ -122,7 +121,7 @@ export function AgentPanel(p: AgentPanelProps) {
           {p.selected && p.selected.kind === 'init' && p.doc?.understanding && (
             <UnderstandingCard doc={p.doc} onContext={() => p.onSide('context')} onAbout={() => p.onAbout('clarity')} onReunderstand={p.onReunderstand} />
           )}
-          {!hero && !initRunning && <Timeline items={p.selected?.kind === 'init' ? p.state.items.filter((it) => it.kind !== 'user') : p.state.items} emptyHint={p.selected?.kind === 'init' ? undefined : '这个对话还没有内容。'} />}
+          {!hero && !initRunning && <Timeline items={p.selected?.kind === 'init' ? p.state.items.filter((it) => it.kind !== 'user') : p.state.items} emptyHint={p.selected?.kind === 'init' ? undefined : '这个会话还没有内容。'} />}
           {p.selected && p.doc && p.selected.kind === 'user' && (p.selected.status === 'completed' || p.selected.status === 'needs_review') && (
             <ClosingCard task={p.selected} doc={p.doc} onOpenFile={p.onOpenFile} onAbout={() => p.onAbout('clarity')} />
           )}
