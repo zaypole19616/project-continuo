@@ -1,18 +1,17 @@
 # Continuo
 
-**A local folder Agent that keeps working.** Continuo opens a folder, understands it before touching anything, keeps a selective and correctable ledger of what it learned, moves tasks forward, verifies what it delivered, and picks up where it left off the next time you open the folder.
+**A local folder Agent that keeps working.** Continuo opens a folder, reads it before touching anything, works inside it, verifies what it delivered, and leaves a work log in the folder so the next task — and the next person — can pick up from there.
 
 Built on [Kimi Code](https://github.com/MoonshotAI/kimi-code): the engine, sessions, tools, permission chain and local server are reused unchanged; Continuo adds a workspace feature in the engine, a task manager and routes in the server, and its own workbench UI.
 
-**一个住在本地文件夹里、把工作持续接住的 Agent。** 第一次打开先理解再动手；把有用的上下文有选择地积累成一份可纠正的账本；任务卡住时等你一句话接着干；关掉再开从上次的位置继续。
+**一个住在本地文件夹里、把工作持续接住的 Agent。** 第一次打开先读懂这个文件夹再动手；每件事做完核对产物、在 `work-log/` 留一份日志；下次接着干靠的是文件夹本身，不是另一份看不见的记忆。
 
 ## Read first
 
 | | |
 |---|---|
-| 说明文档（三个判断、产品、Harness、验证、限制） | [docs/continuo/submission.md](docs/continuo/submission.md) |
-| 项目介绍与运行方式 | [docs/continuo/README.md](docs/continuo/README.md) |
-| 四个产品判断（应用内页面） | `#/about` after starting the UI |
+| 说明文档（产品判断、功能点、Harness 改动） | [docs/continuo/submission.md](docs/continuo/submission.md) |
+| 这个原型实现到哪、边界在哪、怎么跑 | [docs/continuo/README.md](docs/continuo/README.md) |
 | Kimi Code's original README | [README.kimi-code.md](README.kimi-code.md) · [中文](README.kimi-code.zh-CN.md) |
 
 ## Run
@@ -30,14 +29,14 @@ In a second terminal:
 KIMI_PORT=58627 pnpm dev:continuo
 ```
 
-Open `http://127.0.0.1:5180/#token=<token printed by kimi web>` and click **用演示文件夹开始体验** (a synthetic folder is created under `~/Continuo Demo/`), or open a folder of your own.
+Open `http://127.0.0.1:5180/#token=<token printed by kimi web>`, then create a project or open a folder of your own.
 
 ## Where the code is
 
 | Layer | Path |
 |---|---|
-| Engine feature: context ledger, reminder bridge, `WorkspaceContext` / `ReportWorkspaceResult` tools, profiles | `packages/agent-core-v2/src/features/continuo/` |
-| Server: task manager, deliverable verification, stale detection, read-only file routes | `packages/kap-server/src/continuo/`, `packages/kap-server/src/routes/continuo.ts` |
+| Engine feature: project context, reminder bridge, `WorkspaceContext` / `ReportWorkspaceResult` tools, profiles | `packages/agent-core-v2/src/features/continuo/` |
+| Server: task manager, deliverable verification, work-log writing, read-only file routes | `packages/kap-server/src/continuo/`, `packages/kap-server/src/routes/continuo.ts` |
 | Workbench UI | `apps/continuo/` |
 | Tests | `packages/agent-core-v2/test/features/continuo/`, `packages/agent-core-v2/test/agent/permissionPolicy/` |
 

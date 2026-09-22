@@ -1,120 +1,103 @@
 # Continuo
 
-**Continuo** is a local Agent that keeps working inside your folder: it builds and maintains a selective, correctable understanding of the workspace, moves tasks forward on its own when it can, and shows you what it is doing on a board you can read at a glance.
+**Continuo** is a local Agent that lives in one folder: it reads the folder before its first task, works inside it, verifies what it delivered, and leaves a work log in the folder so the next task starts from where the last one stopped.
 
 ## Why the name
 
 *Continuo* (basso continuo) is the continuous bass line in Baroque music. It runs underneath the whole piece without stopping, holds the harmony together, and lets the soloists come and go on top of it.
 
-That is the job this Agent is meant to do for knowledge work: the work should be **continuously held**, not restarted at every conversation. Materials, tasks, progress and results live in one workspace; useful context is kept, updated and reused; when a task stalls, the Agent picks it up again; and the person can always see, and correct, the line it is playing.
+That is the job this Agent is meant to do for knowledge work: the work should be **continuously held**, not restarted at every conversation. Materials, tasks and results live in one folder; what was learned and done stays in that folder; and the person can always see, and correct, the line it is playing.
 
 ## 项目名说明
 
 Continuo，通奏低音。巴洛克音乐里贯穿全曲、从不中断的低音声部，它在下面托住整首曲子，让上面的独奏来来去去。
 
-这个 Agent 想做的就是这件事：让工作被持续接住，而不是每次对话都从头开始。资料、任务、进度、成果放在同一个工作空间里；有用的上下文被有选择地保留、更新和取用；任务卡住时它接着推进；人随时能看见它在演奏哪一条线，并且能纠正。
+这个 Agent 想做的就是这件事：让工作被持续接住，而不是每次对话都从头开始。资料、任务、成果放在同一个文件夹里；做过什么就留在这个文件夹里；人随时能看见它在演奏哪一条线，并且能纠正。
 
 ## Relationship to Kimi Code
 
-This repository is a fork of [MoonshotAI/kimi-code](https://github.com/MoonshotAI/kimi-code). Continuo reuses the engine, sessions, tools, permissions, questions/approvals, file history and the local server as they are, and adds a workspace feature plus a small front-end on top. What is inherited and what is new is documented below.
+This repository is a fork of [MoonshotAI/kimi-code](https://github.com/MoonshotAI/kimi-code). Continuo reuses the engine, sessions, tools, permissions, questions/approvals, file history and the local server as they are, and adds a workspace feature plus a small front-end on top.
+
+本文是实现说明：产品判断与功能定义见 [submission.md](submission.md)，这里写的是**做到了哪一步、边界在哪、怎么跑**。
 
 ---
 
-# 说明文档
+## 1. 产品：一次完整的使用
 
-## 1. 三句判断
+**打开项目：先读懂，不动手。** 一个只读 profile 的 Agent 扫描目录，先读 AGENTS.md / README 这类指引文件（如果 `work-log/` 里已有记录，也读最近几份），再沿着指引抽样几份材料，然后用一次 `WorkspaceContext` 调用记下两样东西：一段**这个文件夹是什么**（两三句：做什么用的、输入在哪、产物去哪、什么是归档），以及若干条**项目要点**（一句一条：命名约定、已经定下的决定、某类材料在哪）。每条要点都必须指向它来自哪个文件；说不出来源的不记。了解期间你可以浏览文件，也可以直接交代事情。
 
-这个原型建立在三个对 2026 年 Agent 走向的判断上，每一句都对应原型里的一处具体做法。
+**交代事情：带着这些干活。** 一个项目只有一个会话，你说的每一件事是这个会话里的一轮。Harness 在每一步把「这个文件夹是什么 + 项目要点 + 当前这件事 + 你中途补充的要求」编成一段参考数据注入，压缩之后重新注入。它需要一个材料里没有的决定时，用 AskUserQuestion 停下来问；写文件走 Kimi Code 原有的审批链。
 
-1. **长程、本地、真实文件的任务在商业上可行了，瓶颈从模型移到 Harness。** K3 这一代把长上下文和连续几十小时任务当成目标场景，缓存命中价把"每一步都重新交代背景"从贵变成可承受。于是 Harness 的价值不再是省 token，而是**决定每一步给模型看什么**：上下文的选择、维护和失效，比 prompt 本身更重要。Continuo 把这件事做成了一个有来源、有状态、可纠正的 context 账本，每一步注入，压缩后重新注入。
-2. **模型会内化流程性知识，不会内化的是用户的具体资产、权限边界、外部验证和跨会话的延续。** 原型只在这四层上花力气：文件夹里的约定和决定（资产）、什么工具免审批什么要问（边界）、宣称的交付物是否真的存在（验证）、重开之后从哪里接着干（延续）。不为模型三个月后自己就会做好的事搭脚手架。
-3. **交互的重心从"对话"移到"资产"，人不再复述背景，而是纠正 Agent 的理解。** 显性层只保留三件事：只在需要决定时打断、打断时带上下文、进度随时可看可接管。隐性层才是主体：交出任务之后，Agent 从哪里拿 context、按什么约定落位、结果去哪里核验、下次打开怎么续上。
+**收尾：核验，然后留下日志。** 一轮结束时 Harness 核验交付物：Agent 用 `ReportWorkspaceResult` 上报路径，同时 Harness 自己记录了它实际写过哪些文件，两边合并后逐个 stat，才决定是「做完了」还是「还差一点」。接着 Harness 把这件事写成一份工作日志，放进项目里的 `work-log/work-log-YYYY-MM-DD-任务名.md`：时间、状态、读过的文件、产出文件、原始要求、每一轮的过程（读了什么、写了什么、回了什么）、结果、未完成、建议的下一步。**这份日志是项目自己的文件**，你能在文件区看到它、改它、删它。
 
-## 2. 产品：它做什么
+**下次打开：从文件夹里接着干。** 不会重跑初始化，正在跑的任务标记为中断可续。过去做过什么不靠一份看不见的记忆，而是靠文件夹本身：worker 的第一条规则就是先搜文件夹、读相关的 `work-log/`，文件夹里已经写着的事不许再问你。
 
-Continuo 面向一个本地文件夹。打开它，会发生三件事。
-
-**第一次打开：先理解，不动手。** 一个只读 profile 的 Agent 扫描目录结构，优先读 README / AGENTS.md 这类指引文件，再抽样几份材料，然后用 `WorkspaceContext` 工具记录：
-
-- 一段"工作空间理解"（这个文件夹是干什么的、输入在哪、产物去哪、什么是归档）；
-- 若干条 context 条目，分五类：约定 / 背景 / 决定 / 进度 / 材料。**来自指引文件的条目直接生效，Agent 自己的推断只是候选**，等人确认。每条都带来源文件。
-
-**交代任务：带着有效 context 干活。** 一个项目只有一个会话，每件事是这个会话里的一轮，Harness 在每一步把有效 context 编成一段不超过 6000 字的参考数据注入（决定 > 约定 > 进度 > 背景 > 材料），压缩之后重新注入。任务结束时 Harness 核验交付物：Agent 用 `ReportWorkspaceResult` 上报路径，同时 Harness 自己记录了它实际写过哪些文件，两边合并后逐个检查文件是否存在，才决定是"完成"还是"还差一点"。完成后自动追加一条"进度"条目，下次任务就知道这件事做过了。每个任务结束都有一张收尾卡：做出的文件、没做到的（与下一步重复的不再重复列）、读过哪些资料、这次记住的；模型认为还有一件值得做的事时，收尾卡后面多一张「接下来，也许值得做这一步」，写清依据，点了才会开新任务。
-
-**卡点、纠正、重开。** Agent 需要决定时提 AskUserQuestion 或等审批，任务进"需要你"列；如果它只是用一句话问了你，Harness 把任务标成"等你回复"而不是"完成"，你的回复送回同一个会话续接。要改它的理解，直接在对话里说（"以后 H1 以 Northwind 开头"）：Agent 会把它记成生效的约定，替代旧条目，下一件事立刻照做。关掉再打开：不会重跑初始化，正在跑的任务被标为中断可续；如果某条 context 依赖的源文件在两次打开之间变了，这条会被标成"来源变了"，不再注入。
-
-演示文件夹（`~/Continuo Demo/`）只是一份合成材料，和你自己的文件夹走同一条路径：打开后它开始了解，了解期间你可以浏览文件，也可以直接交代任务。理解卡上的"重新了解"会用真实的只读理解任务重跑一遍。
+**纠正它。** 它理解错了，就在对话里说一句（"以后 H1 以 Northwind 开头"）。当前会话立刻照办，这句话也会进入这件事的工作日志；下次打开时它从日志里读到。没有需要你去确认的推断条目，也没有第二个地方要维护。
 
 ### 界面：一个 Finder，右边挂着对话
 
 打开产品是一张启动卡：左边「新建项目」、右边「打开已有项目」，下面是最近打开的项目（只有名字和路径）。第一次启动先弹一个四步引导（只有"下一步"），结束直接回到启动卡。
 
-进入项目后是一整块：左边是文件窗口（面包屑、搜索、网格 / 列表切换、预览；产物可以和这次任务动手前的那一版对比，来自 Kimi Code 的 turn 级 file history），右边挂着对话框，两者同一底色、中间没有分界线，以文件为主。一个项目只有一个会话，没有"新会话"：每次发送就是这个会话的下一轮，一轮是一件事，做完在那一轮后面跟一张收尾卡（做出的文件、没做到的、读过的资料、这次记住的；模型认为还有一步值得做时，多一张「接下来，也许值得做这一步」，点了才会开始）。对话框上面三个页签：「对话」；「记录」是这个项目的全部工作日志，按事项列出时间、原始要求、后来的补充、读过的资料、这次记住的、结果、产出、未完成、建议的下一步；「事项」只列还没做完的事（进行中、等你回答或批准、等你回复、已暂停、被打断、没做完、还差一点），每条带上能做的动作，做完就从这里消失，只留在记录里——整个对话框就是这个项目的待办。了解这个文件夹是产品自己的事，不占一轮：读取时对话里只有一行阶段提示。界面只说人话；三个判断的名字只在首次启动的引导里出现一次。
+进入项目后是一整块：左边是文件窗口（面包屑、搜索、网格 / 列表切换、预览；产物可以和这次动手前的那一版对比，来自 Kimi Code 的 turn 级 file history），右边挂着对话框，两者同一底色、中间没有分界线，中缝可以左右拖动改宽度（双击回到默认）。对话框右上角三个按钮：
 
-视觉取自 Kimi Code 自己的设计变量：官方 web UI 以预构建包随仓库发布（`apps/kimi-code/dist-web`），`apps/continuo/src/theme.css` 的颜色、圆角、输入框圆角 32px、发送按钮都取自它的 `assets/index-*.css`；深浅色默认跟随系统，右上角一个图标切换。交互控件用 shadcn/ui（Radix）。
+| | 内容 |
+|---|---|
+| 对话 | 这个项目唯一的会话。每件事做完，收尾卡跟在那一轮后面：做出的文件、没做到的、读过的资料；模型认为还有一步值得做时，多一张「接下来，也许值得做这一步」，点了才会开始 |
+| 事项 | 只列还没做完的事（进行中、等你回答或批准、等你回复、已暂停、被打断、没做完、还差一点），每条带上能做的动作；做完就从这里消失 |
+| 记录 | 项目里 `work-log/` 的全部日志，按时间倒序 |
 
-## 3. Harness：继承什么、新增什么、为什么
+界面只说人话；三个判断的名字只在首次启动的引导里出现一次。视觉取自 Kimi Code 自己的设计变量：官方 web UI 以预构建包随仓库发布（`apps/kimi-code/dist-web`），`apps/continuo/src/theme.css` 的颜色、圆角、输入框圆角 32px、发送按钮都取自它的 `assets/index-*.css`；深浅色默认跟随系统，右上角可切换。交互控件用 shadcn/ui（Radix）。
 
-### 3.1 直接继承 Kimi Code 的部分
+## 2. Harness：继承什么、新增什么、为什么
+
+### 2.1 直接继承 Kimi Code 的部分
 
 | 模块 | 用法 |
 |---|---|
-| Agent loop（XState 双状态机、取消、steer） | 每个 Continuo 任务就是一个普通会话里的普通 turn；暂停 = `loop.cancel`，续接 = 同一会话再提交一条 prompt |
-| Reminder 机制 | context 注入走 `IAgentReminderService`：每步注入、压缩后重注、provider 出错跳过不炸 turn |
-| Profile 与 Feature seam | 两个新 profile（只读的 `continuo-init`、带记录工具的 `continuo-worker`）、两个新工具、一个 App 级存储和一个 Agent 级桥接服务，全部通过 `registerFeature` 挂进去，核心引擎零改动 |
-| 权限策略链 | 文件写入仍走原有审批；只在默认放行名单里加了两个 Continuo 自己的记录工具（见 3.3） |
+| Agent loop（XState 双状态机、取消、steer） | 每件事就是这个会话里的一个普通 turn；暂停 = `loop.cancel`，续接 = 同一会话再提交一条 prompt |
+| Reminder 机制 | 项目上下文注入走 `IAgentReminderService`：每步注入、压缩后重注、provider 出错跳过不炸 turn |
+| Profile 与 Feature seam | 两个新 profile（只读的 `continuo-init`、带上报工具的 `continuo-worker`）、两个新工具、一个 App 级存储和一个 Agent 级桥接服务，全部通过 `registerFeature` 挂进去，核心引擎零改动 |
+| 权限策略链 | 文件写入仍走原有审批；只在默认放行名单里加了 Continuo 自己的两个记录工具（见 2.3） |
 | 问题 / 审批 / 会话快照 / WS 事件流 | 前端直接复用 `/api/v1` 的 questions、approvals、snapshot 和 WebSocket，没有另造协议 |
-| 持久化 | 工作空间账本存在引擎自带的 `IAtomicDocumentStore`，随会话目录一起落盘 |
+| turn 级 file history | 产物「对比上一版」直接取 `/sessions/{id}/file-history/content?turn_id=…&phase=start` |
+| 持久化 | 项目状态存在引擎自带的 `IAtomicDocumentStore`，随会话目录一起落盘 |
 
-### 3.2 新增的部分
+### 2.2 新增的部分
 
 | 新增 | 落点 | 解决什么 |
 |---|---|---|
-| Context 账本（条目有来源、范围、状态、修订号、替代关系） | `packages/agent-core-v2/src/features/continuo/` | AGENTS.md 是一份人写的静态文件；这里的 context 是**有选择地积累**出来的，能纠正、能失效、能追溯到哪次任务或哪个文件 |
-| 首次打开的只读理解任务 | `kap-server/src/continuo/taskManager.ts` `startInit` + `continuo-init` profile | Kimi Code 的 `/init` 是一次性写 AGENTS.md 的子代理；Continuo 的理解有来源、有候选 / 生效之分、能被后续任务持续修正 |
-| 交付核验 | `finishTurn`：上报路径 ∪ 观测到的写入 → 逐个 stat | "模型说完成"不等于完成；Agent 忘了上报也不丢（这次验证里就有一次没上报，靠观测写入兜底） |
-| "等你回复"状态 | `finishTurn` 无写入无上报的分支 + `:reply` 动作 | 模型有时不用 AskUserQuestion 而是一句话问你，若照常标"完成"界面就撒谎了 |
-| 源文件指纹与 stale | `refreshSourceFingerprints`：打开时与任务结束时按 size+mtime 比对 | 材料变了，基于旧材料的 context 不该继续生效 |
-| 自动进度条目 | 任务完成时由 Harness 写入，不靠模型 | 下一个任务、下一次打开知道"哪些已经做过、产物在哪" |
+| 项目上下文（一段理解 + 若干条有来源的要点）与每步注入 | `packages/agent-core-v2/src/features/continuo/` | AGENTS.md 是一份人写的静态文件；这里的上下文是 Agent 读出来的，每条都指向来源文件，纠正它只需要在对话里说一句 |
+| 打开项目时的只读理解任务 | `kap-server/src/continuo/taskManager.ts` `startInit` + `continuo-init` profile | Kimi Code 的 `/init` 是一次性写 AGENTS.md 的子代理；Continuo 的理解有来源，并且不写用户的文件 |
+| 交付核验 | `settleTurn`：上报路径 ∪ 观测到的写入 → 逐个 stat | "模型说完成"不等于完成；Agent 忘了上报也不丢（验证里就出现过一次没上报，靠观测写入兜底） |
+| 「等你回复」状态 | `settleTurn` 无写入无上报的分支 + `:reply` 动作 | 模型有时不用 AskUserQuestion 而是一句话问你，若照常标"完成"界面就撒谎了 |
+| 一个项目一个会话 | `createUserTask` 复用上一件事的 session | 同一个文件夹里的事本来就是连着的；没有"新建对话"，也就不存在"这条信息在哪个对话里"的问题 |
+| 按轮记录 + 工作日志落盘 | `recordRound` / `writeWorkLog` | 过程要留在项目里，而不是留在应用状态里：换台机器、换个人、换个 Agent 打开这个文件夹，`work-log/` 都还在 |
 | 并发打开合并 | `open()` 的 in-flight map | 前端严格模式会把 open 发两次，修之前跑出了两个初始化任务 |
-| 对话 + 文件 + 事项 | `apps/continuo/`（Vite + React，独立于官方 web UI） | 显性层只做三件事：需要你时才打断、打断带上下文、随时可看可接管 |
+| Finder + 对话 + 事项 + 记录 | `apps/continuo/`（Vite + React，独立于官方 web UI） | 显性层只做三件事：需要你时才打断、打断带上下文、随时可看可接管 |
 
-### 3.3 一条权限策略的取舍
+### 2.3 一条权限策略的取舍
 
-`WorkspaceContext` 和 `ReportWorkspaceResult` 加进了默认放行名单。理由：它们写的是 Continuo 自己的账本，不是用户文件，每一条都能在面板里停用或纠正，属于可撤销操作；而每次都弹审批会把"记录一条约定"这种最该无感的动作变成打扰。文件写入、Shell 仍然按原策略链审批，验证里 Agent 想顺手改一份旧稿的 H1，被拒绝后停手并如实写进了"未解决"。
+`WorkspaceContext` 和 `ReportWorkspaceResult` 加进了默认放行名单。理由：它们写的是 Continuo 自己的项目状态，不是用户文件，属于可撤销操作；而每次都弹审批会把"记一条约定"这种最该无感的动作变成打扰。文件写入、Shell 仍然按原策略链审批。
 
-### 3.4 与 Kimi Code 已有机制的差异
+### 2.4 与 Kimi Code 已有机制的差异
 
-- **`/init`**：一次性、由模型写 AGENTS.md、无来源无生命周期。Continuo 的初始化是只读任务，产出结构化条目，来源可查，后续任务持续修正。
-- **goal feature**：跨 turn 的自动续跑与预算。Continuo 的任务不用 goal，续接始终由人触发（回复、继续），避免"自动续跑"和"用户暂停"打架。
-- **fileHistory**：按 turn 记录 Write/Edit 目标的快照，是撤销的安全网。Continuo 只借用同一来源（工具事件）做交付核验，不把它当审查对象。
-- **AGENTS.md 提醒**：进入子目录时提示存在指引文件。Continuo 把指引文件的内容变成生效条目，并在源文件变化时失效。
+- **`/init`**：一次性、由模型写 AGENTS.md、无来源。Continuo 的初始化是只读任务，产出带来源的理解与要点，不动用户的文件。
+- **goal feature**：跨 turn 的自动续跑与预算。Continuo 不用 goal，续接始终由人触发（回复、继续），避免"自动续跑"和"用户暂停"打架。
+- **fileHistory**：按 turn 记录 Write/Edit 目标的快照，是撤销的安全网。Continuo 借同一来源（工具事件）做交付核验和产物对比。
+- **AGENTS.md 提醒**：进入子目录时提示存在指引文件。Continuo 在打开项目时就把指引文件读成上下文，并且把每件事写回 `work-log/`。
 
-## 4. 验证结果（2026-09-20，Kimi 账号，模型 kimi-for-coding）
+## 3. 已知限制
 
-| 环节 | 结果 |
-|---|---|
-| 首次打开（3 个文件夹、6 个文件） | 约 60 秒完成，4 步；产出理解、2 条来自 README 的生效约定、3 条待确认推断 |
-| 纠正后行为 | 命名约定改为英文 slug 后，下一任务写出 `drafts/2026-09-20-q2-review.md`，正文中文、先结论、数字标来源 |
-| 卡点 → 回复 → 续接 | 材料缺定价决定时 Agent 停下询问；回复后同一会话续接；中途暂停再继续，Agent 先重读文件再改，无重复写入 |
-| 交付核验 | 一次 Agent 未上报，靠观测写入补齐并核验存在；一次上报 1 个交付物 + 1 个未解决项，进入"还差一点"，可手动标记完成 |
-| 规矩记录 | 「以后 H1 以 Northwind 开头」被以 `apply_user_instruction` 记录为生效约定，免审批；随后写出的摘要标题遵守 |
-| 越界拒绝 | Agent 想顺手改旧稿被拒绝后停手，未重试 |
-| 重开 | 打开计数递增、不重跑初始化；修改材料后依赖它的条目标为 stale，可一键恢复 |
-| 自动化测试 | 新增 9 个单测（context 编排、有效条目规则、存储修订与并发）+ 默认放行策略 2 个用例；`tsc`、`oxlint --type-aware`、`check-no-comments` 通过 |
-
-## 5. 已知限制
-
-- 模型不总是用 AskUserQuestion 提问、不总是调用上报工具；Harness 用"等你回复"和观测写入兜底，但兜底只覆盖 Write/Edit，Shell 里的写入观测不到。
-- 「记住的事」没有界面：Agent 自己推断出的候选条目目前无法确认，只有指引文件里的约定和你在对话里说的规矩会生效。
-- 同一工作空间同一时间只跑一个用户任务。
-- stale 只按文件大小和修改时间判断，不做内容 diff。
-- 理解与条目的语言跟随工作空间文档，靠 prompt 约束，不强制。
-- 前端用 1.5 秒轮询取账本变化，没有把账本变更接进 WebSocket。
+- 项目要点只在打开项目那次读出来；之后指引文件改了，要等你在对话里说一句，或者删掉项目状态重新打开。
+- 兜底只覆盖 Write/Edit：Shell 里的写入观测不到。
+- 同一个项目同一时间只跑一件事。
+- 工作日志由 Harness 从任务状态生成，不是模型按 AGENTS.md 自己写的；v4 里的 STAR、三分支 / worktree、轨迹反馈闭环都还没做。
+- 每一轮只记到 20 轮、每轮 20 个文件路径，超出截断。
+- 前端用 1.5 秒轮询取项目状态变化，没有把状态变更接进 WebSocket。
 - 文件工作区只读：能浏览目录、预览文本和 Markdown，不能在界面里编辑或上传文件。
 - 功能在实验开关 `KIMI_CODE_EXPERIMENTAL_CONTINUO` 后面，默认关闭。
 
-## 6. 运行方式
+## 4. 运行方式
 
 环境：Node ≥ 24.15、pnpm 10.33。更新的 Node 需要 `pnpm install --config.engine-strict=false`。
 
@@ -131,6 +114,6 @@ KIMI_CODE_EXPERIMENTAL_CONTINUO=1 node apps/kimi-code/dist/main.mjs web --no-ope
 KIMI_PORT=58627 pnpm dev:continuo
 ```
 
-打开 `http://127.0.0.1:5180/#token=<上面的 token>`，在启动卡上新建项目或打开已有项目。想用合成材料试：`curl -X POST -H "Authorization: Bearer <token>" http://127.0.0.1:58627/api/v1/continuo:demo` 会在 `~/Continuo Demo/` 生成一份并登记为项目，之后从「最近打开」或「打开已有项目」进入。演示数据是合成的，可以随便改。
+打开 `http://127.0.0.1:5180/#token=<上面的 token>`，新建一个项目，或打开自己的文件夹。
 
 代码位置：引擎侧 `packages/agent-core-v2/src/features/continuo/`，服务侧 `packages/kap-server/src/continuo/`（含只读文件接口 `files.ts`）与 `routes/continuo.ts`，前端 `apps/continuo/`（`pages/Launcher` 启动卡，`components/Finder` 文件窗口 + `components/Drawer` 对话抽屉），测试 `packages/agent-core-v2/test/features/continuo/`。

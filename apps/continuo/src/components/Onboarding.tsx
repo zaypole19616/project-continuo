@@ -5,9 +5,9 @@ import { BookMarked, CheckCircle2, FolderOpen, MessageCircleQuestion } from 'luc
 
 const STEPS = [
   { icon: FolderOpen, kicker: 'Continuo', title: '把一个文件夹交给它', body: 'Continuo 住在你的文件夹里。你交代任务，它在文件夹里干活，做完的东西放回文件夹。' },
-  { icon: BookMarked, kicker: 'Orderliness · 有条理', title: '它记住你怎么做事', body: '第一次打开，它先读一遍文件夹，记下约定和决定。以后每个任务都带着这些干，你不用再交代一遍。' },
+  { icon: BookMarked, kicker: 'Orderliness · 有条理', title: '它照你的规矩做事', body: '第一次打开，它先读一遍文件夹，弄清这里的约定。之后每件事做完都在 work-log/ 留一份日志，下次接着干不用你再交代一遍。' },
   { icon: MessageCircleQuestion, kicker: 'Proactiveness · 不乱打扰', title: '要你决定时才问', body: '材料里没有的决定它不编，会停下来问你。你回一句，它接着干。' },
-  { icon: CheckCircle2, kicker: 'Clarity · 说清楚', title: '做完了才说做完', body: '任务结束时它核对文件是不是真的在文件夹里，告诉你做了什么、记住了什么、下次打开会怎样。' },
+  { icon: CheckCircle2, kicker: 'Clarity · 说清楚', title: '做完了才说做完', body: '任务结束时它核对文件是不是真的在文件夹里，告诉你做了什么、还差什么、产物在哪。' },
 ];
 
 export const ONBOARDED_KEY = 'continuo.onboarded';

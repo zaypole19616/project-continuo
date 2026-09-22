@@ -1,5 +1,5 @@
-import { createHash, randomUUID } from 'node:crypto';
-import { stat } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { isAbsolute, relative, resolve } from 'node:path';
 
 import {
@@ -18,12 +18,12 @@ import {
   IWorkspaceService,
   getLiveSessionById,
   resumeSessionById,
-  type ContextEntry,
   type ContinuoTask,
   type ContinuoWorkspaceDoc,
   type IAgentScopeHandle,
   type ISessionScopeHandle,
   type Scope,
+  type TaskRound,
   type TaskStatus,
   type TaskTrigger,
 } from '@moonshot-ai/agent-core-v2';
@@ -31,7 +31,7 @@ import { ulid } from 'ulid';
 
 import { ensureMainAgent } from '../transport/mainAgent';
 import { ContinuoError } from './errors';
-import { renderScanForPrompt, scanFingerprint, scanWorkspace } from './scan';
+import { renderScanForPrompt, scanWorkspace } from './scan';
 
 export { ContinuoError } from './errors';
 
@@ -41,9 +41,12 @@ interface Attachment {
   readonly sessionId: string;
   readonly reads: Set<string>;
   reply: string;
+  prompt: string;
 }
 
 const INIT_STEP_BUDGET = 8;
+const WORK_LOG_DIR = 'work-log';
+const MAX_WORK_LOG_FILES = 60;
 
 const TASK_STATUS_LABEL: Record<TaskStatus, string> = {
   queued: '排队中',
@@ -107,9 +110,7 @@ export class ContinuoTaskManager {
       root: workspace.root,
       openCount: current.openCount + 1,
       tasks: current.tasks.map((task) => this.reconcileOnOpen(task)),
-      activity: [...current.activity, { at: new Date().toISOString(), kind: 'system', text: current.openCount === 0 ? '第一次打开这个文件夹' : '重新打开这个文件夹' }],
     }));
-    doc = await this.refreshSourceFingerprints(workspaceId);
     if (doc.init.status === 'pending' || doc.init.status === 'failed' || doc.init.status === 'stopped') {
       doc = await this.startInit(doc);
     } else if (doc.init.status === 'running' && !this.isLive(doc.init.taskId, doc)) {
@@ -120,14 +121,6 @@ export class ContinuoTaskManager {
 
   async snapshot(workspaceId: string): Promise<ContinuoWorkspaceDoc | undefined> {
     return this.store.load(workspaceId);
-  }
-
-  async reunderstand(workspaceId: string): Promise<ContinuoWorkspaceDoc> {
-    const doc = await this.requireDoc(workspaceId);
-    if (doc.init.status === 'running' && this.isLive(doc.init.taskId, doc)) return doc;
-    const running = doc.tasks.find((task) => task.kind === 'user' && (task.status === 'running' || task.status === 'verifying' || task.status === 'queued'));
-    if (running !== undefined) throw new ContinuoError('invalid_state', `task ${running.taskId} is still ${running.status}; wait for it before re-reading the folder`);
-    return this.startInit(doc);
   }
 
   async createUserTask(workspaceId: string, text: string, clientRequestId?: string): Promise<{ doc: ContinuoWorkspaceDoc; task: ContinuoTask }> {
@@ -167,10 +160,9 @@ export class ContinuoTaskManager {
     await this.store.update(workspaceId, (current) => ({
       ...current,
       tasks: [...current.tasks, task],
-      activity: [...current.activity, { at: now, taskId, kind: 'task', text: `新任务：${task.title}` }],
     }));
     this.attach(workspaceId, taskId, session, agent);
-    const promptId = this.submitPrompt(agent, text);
+    const promptId = this.submitPrompt(agent, taskId, text);
     const updated = await this.patchTask(workspaceId, taskId, (current) => ({ ...current, status: 'running', promptIds: [...current.promptIds, promptId] }));
     return { doc: updated, task: updated.tasks.find((candidate) => candidate.taskId === taskId)! };
   }
@@ -209,7 +201,7 @@ export class ContinuoTaskManager {
       : task.status === 'failed'
         ? `The previous attempt failed (${task.lastError ?? 'unknown error'}).`
         : 'The task was paused or interrupted.';
-    const promptId = this.submitPrompt(agent, `Continue the task: "${task.title}". ${reason} First check what already exists in the workspace so you do not redo finished work, then finish the remaining part. Call ReportWorkspaceResult before your final answer.`);
+    const promptId = this.submitPrompt(agent, taskId, `Continue the task: "${task.title}". ${reason} First check what already exists in the workspace so you do not redo finished work, then finish the remaining part. Call ReportWorkspaceResult before your final answer.`, '继续这个任务');
     return this.patchTask(workspaceId, taskId, (current) => ({ ...current, status: 'running', pauseRequested: false, trigger: 'resume' as TaskTrigger, promptIds: [...current.promptIds, promptId], endedAt: undefined, verification: undefined, lastError: undefined }));
   }
 
@@ -225,76 +217,27 @@ export class ContinuoTaskManager {
     const agent = await ensureMainAgent(session);
     await this.ensureModel(agent);
     this.attach(workspaceId, taskId, session, agent);
-    const promptId = this.submitPrompt(agent, text);
-    return this.patchTask(workspaceId, taskId, (current) => ({ ...current, status: 'running', pendingInteraction: 'none', phase: undefined, trigger: 'reply' as TaskTrigger, promptIds: [...current.promptIds, promptId], supplements: [...(current.supplements ?? []), text], endedAt: undefined, verification: undefined }), { activity: `你补充了要求：${text.length > 60 ? `${text.slice(0, 60)}…` : text}` });
-  }
-
-  async complete(workspaceId: string, taskId: string): Promise<ContinuoWorkspaceDoc> {
-    const doc = await this.requireDoc(workspaceId);
-    const task = this.requireTask(doc, taskId);
-    if (!(task.status === 'awaiting_user' && task.pendingInteraction === 'reply') && task.status !== 'needs_review') {
-      throw new ContinuoError('invalid_state', `task ${taskId} is ${task.status}; only tasks waiting for your reply or review can be marked done`);
-    }
-    const endedAt = new Date().toISOString();
-    return this.patchTask(workspaceId, taskId, (current) => ({ ...current, status: 'completed', pendingInteraction: 'none', phase: undefined, endedAt }), { activity: '你把这个任务标记为完成' });
-  }
-
-  async updateContextEntry(workspaceId: string, entryId: string, patch: { text?: string; status?: 'active' | 'inactive'; expectedRevision: number }): Promise<ContinuoWorkspaceDoc> {
-    const doc = await this.requireDoc(workspaceId);
-    const entry = doc.context.find((candidate) => candidate.id === entryId);
-    if (entry === undefined) throw new ContinuoError('entry_not_found', `context entry ${entryId} does not exist`);
-    if (entry.revision !== patch.expectedRevision) throw new ContinuoError('revision_conflict', `entry ${entryId} is at revision ${entry.revision}, not ${patch.expectedRevision}`);
-    const now = new Date().toISOString();
-    return this.store.update(workspaceId, (current) => {
-      const context = [...current.context];
-      const index = context.findIndex((candidate) => candidate.id === entryId);
-      const old = context[index]!;
-      if (patch.text !== undefined && patch.text !== old.text) {
-        context[index] = { ...old, status: 'superseded', updatedAt: now };
-        context.push({ ...old, id: `ctx_${randomUUID().slice(0, 8)}`, text: patch.text, origin: 'user', status: 'active', revision: 1, supersedes: old.id, sourceRefs: [...old.sourceRefs, 'user: edited in Continuo'], createdAt: now, updatedAt: now });
-      } else if (patch.status !== undefined) {
-        context[index] = { ...old, status: patch.status, origin: patch.status === 'active' ? 'user' : old.origin, revision: old.revision + 1, updatedAt: now };
-      }
-      return {
-        ...current,
-        context,
-        activity: [...current.activity, { at: now, kind: 'user', text: patch.text !== undefined ? `你改了一条记住的事：${patch.text}` : patch.status === 'active' ? '你确认了一条记住的事' : '你停用了一条记住的事' }],
-      };
-    });
+    const promptId = this.submitPrompt(agent, taskId, text);
+    return this.patchTask(workspaceId, taskId, (current) => ({ ...current, status: 'running', pendingInteraction: 'none', phase: undefined, trigger: 'reply' as TaskTrigger, promptIds: [...current.promptIds, promptId], supplements: [...(current.supplements ?? []), text], endedAt: undefined, verification: undefined }));
   }
 
   async workLog(workspaceId: string): Promise<string> {
     const doc = await this.requireDoc(workspaceId);
-    if (doc.tasks.length === 0) return '还没有工作记录。';
-    const byDay = new Map<string, ContinuoTask[]>();
-    for (const task of doc.tasks) {
-      const day = task.createdAt.slice(0, 10);
-      byDay.set(day, [...(byDay.get(day) ?? []), task]);
+    const dir = resolve(doc.root, WORK_LOG_DIR);
+    let names: string[];
+    try {
+      names = (await readdir(dir)).filter((name) => name.endsWith('.md'));
+    } catch {
+      return '还没有工作记录。任务做完后，这里会列出项目里 work-log/ 下的日志。';
     }
-    const lines: string[] = [];
-    for (const [day, tasks] of [...byDay.entries()].toReversed()) {
-      lines.push(`## ${day}`, '');
-      for (const task of [...tasks].toReversed()) lines.push(...this.taskLog(doc, task), '');
-    }
-    return lines.join('\n');
-  }
-
-  private taskLog(doc: ContinuoWorkspaceDoc, task: ContinuoTask): string[] {
-    const clock = (iso?: string) => (iso === undefined ? '' : iso.slice(11, 16));
-    const span = `${clock(task.createdAt)}${task.endedAt === undefined ? ' 起' : `–${clock(task.endedAt)}`}`;
-    const lines = [`### ${span} ${task.kind === 'init' ? '了解这个文件夹' : task.title}`, '', `- 状态：${TASK_STATUS_LABEL[task.status]}${task.lastError === undefined ? '' : `（${task.lastError}）`}`];
-    if (task.kind === 'user') lines.push(`- 原始要求：${task.title}`);
-    for (const item of task.supplements ?? []) lines.push(`- 后来补充：${item}`);
-    if ((task.sources ?? []).length > 0) lines.push(`- 读过的资料：${(task.sources ?? []).join('、')}`);
-    const remembered = doc.context.filter((entry) => entry.taskId === task.taskId && entry.kind !== 'progress');
-    for (const entry of remembered) lines.push(`- 记住：${entry.text}${entry.status === 'candidate' ? '（等你确认）' : ''}`);
-    if (task.report !== undefined) {
-      if (task.report.summary.length > 0) lines.push(`- 结果：${task.report.summary}`);
-      for (const item of task.report.deliverables) lines.push(`- 产出：${item.path}${item.exists === false ? '（没找到这个文件）' : ''}`);
-      for (const item of task.report.unresolved) lines.push(`- 未完成：${item}`);
-      if (task.report.nextStep !== undefined) lines.push(`- 建议的下一步：${task.report.nextStep.title}`);
-    }
-    return lines;
+    if (names.length === 0) return '还没有工作记录。任务做完后，这里会列出项目里 work-log/ 下的日志。';
+    const dated = await Promise.all(names.map(async (name) => {
+      const info = await stat(resolve(dir, name)).catch(() => undefined);
+      return { name, at: info?.mtimeMs ?? 0 };
+    }));
+    const ordered = dated.toSorted((a, b) => b.at - a.at).slice(0, MAX_WORK_LOG_FILES);
+    const parts = await Promise.all(ordered.map((item) => readFile(resolve(dir, item.name), 'utf8').catch(() => '')));
+    return parts.filter((part) => part.trim().length > 0).join('\n\n---\n\n');
   }
 
   private reconcileOnOpen(task: ContinuoTask): ContinuoTask {
@@ -313,16 +256,14 @@ export class ContinuoTaskManager {
   private async startInit(doc: ContinuoWorkspaceDoc): Promise<ContinuoWorkspaceDoc> {
     const workspaceId = doc.workspaceId;
     const scan = await scanWorkspace(doc.root);
-    const fingerprint = scanFingerprint(scan);
     const now = new Date().toISOString();
     const taskId = `task_${randomUUID().slice(0, 8)}`;
     if (scan.entries.length === 0) {
       return this.store.update(workspaceId, (current) => ({
         ...current,
         scan,
-        init: { status: 'pending', fingerprint, startedAt: now, endedAt: now },
+        init: { status: 'pending', startedAt: now, endedAt: now },
         understanding: { text: '这个文件夹是空的。等你放进材料或交代第一件事；下次打开会重新了解一遍。', sourceRefs: [], updatedAt: now },
-        activity: [...current.activity, { at: now, kind: 'system', text: '空文件夹：不需要了解，等你交代第一件事' }],
       }));
     }
     const session = await this.core.accessor.get(ISessionManager).create({ workspaceId, workDir: doc.root, mainAgentBinding: { profile: CONTINUO_INIT_PROFILE } });
@@ -346,9 +287,8 @@ export class ContinuoTaskManager {
     await this.store.update(workspaceId, (current) => ({
       ...current,
       scan,
-      init: { status: 'running', fingerprint, taskId, startedAt: now },
+      init: { status: 'running', taskId, startedAt: now },
       tasks: [...current.tasks, task],
-      activity: [...current.activity, { at: now, taskId, kind: 'task', text: '开始了解这个文件夹' }],
     }));
     this.attach(workspaceId, taskId, session, agent);
     const prompt = [
@@ -358,11 +298,13 @@ export class ContinuoTaskManager {
       '',
       renderScanForPrompt(scan, doc.root),
     ].join('\n');
-    const promptId = this.submitPrompt(agent, prompt);
+    const promptId = this.submitPrompt(agent, taskId, prompt, '');
     return this.patchTask(workspaceId, taskId, (current) => ({ ...current, status: 'running', promptIds: [promptId] }));
   }
 
-  private submitPrompt(agent: IAgentScopeHandle, text: string): string {
+  private submitPrompt(agent: IAgentScopeHandle, taskId: string, text: string, roundPrompt: string = text): string {
+    const attachment = this.attachments.get(taskId);
+    if (attachment !== undefined) attachment.prompt = roundPrompt;
     const loop = agent.accessor.get(IAgentLoopService);
     const promptId = `msg_${ulid()}`;
     loop.submit({
@@ -397,16 +339,16 @@ export class ContinuoTaskManager {
         if (pending !== 'none') return { ...current, status: 'awaiting_user', pendingInteraction: pending, phase: pending === 'question' ? '等待你回答' : '等待你批准' };
         if (current.status === 'awaiting_user' && change.state.busy) return { ...current, status: 'running', pendingInteraction: 'none', phase: undefined };
         return current;
-      }, { silent: true });
+      });
     });
-    this.attachments.set(taskId, { dispose: () => { onEvent.dispose(); onActivity.dispose(); }, writes: new Map(), reads: new Set(), reply: '', sessionId });
+    this.attachments.set(taskId, { dispose: () => { onEvent.dispose(); onActivity.dispose(); }, writes: new Map(), reads: new Set(), reply: '', prompt: '', sessionId });
   }
 
   private async onAgentEvent(workspaceId: string, taskId: string, event: Record<string, unknown>): Promise<void> {
     const type = event['type'];
     if (type === 'turn.started') {
       const attachment = this.attachments.get(taskId);
-      if (attachment !== undefined) { attachment.reply = ''; attachment.writes.clear(); }
+      if (attachment !== undefined) { attachment.reply = ''; attachment.writes.clear(); attachment.reads.clear(); }
       return;
     }
     if (type === 'assistant.delta') {
@@ -424,7 +366,7 @@ export class ContinuoTaskManager {
           cacheReadTokens: current.usage.cacheReadTokens + (usage.inputCacheRead ?? 0),
           outputTokens: current.usage.outputTokens + (usage.output ?? 0),
         },
-      }), { silent: true });
+      }));
       return;
     }
     if (type === 'tool.call.started') {
@@ -435,7 +377,7 @@ export class ContinuoTaskManager {
       if (written !== undefined) attachment?.writes.set(String(event['toolCallId']), { path: written, turnId });
       const read = readPath(event['display']);
       if (read !== undefined) attachment?.reads.add(read);
-      await this.patchTask(workspaceId, taskId, (current) => ({ ...current, phase: description }), { silent: true });
+      await this.patchTask(workspaceId, taskId, (current) => ({ ...current, phase: description }));
       return;
     }
     if (type === 'tool.result') {
@@ -450,17 +392,23 @@ export class ContinuoTaskManager {
   }
 
   private async finishTurn(workspaceId: string, taskId: string, reason: string, errorMessage: string | undefined): Promise<void> {
+    await this.settleTurn(workspaceId, taskId, reason, errorMessage);
+    await this.writeWorkLog(workspaceId, taskId);
+  }
+
+  private async settleTurn(workspaceId: string, taskId: string, reason: string, errorMessage: string | undefined): Promise<void> {
     const doc = await this.requireDoc(workspaceId);
     const task = this.requireTask(doc, taskId);
     const endedAt = new Date().toISOString();
+    if (task.kind === 'user') await this.recordRound(workspaceId, taskId, doc.root, endedAt);
     if (reason === 'cancelled') {
       const status: TaskStatus = task.pauseRequested ? 'paused' : 'interrupted';
-      await this.patchTask(workspaceId, taskId, (current) => ({ ...current, status, phase: undefined, pendingInteraction: 'none', endedAt }), { activity: status === 'paused' ? '你暂停了这个任务' : '这一轮被中断' });
+      await this.patchTask(workspaceId, taskId, (current) => ({ ...current, status, phase: undefined, pendingInteraction: 'none', endedAt }));
       if (task.kind === 'init') await this.store.update(workspaceId, (current) => ({ ...current, init: { ...current.init, status: 'stopped', endedAt } }));
       return;
     }
     if (reason === 'failed' || reason === 'blocked') {
-      await this.patchTask(workspaceId, taskId, (current) => ({ ...current, status: 'failed', phase: undefined, pendingInteraction: 'none', lastError: errorMessage ?? reason, endedAt }), { activity: `这次没能完成：${errorMessage ?? reason}` });
+      await this.patchTask(workspaceId, taskId, (current) => ({ ...current, status: 'failed', phase: undefined, pendingInteraction: 'none', lastError: errorMessage ?? reason, endedAt }));
       if (task.kind === 'init') await this.store.update(workspaceId, (current) => ({ ...current, init: { ...current.init, status: 'failed', endedAt } }));
       return;
     }
@@ -469,31 +417,23 @@ export class ContinuoTaskManager {
         ...current,
         init: { ...current.init, status: current.scan?.truncated === true ? 'partial' : 'completed', endedAt },
         tasks: current.tasks.map((candidate) => (candidate.taskId === taskId ? { ...candidate, status: 'completed' as TaskStatus, phase: undefined, endedAt, updatedAt: endedAt } : candidate)),
-        activity: [...current.activity, { at: endedAt, taskId, kind: 'task', text: current.understanding === undefined ? '了解结束，但没有形成理解' : '了解完成' }],
       }));
       return;
     }
-    await this.patchTask(workspaceId, taskId, (current) => ({ ...current, status: 'verifying', phase: '核验交付' }), { silent: true });
+    await this.patchTask(workspaceId, taskId, (current) => ({ ...current, status: 'verifying', phase: '核验交付' }));
     const fresh = await this.requireDoc(workspaceId);
     const current = this.requireTask(fresh, taskId);
     const notes: string[] = [];
     const observedWrites = new Map<string, number | undefined>();
     for (const item of this.attachments.get(taskId)?.writes.values() ?? []) observedWrites.set(this.relativeToRoot(fresh.root, item.path), item.turnId);
     const observed = [...observedWrites.keys()];
-    const sources = [...new Set([...(current.sources ?? []), ...[...(this.attachments.get(taskId)?.reads ?? [])].map((path) => this.relativeToRoot(fresh.root, path))])].slice(0, 40);
     let report = current.report;
     if (report === undefined && observed.length > 0) {
       report = { summary: '产物由实际写入的文件推断得出；Agent 这次没有上报。', deliverables: observed.map((path) => ({ path, note: '实际写入', turnId: observedWrites.get(path) })), unresolved: [], reportedAt: endedAt };
       notes.push('agent did not report; deliverables inferred from observed writes');
     } else if (report === undefined) {
       const reply = (this.attachments.get(taskId)?.reply ?? '').trim().slice(0, 4000);
-      await this.store.update(workspaceId, (doc2) => ({
-        ...doc2,
-        tasks: doc2.tasks.map((candidate) => candidate.taskId === taskId
-          ? { ...candidate, status: 'awaiting_user' as TaskStatus, pendingInteraction: 'reply' as const, phase: '已回复，等你确认或继续', lastReply: reply === '' ? undefined : reply, verification: ['no files written and no result report; the agent replied and is waiting for you'], updatedAt: endedAt }
-          : candidate),
-        activity: [...doc2.activity, { at: endedAt, taskId, kind: 'task' as const, text: '它回复了你，没有改动文件，在等你回话' }],
-      }));
+      await this.patchTask(workspaceId, taskId, (candidate) => ({ ...candidate, status: 'awaiting_user' as TaskStatus, pendingInteraction: 'reply' as const, phase: '已回复，等你确认或继续', lastReply: reply === '' ? undefined : reply, verification: ['no files written and no result report; the agent replied and is waiting for you'] }));
       return;
     } else {
       report = { ...report, deliverables: report.deliverables.map((item) => {
@@ -517,70 +457,55 @@ export class ContinuoTaskManager {
     const status: TaskStatus = missing || (report?.unresolved.length ?? 0) > 0 ? 'needs_review' : 'completed';
     const finalReport = report === undefined ? undefined : { ...report, deliverables };
     const lastReply = (this.attachments.get(taskId)?.reply ?? '').trim().slice(0, 4000);
-    const progress = this.progressEntry(current, status, deliverables, endedAt);
-    await this.store.update(workspaceId, (doc2) => ({
-      ...doc2,
-      tasks: doc2.tasks.map((candidate) => candidate.taskId === taskId
-        ? { ...candidate, status, phase: undefined, pendingInteraction: 'none', verification: notes, report: finalReport, sources, lastReply: lastReply === '' ? candidate.lastReply : lastReply, endedAt, updatedAt: endedAt }
-        : candidate),
-      context: progress === undefined ? doc2.context : [...doc2.context, progress],
-      activity: [
-        ...doc2.activity,
-        { at: endedAt, taskId, kind: 'task' as const, text: status === 'completed' ? `任务完成：${deliverables.length} 份产物已核对` : `还差一点：${notes.join('；')}` },
-        ...(progress === undefined ? [] : [{ at: endedAt, taskId, kind: 'context' as const, text: `记下一条进度：${progress.text}` }]),
-      ],
+    await this.patchTask(workspaceId, taskId, (candidate) => ({
+      ...candidate,
+      status,
+      phase: undefined,
+      pendingInteraction: 'none',
+      verification: notes,
+      report: finalReport,
+      lastReply: lastReply === '' ? candidate.lastReply : lastReply,
+      endedAt,
     }));
-    await this.refreshSourceFingerprints(workspaceId);
   }
 
-  private progressEntry(task: ContinuoTask, status: TaskStatus, deliverables: ReadonlyArray<{ path: string; exists?: boolean }>, at: string): ContextEntry | undefined {
-    const existing = deliverables.filter((item) => item.exists !== false).map((item) => item.path);
-    if (existing.length === 0 && status === 'completed') return undefined;
-    const text = status === 'completed'
-      ? `任务「${task.title}」已完成，产物：${existing.join('、')}。`
-      : `任务「${task.title}」还差一点${existing.length > 0 ? `，已有产物：${existing.join('、')}` : ''}。`;
-    return { id: `ctx_${randomUUID().slice(0, 8)}`, kind: 'progress', text, scope: { type: 'workspace' }, sourceRefs: [`task:${task.taskId}`, ...existing], origin: 'agent', status: 'active', revision: 1, taskId: task.taskId, createdAt: at, updatedAt: at };
+  private async recordRound(workspaceId: string, taskId: string, root: string, at: string): Promise<void> {
+    const attachment = this.attachments.get(taskId);
+    if (attachment === undefined) return;
+    const reads = [...new Set([...attachment.reads].map((path) => this.relativeToRoot(root, path)))].slice(0, 20);
+    const writes = [...new Set([...attachment.writes.values()].map((item) => this.relativeToRoot(root, item.path)))].slice(0, 20);
+    const round: TaskRound = { at, prompt: attachment.prompt.slice(0, 400), reads, writes, reply: attachment.reply.trim().slice(0, 600) };
+    attachment.prompt = '';
+    if (round.prompt === '' && round.reply === '' && reads.length === 0 && writes.length === 0) return;
+    await this.patchTask(workspaceId, taskId, (current) => ({
+      ...current,
+      rounds: [...(current.rounds ?? []), round].slice(-20),
+      sources: [...new Set([...(current.sources ?? []), ...reads])].slice(0, 40),
+    }));
   }
 
-  private async refreshSourceFingerprints(workspaceId: string): Promise<ContinuoWorkspaceDoc> {
+  private async writeWorkLog(workspaceId: string, taskId: string): Promise<void> {
     const doc = await this.requireDoc(workspaceId);
-    const prints = new Map<string, string | undefined>();
-    for (const entry of doc.context) {
-      if (entry.status !== 'active' && entry.status !== 'candidate') continue;
-      if (entry.kind === 'progress') continue;
-      const files = entry.sourceRefs.filter((ref) => !ref.includes(':') || isAbsolute(ref));
-      if (files.length === 0) continue;
-      prints.set(entry.id, await this.fingerprintFiles(doc.root, files));
+    const task = doc.tasks.find((candidate) => candidate.taskId === taskId);
+    if (task === undefined) return;
+    const dir = resolve(doc.root, WORK_LOG_DIR);
+    try {
+      await mkdir(dir, { recursive: true });
+      const path = task.logPath ?? await this.pickLogPath(dir, task);
+      await writeFile(resolve(doc.root, path), renderWorkLog(doc, task), 'utf8');
+      if (task.logPath !== path) await this.patchTask(workspaceId, taskId, (current) => ({ ...current, logPath: path }));
+    } catch {
+      return;
     }
-    if (prints.size === 0) return doc;
-    const now = new Date().toISOString();
-    return this.store.update(workspaceId, (current) => {
-      const stale: string[] = [];
-      const context = current.context.map((entry) => {
-        const print = prints.get(entry.id);
-        if (print === undefined) return entry;
-        if (entry.sourceFingerprint === undefined) return { ...entry, sourceFingerprint: print };
-        if (entry.sourceFingerprint === print || entry.status !== 'active') return entry;
-        stale.push(entry.text.slice(0, 60));
-        return { ...entry, status: 'stale' as const, sourceFingerprint: print, revision: entry.revision + 1, updatedAt: now };
-      });
-      if (stale.length === 0 && context.every((entry, index) => entry === current.context[index])) return current;
-      return { ...current, context, activity: stale.length === 0 ? current.activity : [...current.activity, ...stale.map((text) => ({ at: now, kind: 'context' as const, text: `来源变了，暂时不用这条：${text}` }))] };
-    });
   }
 
-  private async fingerprintFiles(root: string, files: readonly string[]): Promise<string> {
-    const hash = createHash('sha1');
-    for (const file of files) {
-      const abs = isAbsolute(file) ? file : resolve(root, file);
-      try {
-        const info = await stat(abs);
-        hash.update(`${file}:${info.size}:${info.mtimeMs}\n`);
-      } catch {
-        hash.update(`${file}:missing\n`);
-      }
-    }
-    return hash.digest('hex').slice(0, 16);
+  private async pickLogPath(dir: string, task: ContinuoTask): Promise<string> {
+    const day = (task.endedAt ?? task.createdAt).slice(0, 10);
+    const base = `work-log-${day}-${logSlug(task.kind === 'init' ? '了解这个文件夹' : task.title)}`;
+    const taken = new Set(await readdir(dir).catch(() => []));
+    let name = `${base}.md`;
+    for (let index = 2; taken.has(name); index += 1) name = `${base}-${index}.md`;
+    return `${WORK_LOG_DIR}/${name}`;
   }
 
   private relativeToRoot(root: string, path: string): string {
@@ -596,7 +521,7 @@ export class ContinuoTaskManager {
     try { await stat(abs); return true; } catch { return false; }
   }
 
-  private async patchTask(workspaceId: string, taskId: string, mutate: (task: ContinuoTask) => ContinuoTask, options: { silent?: boolean; activity?: string } = {}): Promise<ContinuoWorkspaceDoc> {
+  private async patchTask(workspaceId: string, taskId: string, mutate: (task: ContinuoTask) => ContinuoTask): Promise<ContinuoWorkspaceDoc> {
     return this.store.update(workspaceId, (current) => {
       const now = new Date().toISOString();
       let changed = false;
@@ -608,8 +533,7 @@ export class ContinuoTaskManager {
         return { ...next, updatedAt: now };
       });
       if (!changed) return current;
-      const activity = options.activity === undefined ? current.activity : [...current.activity, { at: now, taskId, kind: 'tool' as const, text: options.activity }];
-      return { ...current, tasks, activity };
+      return { ...current, tasks };
     });
   }
 
@@ -624,4 +548,64 @@ export class ContinuoTaskManager {
     if (task === undefined) throw new ContinuoError('task_not_found', `task ${taskId} does not exist`);
     return task;
   }
+}
+
+function logSlug(title: string): string {
+  const head = (title.split(/[\n，。,.；;!?！？]/)[0] ?? '').trim();
+  const cleaned = head.replaceAll(/[\\/:*?"<>|]/g, '').replaceAll(/\s+/g, '-').slice(0, 20).replaceAll(/^[-.]+|[-.]+$/g, '');
+  return cleaned.length === 0 ? 'task' : cleaned;
+}
+
+function clock(iso: string | undefined): string {
+  return iso === undefined ? '' : `${iso.slice(0, 10)} ${iso.slice(11, 16)}`;
+}
+
+function renderWorkLog(doc: ContinuoWorkspaceDoc, task: ContinuoTask): string {
+  const title = task.kind === 'init' ? '了解这个文件夹' : task.title;
+  const deliverables = task.report?.deliverables ?? [];
+  const lines = [`# 工作日志：${title}`, '', '| 字段 | 值 |', '| --- | --- |'];
+  lines.push(`| 开始 | ${clock(task.createdAt)} |`);
+  if (task.endedAt !== undefined) lines.push(`| 结束 | ${clock(task.endedAt)} |`);
+  lines.push(`| 状态 | ${TASK_STATUS_LABEL[task.status]}${task.lastError === undefined ? '' : `（${task.lastError}）`} |`);
+  lines.push(`| 项目目录 | ${doc.root} |`);
+  if ((task.sources ?? []).length > 0) lines.push(`| 读过的文件 | ${(task.sources ?? []).join('、')} |`);
+  if (deliverables.length > 0) lines.push(`| 产出文件 | ${deliverables.map((item) => item.path).join('、')} |`);
+  if (task.kind === 'init') {
+    if (doc.understanding !== undefined) lines.push('', '## 它理解到的', '', doc.understanding.text.trim());
+    if (doc.context.length > 0) {
+      lines.push('', '## 记下的项目要点', '');
+      for (const entry of doc.context) lines.push(`- ${entry.text}${entry.sourceRefs.length > 0 ? `（来源：${entry.sourceRefs.join('、')}）` : ''}`);
+    }
+    return `${lines.join('\n')}\n`;
+  }
+  const rounds = task.rounds ?? [];
+  lines.push('', '## 原始要求', '', `> ${(rounds[0]?.prompt ?? task.title).replaceAll('\n', '\n> ')}`);
+  if (rounds.length > 0) {
+    lines.push('', '## 过程');
+    for (const [index, round] of rounds.entries()) {
+      const label = index === 0 ? '开始' : round.prompt.split('\n')[0];
+      lines.push('', `### ${clock(round.at)} ${label}`, '');
+      if (round.reads.length > 0) lines.push(`- 读：${round.reads.join('、')}`);
+      if (round.writes.length > 0) lines.push(`- 写：${round.writes.join('、')}`);
+      if (round.reply !== '') {
+        const reply = round.reply.split('\n').filter((part) => part.trim() !== '').join(' ');
+        lines.push(`- 回复：${reply.length > 240 ? `${reply.slice(0, 240)}…` : reply}`);
+      }
+    }
+  }
+  if (task.report !== undefined) {
+    if (task.report.summary.trim() !== '') lines.push('', '## 结果', '', task.report.summary.trim());
+    if (deliverables.length > 0) {
+      lines.push('', '## 产出', '');
+      for (const item of deliverables) lines.push(`- ${item.path}${item.exists === false ? '（没找到这个文件）' : ''}${item.note === undefined || item.note === '' ? '' : `：${item.note}`}`);
+    }
+    if (task.report.unresolved.length > 0) {
+      lines.push('', '## 未完成', '');
+      for (const item of task.report.unresolved) lines.push(`- ${item}`);
+    }
+    if (task.report.nextStep !== undefined) {
+      lines.push('', '## 建议的下一步', '', `- ${task.report.nextStep.title}：${task.report.nextStep.reason}`);
+    }
+  }
+  return `${lines.join('\n')}\n`;
 }

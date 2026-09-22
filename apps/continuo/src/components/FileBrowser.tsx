@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, BookOpen, ChevronRight, GitCompare, LayoutGrid, List, PanelRightOpen, Search, Sparkles } from 'lucide-react';
+import { ArrowLeft, BookOpen, ChevronRight, GitCompare, LayoutGrid, List, Search, Sparkles } from 'lucide-react';
 import { continuoFiles, type ContinuoDoc, type ContinuoTask, type FileContent, type FileEntry, type FileListing } from '#/lib/api';
 import { renderMarkdown } from '#/lib/markdown';
 import { collapseUnchanged, diffLines } from '#/lib/diff';
@@ -9,9 +9,9 @@ import { Button } from '#/components/ui/button';
 export type NavTarget = { kind: 'folder'; path: string } | { kind: 'file'; path: string };
 type SortKey = 'name' | 'time' | 'size';
 
-export function FileBrowser({ workspaceId, root, doc, target, agentCollapsed, searchRef, onNavigate, onOpenAgent, onSelectTask, onError }: {
-  workspaceId: string; root: string; doc: ContinuoDoc | null; target: NavTarget; agentCollapsed: boolean; searchRef: React.RefObject<HTMLInputElement | null>;
-  onNavigate: (target: NavTarget) => void; onOpenAgent: () => void; onSelectTask: (taskId: string) => void; onError: (message: string) => void;
+export function FileBrowser({ workspaceId, root, doc, target, searchRef, onNavigate, onError }: {
+  workspaceId: string; root: string; doc: ContinuoDoc | null; target: NavTarget; searchRef: React.RefObject<HTMLInputElement | null>;
+  onNavigate: (target: NavTarget) => void; onError: (message: string) => void;
 }) {
   const folderPath = target.kind === 'folder' ? target.path : target.path.split('/').slice(0, -1).join('/');
   const [listing, setListing] = useState<FileListing | null>(null);
@@ -77,11 +77,10 @@ export function FileBrowser({ workspaceId, root, doc, target, agentCollapsed, se
           <button className={view === 'grid' ? 'is-active' : ''} title="网格" onClick={() => switchView('grid')}><LayoutGrid size={16} /></button>
           <button className={view === 'list' ? 'is-active' : ''} title="列表" onClick={() => switchView('list')}><List size={16} /></button>
         </div>
-        {agentCollapsed && <Button variant="ghost" size="icon" title="打开 Agent 面板" onClick={onOpenAgent}><PanelRightOpen size={18} /></Button>}
       </header>
 
       {target.kind === 'file' ? (
-        <div className="pane-body"><FilePreview file={file} producer={producer} taskTitle={taskTitle} onBack={() => onNavigate({ kind: 'folder', path: folderPath })} onSelectTask={onSelectTask} onError={onError} /></div>
+        <div className="pane-body"><FilePreview file={file} producer={producer} taskTitle={taskTitle} onBack={() => onNavigate({ kind: 'folder', path: folderPath })}  onError={onError} /></div>
       ) : (
         <>
           <div className="toolbar chrome">
@@ -91,8 +90,8 @@ export function FileBrowser({ workspaceId, root, doc, target, agentCollapsed, se
           <div className="pane-body">
             {!listing ? <div className="text-3 fs-meta p-6">读取中…</div>
               : entries.length === 0 ? <EmptyFolder query={query} />
-              : view === 'grid' ? <Grid entries={entries} taskTitle={taskTitle} onNavigate={onNavigate} onSelectTask={onSelectTask} />
-              : <FileTable entries={entries} taskTitle={taskTitle} onNavigate={onNavigate} onSelectTask={onSelectTask} />}
+              : view === 'grid' ? <Grid entries={entries} taskTitle={taskTitle} onNavigate={onNavigate}  />
+              : <FileTable entries={entries} taskTitle={taskTitle} onNavigate={onNavigate}  />}
           </div>
         </>
       )}
@@ -109,7 +108,7 @@ function EmptyFolder({ query }: { query: string }) {
   );
 }
 
-function Grid({ entries, taskTitle, onNavigate, onSelectTask }: { entries: FileEntry[]; taskTitle: (id: string) => string; onNavigate: (t: NavTarget) => void; onSelectTask: (id: string) => void }) {
+function Grid({ entries, taskTitle, onNavigate }: { entries: FileEntry[]; taskTitle: (id: string) => string; onNavigate: (t: NavTarget) => void }) {
   return (
     <div className="file-grid">
       {entries.map((e) => (
@@ -117,14 +116,14 @@ function Grid({ entries, taskTitle, onNavigate, onSelectTask }: { entries: FileE
           <div className="tile-icon">{e.kind === 'dir' ? <FolderGlyph size={82} /> : <FileGlyph name={e.name} size={62} />}</div>
           <div className="tile-name">{e.name}</div>
           <div className="tile-meta">{fileTypeLabel(e.name, e.kind)}{e.kind === 'dir' && e.childCount !== undefined ? ` · ${e.childCount} 项` : ''}</div>
-          <Markers entry={e} taskTitle={taskTitle} onSelectTask={onSelectTask} />
+          <Markers entry={e} taskTitle={taskTitle}  />
         </button>
       ))}
     </div>
   );
 }
 
-function FileTable({ entries, taskTitle, onNavigate, onSelectTask }: { entries: FileEntry[]; taskTitle: (id: string) => string; onNavigate: (t: NavTarget) => void; onSelectTask: (id: string) => void }) {
+function FileTable({ entries, taskTitle, onNavigate }: { entries: FileEntry[]; taskTitle: (id: string) => string; onNavigate: (t: NavTarget) => void }) {
   return (
     <table className="file-table">
       <thead><tr><th className="col-name">名称</th><th className="col-mark">标记</th><th className="col-time">修改时间</th><th className="col-size" style={{ textAlign: 'right' }}>大小</th></tr></thead>
@@ -132,7 +131,7 @@ function FileTable({ entries, taskTitle, onNavigate, onSelectTask }: { entries: 
         {entries.map((e) => (
           <tr key={e.path} className="row-click" onClick={() => onNavigate(e.kind === 'dir' ? { kind: 'folder', path: e.path } : { kind: 'file', path: e.path })}>
             <td className="col-name"><div className="name-cell">{e.kind === 'dir' ? <FolderGlyph size={20} /> : <FileGlyph name={e.name} size={15} />}<span className="name-text">{e.name}</span><span className="text-3 fs-meta">{fileTypeLabel(e.name, e.kind)}</span></div></td>
-            <td className="col-mark"><Markers entry={e} taskTitle={taskTitle} onSelectTask={onSelectTask} /></td>
+            <td className="col-mark"><Markers entry={e} taskTitle={taskTitle}  /></td>
             <td className="col-time text-3 fs-meta">{formatTime(e.modifiedAt)}</td>
             <td className="col-size text-3 fs-meta" style={{ textAlign: 'right' }}>{e.kind === 'dir' ? `${e.childCount ?? 0} 项` : formatSize(e.size)}</td>
           </tr>
@@ -142,17 +141,17 @@ function FileTable({ entries, taskTitle, onNavigate, onSelectTask }: { entries: 
   );
 }
 
-function Markers({ entry, taskTitle, onSelectTask }: { entry: FileEntry; taskTitle: (id: string) => string; onSelectTask: (id: string) => void }) {
+function Markers({ entry, taskTitle }: { entry: FileEntry; taskTitle: (id: string) => string }) {
   if (!entry.isGuide && !entry.producedBy) return null;
   return (
     <div className="flex items-center gap-1 justify-center flex-wrap">
       {entry.isGuide && <span className="tag tag-neutral"><BookOpen size={12} />指引</span>}
-      {entry.producedBy && <span role="button" tabIndex={0} className="tag tag-done row-click" title={`由任务产出：${taskTitle(entry.producedBy)}`} onClick={(ev) => { ev.stopPropagation(); onSelectTask(entry.producedBy!); }}><Sparkles size={12} />产物</span>}
+      {entry.producedBy && <span className="tag tag-done" title={`由任务产出：${taskTitle(entry.producedBy)}`}><Sparkles size={12} />产物</span>}
     </div>
   );
 }
 
-function FilePreview({ file, producer, taskTitle, onBack, onSelectTask, onError }: { file: FileContent | null; producer: ContinuoTask | null; taskTitle: (id: string) => string; onBack: () => void; onSelectTask: (id: string) => void; onError: (message: string) => void }) {
+function FilePreview({ file, producer, taskTitle, onBack, onError }: { file: FileContent | null; producer: ContinuoTask | null; taskTitle: (id: string) => string; onBack: () => void; onError: (message: string) => void }) {
   const [before, setBefore] = useState<string | null>(null);
   const [comparing, setComparing] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -177,7 +176,7 @@ function FilePreview({ file, producer, taskTitle, onBack, onSelectTask, onError 
       <div className="flex items-center gap-3 flex-wrap chrome">
         <Button variant="ghost" size="sm" onClick={onBack}><ArrowLeft size={14} />返回文件夹</Button>
         <span className="text-3 fs-meta">{formatSize(file.size)} · {formatTime(file.modifiedAt)}</span>
-        {file.producedBy && <button className="tag tag-done" onClick={() => onSelectTask(file.producedBy!)} title={taskTitle(file.producedBy)}><Sparkles size={12} />由任务产出 · 查看过程</button>}
+        {file.producedBy && <span className="tag tag-done" title={taskTitle(file.producedBy)}><Sparkles size={12} />由任务产出</span>}
         {canCompare && <Button size="sm" disabled={loading} onClick={() => { void compare(); }}><GitCompare size={13} />{comparing ? '看正文' : '对比上一版'}</Button>}
         {file.truncated && <span className="tag tag-wait">只显示前 256KB</span>}
       </div>

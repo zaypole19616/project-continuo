@@ -24,7 +24,7 @@ export interface DrawerProps {
   onSend: () => void;
   onAnswer: (q: QuestionRequest, answers: Record<string, unknown>, note?: string) => Promise<void>;
   onDecide: (a: ApprovalRequest, d: 'approved' | 'rejected', scope?: 'session') => Promise<void>;
-  onAction: (task: ContinuoTask, action: 'pause' | 'resume' | 'complete') => void;
+  onAction: (task: ContinuoTask, action: 'pause' | 'resume') => void;
   onOpenFile: (path: string) => void;
   onStartStep: (prompt: string) => void;
   onError: (message: string) => void;
@@ -84,14 +84,13 @@ export function Drawer(p: DrawerProps) {
   }
   const nextStep = p.latest?.report?.nextStep;
   const showNextStep = nextStep !== undefined && p.latest !== null && isFinished(p.latest) && !tasks.some((t) => t.title === nextStep.prompt.slice(0, 120));
-  const card = (task: ContinuoTask) => p.doc && <ClosingCard key={task.taskId} task={task} doc={p.doc} onOpenFile={p.onOpenFile} />;
+  const card = (task: ContinuoTask) => <ClosingCard key={task.taskId} task={task} onOpenFile={p.onOpenFile} />;
 
   const composer = (
     <>
       {resumable && (
         <div className="state-bar chrome">
           <span className="t2 sm flex-1">{resumable.status === 'paused' ? '已暂停，工作留在这里' : resumable.status === 'interrupted' ? '被打断了，可以接着做' : resumable.status === 'failed' ? '这次没做完，可以再试' : '还差一点，还没算完成'}</span>
-          {resumable.status === 'needs_review' && <Button size="sm" onClick={() => p.onAction(resumable, 'complete')}><Check size={12} />标记完成</Button>}
           <Button variant="default" size="sm" onClick={() => p.onAction(resumable, 'resume')}>{resumable.status === 'failed' ? <><RotateCcw size={12} />重试</> : <><Play size={12} />继续</>}</Button>
         </div>
       )}
@@ -119,10 +118,11 @@ export function Drawer(p: DrawerProps) {
     <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)} className="panel-box drawer" aria-label="对话" asChild>
       <aside>
         <div className="drawer-head">
+          <span className="flex-1" />
           <TabsList>
             <TabsTrigger value="chat">对话</TabsTrigger>
-            <TabsTrigger value="log">记录</TabsTrigger>
             <TabsTrigger value="todo">事项{todos.length > 0 && <span className="mode-badge">{todos.length}</span>}</TabsTrigger>
+            <TabsTrigger value="log">记录</TabsTrigger>
           </TabsList>
         </div>
 
@@ -155,7 +155,6 @@ export function Drawer(p: DrawerProps) {
                 <div className="flex shrink-0 gap-1">
                   {(task.status === 'running' || task.status === 'queued') && <Button variant="ghost" size="sm" onClick={() => p.onAction(task, 'pause')}><Square size={11} fill="currentColor" />停止</Button>}
                   {task.status === 'awaiting_user' && <Button variant="ghost" size="sm" onClick={focusComposer}><ArrowRight size={12} />去回复</Button>}
-                  {task.status === 'needs_review' && <Button variant="ghost" size="sm" onClick={() => p.onAction(task, 'complete')}><Check size={12} />标记完成</Button>}
                   {RESUMABLE.has(task.status) && <Button variant="ghost" size="sm" onClick={() => p.onAction(task, 'resume')}>{task.status === 'failed' ? <><RotateCcw size={12} />重试</> : <><Play size={12} />继续</>}</Button>}
                 </div>
               </div>
@@ -166,12 +165,11 @@ export function Drawer(p: DrawerProps) {
   );
 }
 
-function ClosingCard({ task, doc, onOpenFile }: { task: ContinuoTask; doc: ContinuoDoc; onOpenFile: (path: string) => void }) {
+function ClosingCard({ task, onOpenFile }: { task: ContinuoTask; onOpenFile: (path: string) => void }) {
   const deliverables = task.report?.deliverables ?? [];
   const nextStep = task.report?.nextStep;
   const unresolved = (task.report?.unresolved ?? []).filter((item) => nextStep === undefined || !coveredBy(item, nextStep));
   const ok = deliverables.filter((d) => d.exists !== false).length;
-  const remembered = doc.context.filter((e) => e.taskId === task.taskId && e.kind !== 'progress' && (e.status === 'active' || e.status === 'candidate'));
   const done = task.status === 'completed';
   return (
     <div className="deliverable fade-in">
@@ -188,17 +186,6 @@ function ClosingCard({ task, doc, onOpenFile }: { task: ContinuoTask; doc: Conti
         </div>
       ))}
       {unresolved.map((u) => <div key={u} className="deliverable-row" style={{ color: 'var(--warn)' }}><CircleAlert size={13} />还没做到：{u}</div>)}
-      {remembered.length > 0 && (
-        <div className="deliverable-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 4 }}>
-          <span className="t3 xs">这次记住了</span>
-          {remembered.slice(0, 4).map((e) => (
-            <span key={e.id} className="flex items-start gap-2">
-              <Check size={13} style={{ color: 'var(--ok)', marginTop: 3, flex: 'none' }} />
-              <span>{e.text}</span>
-            </span>
-          ))}
-        </div>
-      )}
       {(task.sources ?? []).length > 0 && (
         <details className="deliverable-row" style={{ display: 'block' }}>
           <summary className="t3 xs" style={{ cursor: 'pointer' }}>读过的资料 · {(task.sources ?? []).length} 份</summary>
