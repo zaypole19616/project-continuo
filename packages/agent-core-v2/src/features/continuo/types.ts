@@ -61,6 +61,8 @@ export interface ContinuoTask {
   readonly taskId: string;
   readonly kind: TaskKind;
   readonly title: string;
+  readonly name?: string;
+  readonly category?: string;
   readonly trigger: TaskTrigger;
   readonly sessionId: string;
   readonly promptIds: readonly string[];
@@ -120,6 +122,11 @@ export interface ContinuoWorkspaceDoc {
   readonly understanding?: WorkspaceUnderstanding;
   readonly context: readonly ContextEntry[];
   readonly tasks: readonly ContinuoTask[];
+}
+
+export function currentTaskOf(doc: ContinuoWorkspaceDoc, sessionId: string): ContinuoTask | undefined {
+  const onSession = doc.tasks.filter((task) => task.sessionId === sessionId);
+  return onSession.findLast((task) => task.endedAt === undefined) ?? onSession.at(-1);
 }
 
 export const EMPTY_USAGE: TaskUsage = { steps: 0, inputTokens: 0, cacheReadTokens: 0, outputTokens: 0 };

@@ -6,6 +6,13 @@ import { type AgentTool } from '#/tool/toolContract';
 export const REPORT_RESULT_TOOL_NAME = 'ReportWorkspaceResult';
 
 export const ReportResultInputSchema = z.object({
+  name: z.string().min(1).max(12).describe('A short, recognizable name for this task, two to six characters in the language of the folder. It titles the work log and labels this task everywhere in the product.'),
+  category: z
+    .string()
+    .min(1)
+    .max(24)
+    .regex(/^[a-z][a-z0-9-]*$/)
+    .describe('The kind of work, as a lowercase ASCII word. Use the project\'s own category list when its guide files define one; otherwise a stable word for this field of work, such as review, analysis or writing.'),
   summary: z.string().min(1).max(1200).describe('What was done, in two or three sentences.'),
   deliverables: z
     .array(z.object({ path: z.string().min(1).describe('Path relative to the workspace root.'), note: z.string().max(200).optional() }))

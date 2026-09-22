@@ -235,6 +235,15 @@ button.link:hover { text-decoration: underline; }
 .drawer-head [data-slot='tabs-trigger'][data-state='active'] { background: var(--seg-thumb); color: var(--text-1); font-weight: 600; box-shadow: var(--seg-shadow); }
 .drawer-body { flex: 1; min-height: 0; overflow: auto; padding: 12px 8px 8px; display: flex; flex-direction: column; gap: 16px; }
 .drawer-foot { flex: none; padding: 8px 0 0 8px; }
+.log-day { font-size: 11px; letter-spacing: 0.06em; color: var(--text-3); font-weight: 600; padding: 10px 6px 4px; font-variant-numeric: tabular-nums; }
+.log-item + .log-item { border-top: 1px solid var(--line); }
+.log-row { display: flex; align-items: center; gap: 8px; width: 100%; padding: 9px 6px; text-align: left; transition: background var(--motion-fast); border-radius: 8px; }
+.log-row:hover { background: var(--surface-hover); }
+.log-row .chev { color: var(--text-3); flex: none; transition: transform var(--motion-fast); }
+.log-item.is-open .log-row .chev { transform: rotate(90deg); }
+.log-row .nm { font-size: var(--fs-md); font-weight: 500; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.log-body { padding: 2px 6px 14px 28px; }
+.log-body h1 { display: none; }
 .todo-row { display: flex; align-items: flex-start; gap: 10px; padding: 10px 6px; }
 .todo-row + .todo-row { border-top: 1px solid var(--line); }
 .todo-row .status-dot { margin-top: 7px; }

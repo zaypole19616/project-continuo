@@ -3,6 +3,7 @@ import { toInputJsonSchema } from '#/tool/input-schema';
 import { ISessionContext } from '#/session/sessionContext/sessionContext';
 
 import { IContinuoStore } from '../../store';
+import { currentTaskOf } from '../../types';
 import { IReportResultTool, REPORT_RESULT_TOOL_NAME, ReportResultInputSchema, type ReportResultInput } from './report-result';
 import DESCRIPTION from './report-result.md?raw';
 
@@ -23,7 +24,7 @@ export class ReportResultTool implements IReportResultTool {
       approvalRule: this.name,
       execute: async () => {
         const doc = await this.store.load(this.session.workspaceId);
-        const task = doc?.tasks.find((candidate) => candidate.sessionId === this.session.sessionId);
+        const task = doc === undefined ? undefined : currentTaskOf(doc, this.session.sessionId);
         if (doc === undefined || task === undefined) {
           return { isError: true, output: 'No Continuo task is bound to this session; nothing recorded.' };
         }
@@ -34,6 +35,8 @@ export class ReportResultTool implements IReportResultTool {
             candidate.taskId === task.taskId
               ? {
                   ...candidate,
+                  name: args.name,
+                  category: args.category,
                   report: {
                     summary: args.summary,
                     deliverables: args.deliverables.map((item) => ({ path: item.path, note: item.note })),

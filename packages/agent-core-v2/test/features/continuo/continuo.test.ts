@@ -5,6 +5,7 @@ import { compileContextBundle, CONTEXT_BUNDLE_MAX_CHARS } from '#/features/conti
 import { ContinuoStoreService } from '#/features/continuo/store';
 import {
   CONTINUO_STORE_SCOPE,
+  currentTaskOf,
   EMPTY_USAGE,
   newWorkspaceDoc,
   type ContextEntry,
@@ -73,6 +74,25 @@ class MemoryDocumentStore implements IAtomicDocumentStore {
     return { dispose: () => undefined };
   }
 }
+
+describe('currentTaskOf', () => {
+  it('picks the unfinished task on that session, not the first one to use it', () => {
+    const done = task({ taskId: 'task_1', endedAt: NOW });
+    const running = task({ taskId: 'task_2' });
+    const other = task({ taskId: 'task_3', sessionId: 'session_other' });
+    const doc = { ...docWith([]), tasks: [done, running, other] };
+    expect(currentTaskOf(doc, 'session_1')?.taskId).toBe('task_2');
+    expect(currentTaskOf(doc, 'session_other')?.taskId).toBe('task_3');
+    expect(currentTaskOf(doc, 'session_none')).toBeUndefined();
+  });
+
+  it('falls back to the last finished task once the session is idle', () => {
+    const first = task({ taskId: 'task_1', endedAt: NOW });
+    const second = task({ taskId: 'task_2', endedAt: NOW });
+    const doc = { ...docWith([]), tasks: [first, second] };
+    expect(currentTaskOf(doc, 'session_1')?.taskId).toBe('task_2');
+  });
+});
 
 describe('compileContextBundle', () => {
   it('returns nothing when the folder has neither an understanding nor any points', () => {
