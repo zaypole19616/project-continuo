@@ -324,7 +324,7 @@ button.link:hover { text-decoration: underline; }
 .msg-assistant.md p:last-child { margin-bottom: 0; }
 
 .start { gap: 22px; }
-.start-hero { padding: 48px 8px 4px; text-align: center; }
+.start-hero { display: flex; flex-direction: column; align-items: center; padding: 48px 8px 4px; text-align: center; }
 .start-hero h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.02em; margin: 16px 0 6px; }
 .start-hero p { margin: 0; font-size: var(--fs-lg); }
 .start-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
