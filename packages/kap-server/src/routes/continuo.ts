@@ -1,4 +1,4 @@
-import { IFlagService, IWorkspaceService, type Scope } from '@moonshot-ai/agent-core-v2';
+import { IContinuoStore, IFlagService, IWorkspaceService, type Scope } from '@moonshot-ai/agent-core-v2';
 import { z } from 'zod';
 
 import { ContinuoError, ContinuoTaskManager } from '../continuo/taskManager';
@@ -6,7 +6,7 @@ import { errEnvelope, okEnvelope } from '../envelope';
 import { defineRoute } from '../middleware/defineRoute';
 import { parseActionSuffix } from './action-suffix';
 import { listFiles, readTextFile } from '../continuo/files';
-import { materializeDemoWorkspace } from '../continuo/demoWorkspace';
+import { materializeDemoWorkspace, seedDemoDoc } from '../continuo/demoWorkspace';
 import { toWireWorkspace } from './workspaces';
 import { ErrorCode } from '../protocol/error-codes';
 
@@ -71,6 +71,29 @@ export function registerContinuoRoutes(app: ContinuoRouteHost, core: Scope): voi
     },
   );
   app.post(openRoute.path, openRoute.options, openRoute.handler as Parameters<ContinuoRouteHost['post']>[2]);
+
+  const reunderstandRoute = defineRoute(
+    {
+      method: 'POST',
+      path: '/workspaces/{workspace_id}/continuo::reunderstand',
+      params: workspaceParamSchema,
+      body: z.object({}).optional(),
+      success: { data: docSchema },
+      errors: CONTINUO_ERRORS,
+      description: 'Read the folder again and rebuild the understanding with a fresh init task',
+      tags: ['continuo'],
+      operationId: 'continuoReunderstand',
+    },
+    async (req, reply) => {
+      if (!flagGuard(req.id, reply)) return;
+      try {
+        reply.send(okEnvelope(await manager.reunderstand(req.params.workspace_id), req.id));
+      } catch (error) {
+        sendError(reply, req.id, error);
+      }
+    },
+  );
+  app.post(reunderstandRoute.path, reunderstandRoute.options, reunderstandRoute.handler as Parameters<ContinuoRouteHost['post']>[2]);
 
   const getRoute = defineRoute(
     {
@@ -194,15 +217,21 @@ export function registerContinuoRoutes(app: ContinuoRouteHost, core: Scope): voi
       body: z.object({}).optional(),
       success: { data: docSchema },
       errors: CONTINUO_ERRORS,
-      description: 'Create (once) a synthetic demo folder under the home directory and register it as a workspace',
+      description: 'Create (once) a synthetic demo folder under the home directory, register it as a workspace, and seed its Continuo history',
       tags: ['continuo'],
       operationId: 'continuoDemoWorkspace',
     },
     async (req, reply) => {
       if (!flagGuard(req.id, reply)) return;
       try {
-        const { root } = await materializeDemoWorkspace();
+        const { root, created } = await materializeDemoWorkspace();
         const ws = await core.accessor.get(IWorkspaceService).createOrTouch(root, undefined);
+        const store = core.accessor.get(IContinuoStore);
+        const existing = await store.load(ws.id);
+        if (existing === undefined || (created && !existing.tasks.some((task) => task.kind === 'user'))) {
+          await store.ensure(ws.id, root);
+          await store.update(ws.id, () => seedDemoDoc(ws.id, root));
+        }
         reply.send(okEnvelope(await toWireWorkspace(core, ws), req.id));
       } catch (error) {
         sendError(reply, req.id, error);

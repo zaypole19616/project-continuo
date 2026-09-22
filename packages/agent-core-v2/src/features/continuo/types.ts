@@ -27,7 +27,7 @@ export interface ContextEntry {
 }
 
 export type TaskKind = 'init' | 'user';
-export type TaskTrigger = 'first_open' | 'user' | 'resume' | 'reopen' | 'reply';
+export type TaskTrigger = 'first_open' | 'user' | 'resume' | 'reopen' | 'reply' | 'demo';
 export type TaskStatus =
   | 'queued'
   | 'running'
@@ -59,6 +59,11 @@ export interface TaskReport {
   readonly reportedAt: string;
 }
 
+export interface TaskReuse {
+  readonly entries: number;
+  readonly questions: number;
+}
+
 export interface ContinuoTask {
   readonly taskId: string;
   readonly kind: TaskKind;
@@ -74,6 +79,7 @@ export interface ContinuoTask {
   readonly lastReply?: string;
   readonly report?: TaskReport;
   readonly verification?: readonly string[];
+  readonly reuse?: TaskReuse;
   readonly usage: TaskUsage;
   readonly lastError?: string;
   readonly createdAt: string;

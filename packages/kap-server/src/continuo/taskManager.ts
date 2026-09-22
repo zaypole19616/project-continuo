@@ -16,6 +16,7 @@ import {
   ISessionContext,
   ISessionManager,
   IWorkspaceService,
+  compileContextBundle,
   getLiveSessionById,
   resumeSessionById,
   type ContextEntry,
@@ -102,6 +103,14 @@ export class ContinuoTaskManager {
     return this.store.load(workspaceId);
   }
 
+  async reunderstand(workspaceId: string): Promise<ContinuoWorkspaceDoc> {
+    const doc = await this.requireDoc(workspaceId);
+    if (doc.init.status === 'running' && this.isLive(doc.init.taskId, doc)) return doc;
+    const running = doc.tasks.find((task) => task.kind === 'user' && (task.status === 'running' || task.status === 'verifying' || task.status === 'queued'));
+    if (running !== undefined) throw new ContinuoError('invalid_state', `task ${running.taskId} is still ${running.status}; wait for it before re-reading the folder`);
+    return this.startInit(doc);
+  }
+
   async createUserTask(workspaceId: string, text: string, clientRequestId?: string): Promise<{ doc: ContinuoWorkspaceDoc; task: ContinuoTask }> {
     const doc = await this.requireDoc(workspaceId);
     if (clientRequestId !== undefined) {
@@ -129,6 +138,7 @@ export class ContinuoTaskManager {
       status: 'queued',
       pauseRequested: false,
       contextRevision: doc.revision,
+      reuse: { entries: compileContextBundle(doc, undefined)?.entryIds.length ?? 0, questions: 0 },
       usage: EMPTY_USAGE,
       createdAt: now,
       updatedAt: now,
@@ -292,7 +302,7 @@ export class ContinuoTaskManager {
     const task: ContinuoTask = {
       taskId,
       kind: 'init',
-      title: '了解这个工作空间',
+      title: '了解这个文件夹',
       trigger: 'first_open',
       sessionId,
       promptIds: [],
@@ -348,7 +358,10 @@ export class ContinuoTaskManager {
       void this.patchTask(workspaceId, taskId, (current) => {
         if (current.status !== 'running' && current.status !== 'awaiting_user') return current;
         const pending = change.state.pendingInteraction;
-        if (pending !== 'none') return { ...current, status: 'awaiting_user', pendingInteraction: pending, phase: pending === 'question' ? '等待你回答' : '等待你批准' };
+        if (pending !== 'none') {
+          const asked = pending === 'question' && current.pendingInteraction !== 'question';
+          return { ...current, status: 'awaiting_user', pendingInteraction: pending, phase: pending === 'question' ? '等待你回答' : '等待你批准', reuse: asked && current.reuse !== undefined ? { ...current.reuse, questions: current.reuse.questions + 1 } : current.reuse };
+        }
         if (current.status === 'awaiting_user' && change.state.busy) return { ...current, status: 'running', pendingInteraction: 'none', phase: undefined };
         return current;
       }, { silent: true });
@@ -437,7 +450,7 @@ export class ContinuoTaskManager {
       await this.store.update(workspaceId, (doc2) => ({
         ...doc2,
         tasks: doc2.tasks.map((candidate) => candidate.taskId === taskId
-          ? { ...candidate, status: 'awaiting_user' as TaskStatus, pendingInteraction: 'reply' as const, phase: '已回复，等你确认或继续', lastReply: reply === '' ? undefined : reply, verification: ['no files written and no result report; the agent replied and is waiting for you'], updatedAt: endedAt }
+          ? { ...candidate, status: 'awaiting_user' as TaskStatus, pendingInteraction: 'reply' as const, phase: '已回复，等你确认或继续', lastReply: reply === '' ? undefined : reply, verification: ['no files written and no result report; the agent replied and is waiting for you'], reuse: candidate.reuse === undefined ? undefined : { ...candidate.reuse, questions: candidate.reuse.questions + 1 }, updatedAt: endedAt }
           : candidate),
         activity: [...doc2.activity, { at: endedAt, taskId, kind: 'task' as const, text: 'Replied without writing files; waiting for the user' }],
       }));
