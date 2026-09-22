@@ -1,4 +1,5 @@
 @import 'tailwindcss';
+@import 'tw-animate-css';
 
 :root {
   color-scheme: light;
@@ -73,12 +74,56 @@
   --r-xs: var(--radius-xs); --r-sm: var(--radius-sm); --r-md: var(--radius-md); --r-lg: var(--radius-lg); --r-xl: var(--radius-xl); --r-2xl: var(--radius-2xl); --r-pill: var(--radius-full);
   --fs-xs: var(--text-xs); --fs-sm: var(--text-sm); --fs-md: var(--text-base); --fs-lg: 15px; --fs-xl: var(--text-xl); --fs-h2: var(--text-2xl); --fs-h1: 28px; --fs-display: 36px;
   --motion-fast: 120ms; --motion: 160ms;
+
+  --background: var(--color-bg);
+  --foreground: var(--color-text);
+  --card: var(--color-bg);
+  --card-foreground: var(--color-text);
+  --popover: var(--color-bg);
+  --popover-foreground: var(--color-text);
+  --primary: var(--color-send-bg);
+  --primary-foreground: #ffffff;
+  --secondary: var(--color-surface);
+  --secondary-foreground: var(--color-text);
+  --muted: var(--color-hover);
+  --muted-foreground: var(--color-text-muted);
+  --destructive: var(--color-danger);
+  --border: var(--color-line);
+  --input: var(--color-line);
+  --ring: var(--color-accent);
+  --radius: 8px;
 }
 @media (prefers-reduced-motion: reduce) { :root { --motion-fast: 0ms; --motion: 0ms; } }
 
+@theme inline {
+  --font-sans: var(--font-ui);
+  --font-mono: var(--font-mono);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--color-accent);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+  --radius-xl: var(--radius-xl);
+}
+
 html, body, #root { height: 100%; }
 body { margin: 0; background: var(--canvas); color: var(--text-1); font-family: var(--font-ui); font-size: var(--fs-md); line-height: 1.5; -webkit-font-smoothing: antialiased; }
-button { font: inherit; color: inherit; }
+button { font: inherit; }
 code, pre, .mono { font-family: var(--font-mono); font-size: 12.5px; }
 ::selection { background: rgba(26, 136, 255, 0.18); }
 a { color: var(--accent); text-decoration: none; }
@@ -364,8 +409,6 @@ button.link:hover { text-decoration: underline; }
 .init-orb { width: 56px; height: 56px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); display: inline-flex; align-items: center; justify-content: center; }
 .init-title { font-size: var(--fs-h2); font-weight: 600; letter-spacing: -0.01em; animation: fade-in var(--motion) ease-out; }
 
-.onboard-backdrop { position: fixed; inset: 0; z-index: 50; background: rgba(28, 25, 23, 0.32); backdrop-filter: blur(6px); display: flex; align-items: center; justify-content: center; padding: 24px; }
-.onboard { width: 100%; max-width: 440px; background: var(--surface); border-radius: 24px; box-shadow: 0 24px 64px rgba(16, 24, 40, 0.18); padding: 36px 36px 28px; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 12px; }
 .onboard-icon { width: 60px; height: 60px; border-radius: 18px; background: var(--accent-soft); color: var(--accent); display: inline-flex; align-items: center; justify-content: center; margin-bottom: 6px; }
 .onboard-kicker { font-size: var(--fs-xs); font-weight: 700; color: var(--accent); letter-spacing: 0.06em; }
 .onboard-title { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; margin-top: -4px; }

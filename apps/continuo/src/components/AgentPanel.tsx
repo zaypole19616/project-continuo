@@ -6,6 +6,7 @@ import { Timeline } from './Timeline';
 import { ApprovalCard, QuestionCard } from './InteractionCards';
 import type { SideMode } from './SidePanel';
 import { FolderMenu } from './FolderMenu';
+import { Button } from '#/components/ui/button';
 
 export interface AgentPanelProps {
   workspace: Workspace | null;
@@ -38,7 +39,6 @@ const isAwaitingReply = (t: ContinuoTask | null) => !!t && t.status === 'awaitin
 export function AgentPanel(p: AgentPanelProps) {
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const [draft, setDraft] = useState('');
-  const [picking, setPicking] = useState<DOMRect | null>(null);
   const lastAssistant = p.state.items.at(-1);
   useEffect(() => { bottomRef.current?.scrollIntoView({ block: 'end' }); }, [p.state.items.length, lastAssistant?.kind === 'assistant' ? lastAssistant.text.length : 0, p.questions.length, p.approvals.length, p.selected?.status]);
 
@@ -58,23 +58,28 @@ export function AgentPanel(p: AgentPanelProps) {
     <div className="composer" style={{ padding: '12px 14px 12px 18px', display: 'flex', alignItems: 'center', gap: 12 }}>
       <Loader2 size={16} className="spin" style={{ color: 'var(--accent)' }} />
       <span className="t2 flex-1 sm">{p.activeUserTask.status === 'awaiting_user' ? (p.activeUserTask.pendingInteraction === 'approval' ? '要动你的文件，等你点允许' : '有一个决定需要你') : `正在做：${p.activeUserTask.phase ?? p.activeUserTask.title}`}</span>
-      <button className="btn btn-sm" onClick={() => p.onAction(p.activeUserTask!, 'pause')}><Square size={12} />停止</button>
+      <Button size="sm" onClick={() => p.onAction(p.activeUserTask!, 'pause')}><Square size={12} />停止</Button>
     </div>
   ) : (
     <>
       {p.continueTarget && (p.continueTarget.status === 'paused' || p.continueTarget.status === 'interrupted' || p.continueTarget.status === 'failed' || p.continueTarget.status === 'needs_review') && (
         <div className="state-bar chrome">
           <span className="t2 sm flex-1">{p.continueTarget.status === 'paused' ? '已暂停，工作留在这里' : p.continueTarget.status === 'interrupted' ? '被打断了，可以接着做' : p.continueTarget.status === 'failed' ? '这次没做完，可以再试' : '还差一点，还没算完成'}</span>
-          {p.continueTarget.status === 'needs_review' && <button className="btn btn-sm" onClick={() => p.onAction(p.continueTarget!, 'complete')}><Check size={12} />标记完成</button>}
-          <button className="btn btn-sm btn-primary" onClick={() => p.onAction(p.continueTarget!, 'resume')}>{p.continueTarget.status === 'failed' ? <><RotateCcw size={12} />重试</> : <><Play size={12} />继续</>}</button>
+          {p.continueTarget.status === 'needs_review' && <Button size="sm" onClick={() => p.onAction(p.continueTarget!, 'complete')}><Check size={12} />标记完成</Button>}
+          <Button variant="default" size="sm" onClick={() => p.onAction(p.continueTarget!, 'resume')}>{p.continueTarget.status === 'failed' ? <><RotateCcw size={12} />重试</> : <><Play size={12} />继续</>}</Button>
         </div>
       )}
       {hero && (
         <div className="hero-chip-row">
-          <button className={`ws-chip ws-chip-btn ${p.workspace === null ? 'is-empty' : ''}`} onClick={(e) => setPicking(picking ? null : e.currentTarget.getBoundingClientRect())} title="选择文件夹">
-            <FolderOpen size={13} />{p.workspace?.name ?? '选择文件夹'}<ChevronDown size={12} />
-          </button>
-          {picking && <FolderMenu anchor={picking} currentId={p.workspace?.id} onPick={p.onPickWorkspace} onClose={() => setPicking(null)} />}
+          <FolderMenu
+            currentId={p.workspace?.id}
+            onPick={p.onPickWorkspace}
+            trigger={
+              <button className={`ws-chip ws-chip-btn ${p.workspace === null ? 'is-empty' : ''}`} title="选择文件夹">
+                <FolderOpen size={13} />{p.workspace?.name ?? '选择文件夹'}<ChevronDown size={12} />
+              </button>
+            }
+          />
         </div>
       )}
       <div className="composer">
@@ -149,8 +154,8 @@ function UnderstandingCard({ doc, onContext, onReunderstand }: { doc: ContinuoDo
       <div className="flex items-center gap-2 flex-wrap">
         <span className="sm t2">记住了 {active} 件事{candidates > 0 ? `，还有 ${candidates} 条推断等你确认` : ''}</span>
         <span className="flex-1" />
-        <button className="btn btn-sm btn-ghost" title="再读一遍文件夹，重新形成理解（约一分钟）" onClick={onReunderstand}><RotateCcw size={12} />重新了解</button>
-        <button className="btn btn-sm" onClick={onContext}>{candidates > 0 ? '去确认' : '查看或修改'}</button>
+        <Button variant="ghost" size="sm" title="再读一遍文件夹，重新形成理解（约一分钟）" onClick={onReunderstand}><RotateCcw size={12} />重新了解</Button>
+        <Button size="sm" onClick={onContext}>{candidates > 0 ? '去确认' : '查看或修改'}</Button>
       </div>
     </div>
   );
@@ -246,7 +251,7 @@ function NextStepCard({ step, busy, onStart }: { step: { title: string; reason: 
         <div className="t2 sm">{step.reason}</div>
         <div className="flex">
           <span className="flex-1" />
-          <button className="btn btn-sm btn-primary" disabled={busy} onClick={onStart}>开始这一步<ArrowRight size={13} /></button>
+          <Button variant="default" size="sm" disabled={busy} onClick={onStart}>开始这一步<ArrowRight size={13} /></Button>
         </div>
       </div>
     </div>

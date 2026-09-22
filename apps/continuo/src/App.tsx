@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { ApiError, kimi, readToken, setToken, touchRecent, type Workspace } from '#/lib/api';
 import { ONBOARDED_KEY, Onboarding } from '#/components/Onboarding';
 import { WorkspaceView } from '#/pages/Workspace';
+import { Button } from '#/components/ui/button';
 
 const WS_KEY = 'continuo.workspace';
 
@@ -70,7 +71,7 @@ function TokenForm({ onSave }: { onSave: (t: string) => void }) {
   return (
     <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); if (v.trim()) onSave(v.trim()); }}>
       <input className="flex-1" placeholder="server token" value={v} onChange={(e) => setV(e.target.value)} />
-      <button className="btn btn-primary" type="submit">保存</button>
+      <Button variant="default" type="submit">保存</Button>
     </form>
   );
 }

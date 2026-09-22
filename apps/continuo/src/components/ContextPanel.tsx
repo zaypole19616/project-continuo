@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { BookOpen, FileText, UserCheck, Wand2 } from 'lucide-react';
 import type { ContextEntry, ContinuoDoc } from '#/lib/api';
+import { Button } from '#/components/ui/button';
 
 const KIND_LABEL: Record<ContextEntry['kind'], string> = { convention: '约定', background: '背景', decision: '决定', progress: '进度', material: '材料' };
 const ORIGIN_LABEL: Record<ContextEntry['origin'], string> = { user: '你确认的', file: '来自文件', agent: '它的推断' };
@@ -93,17 +94,17 @@ function EntryCard({ e, mode, onPatch, onOpenFile }: { e: ContextEntry; mode: 'a
         : <div className={`entry-text ${open ? '' : 'clamp'}`} role="button" tabIndex={0} title={open ? undefined : '点开看全文'} onClick={() => setOpen(!open)} onKeyDown={(ev) => { if (ev.key === 'Enter') setOpen(!open); }}>{e.text}</div>}
       {open && !editing && e.sourceRefs.length > 0 && <Sources refs={e.sourceRefs} onOpenFile={onOpenFile} />}
       <div className="entry-actions chrome">
-        {mode === 'candidate' && <button className="btn btn-sm btn-primary" disabled={busy} onClick={() => { void run({ status: 'active' }); }}>确认</button>}
-        {mode === 'stale' && <button className="btn btn-sm btn-primary" disabled={busy} onClick={() => { void run({ status: 'active' }); }}>仍然有效</button>}
+        {mode === 'candidate' && <Button variant="default" size="sm" disabled={busy} onClick={() => { void run({ status: 'active' }); }}>确认</Button>}
+        {mode === 'stale' && <Button variant="default" size="sm" disabled={busy} onClick={() => { void run({ status: 'active' }); }}>仍然有效</Button>}
         {editing ? (
           <>
-            <button className="btn btn-sm btn-primary" disabled={busy || !text.trim()} onClick={() => { void run({ text: text.trim() }); }}>保存</button>
-            <button className="btn btn-sm btn-ghost" disabled={busy} onClick={() => { setEditing(false); setText(e.text); }}>取消</button>
+            <Button variant="default" size="sm" disabled={busy || !text.trim()} onClick={() => { void run({ text: text.trim() }); }}>保存</Button>
+            <Button variant="ghost" size="sm" disabled={busy} onClick={() => { setEditing(false); setText(e.text); }}>取消</Button>
           </>
         ) : (
-          <button className="btn btn-sm btn-ghost" disabled={busy} onClick={() => setEditing(true)}>改一下</button>
+          <Button variant="ghost" size="sm" disabled={busy} onClick={() => setEditing(true)}>改一下</Button>
         )}
-        <button className="btn btn-sm btn-ghost" disabled={busy} onClick={() => { void run({ status: 'inactive' }); }}>{mode === 'candidate' ? '忽略' : '不再用'}</button>
+        <Button variant="ghost" size="sm" disabled={busy} onClick={() => { void run({ status: 'inactive' }); }}>{mode === 'candidate' ? '忽略' : '不再用'}</Button>
       </div>
     </div>
   );

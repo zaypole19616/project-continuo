@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { MessageCircleQuestion, ShieldAlert } from 'lucide-react';
 import type { ApprovalRequest, QuestionRequest } from '#/lib/api';
+import { Button } from '#/components/ui/button';
 
 export function QuestionCard({ q, onAnswer }: { q: QuestionRequest; onAnswer: (answers: Record<string, unknown>, note?: string) => Promise<void> }) {
   const [picked, setPicked] = useState<Record<string, string>>({});
@@ -37,7 +38,7 @@ export function QuestionCard({ q, onAnswer }: { q: QuestionRequest; onAnswer: (a
           </div>
         </div>
       ))}
-      <div className="flex justify-end"><button className="btn btn-primary" disabled={!allPicked || busy} onClick={() => { void submit(); }}>回答并继续</button></div>
+      <div className="flex justify-end"><Button variant="default" disabled={!allPicked || busy} onClick={() => { void submit(); }}>回答并继续</Button></div>
     </div>
   );
 }
@@ -53,9 +54,9 @@ export function ApprovalCard({ a, root, onDecide }: { a: ApprovalRequest; root?:
       {detail && <pre className="p-2 overflow-auto" style={{ background: 'var(--row-hover)', borderRadius: 'var(--r-2)' }}>{detail}</pre>}
       <div className="text-3 fs-meta">它自己的记事本不用你批；只有要写你的文件、跑命令时才会问。</div>
       <div className="flex gap-2 flex-wrap justify-end">
-        <button className="btn" disabled={busy} onClick={() => { void run('rejected'); }}>拒绝</button>
-        <button className="btn" disabled={busy} onClick={() => { void run('approved', 'session'); }}>本次任务都允许</button>
-        <button className="btn btn-primary" disabled={busy} onClick={() => { void run('approved'); }}>允许</button>
+        <Button disabled={busy} onClick={() => { void run('rejected'); }}>拒绝</Button>
+        <Button disabled={busy} onClick={() => { void run('approved', 'session'); }}>本次任务都允许</Button>
+        <Button variant="default" disabled={busy} onClick={() => { void run('approved'); }}>允许</Button>
       </div>
     </div>
   );
