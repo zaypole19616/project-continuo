@@ -1,4 +1,4 @@
-export const CONTINUO_SCHEMA_VERSION = 2;
+export const CONTINUO_SCHEMA_VERSION = 3;
 export const CONTINUO_STORE_SCOPE = 'continuo-workspace';
 
 export interface ContextEntry {
@@ -9,7 +9,7 @@ export interface ContextEntry {
 }
 
 export type TaskKind = 'init' | 'user';
-export type TaskTrigger = 'first_open' | 'user' | 'resume' | 'reply';
+export type TaskTrigger = 'first_open' | 'user' | 'resume' | 'reply' | 'plan';
 export type TaskStatus =
   | 'queued'
   | 'running'
@@ -47,6 +47,61 @@ export interface TaskRound {
   readonly reads: readonly string[];
   readonly writes: readonly string[];
   readonly reply: string;
+  readonly turnIndex?: number;
+}
+
+export interface TrajectoryPlan {
+  readonly planId: string;
+  readonly title: string;
+  readonly basis: string;
+  readonly risk: string;
+  readonly prompt: string;
+  readonly detail?: string;
+  readonly path: string;
+  readonly abandoned?: { readonly reason?: string; readonly at: string };
+  readonly createdAt: string;
+}
+
+export interface Decision {
+  readonly decisionId: string;
+  readonly taskId: string;
+  readonly trajectoryId: string;
+  readonly question: string;
+  readonly turnIndex: number;
+  readonly plans: readonly TrajectoryPlan[];
+  readonly exhausted?: { readonly reason: string; readonly ask: string; readonly at: string };
+  readonly createdAt: string;
+}
+
+export interface TrajectoryChoice {
+  readonly decisionId: string;
+  readonly planId?: string;
+  readonly text?: string;
+  readonly turnIndex: number;
+  readonly at: string;
+}
+
+export type TrajectoryStatus = 'current' | 'alternative' | 'abandoned';
+
+export interface TrajectoryOrigin {
+  readonly fromTrajectoryId: string;
+  readonly turnIndex: number;
+  readonly decisionId?: string;
+  readonly planId?: string;
+  readonly afterTaskId?: string;
+}
+
+export interface Trajectory {
+  readonly trajectoryId: string;
+  readonly label: string;
+  readonly sessionId: string;
+  readonly status: TrajectoryStatus;
+  readonly taskIds: readonly string[];
+  readonly choices: readonly TrajectoryChoice[];
+  readonly turnCount: number;
+  readonly origin?: TrajectoryOrigin;
+  readonly abandonReason?: string;
+  readonly createdAt: string;
 }
 
 export interface TaskReport {
@@ -70,7 +125,7 @@ export interface ContinuoTask {
   readonly phase?: string;
   readonly pauseRequested: boolean;
   readonly contextRevision: number;
-  readonly pendingInteraction?: 'question' | 'approval' | 'reply' | 'none';
+  readonly pendingInteraction?: 'question' | 'approval' | 'reply' | 'choice' | 'none';
   readonly lastReply?: string;
   readonly report?: TaskReport;
   readonly verification?: readonly string[];
@@ -78,6 +133,7 @@ export interface ContinuoTask {
   readonly sources?: readonly string[];
   readonly rounds?: readonly TaskRound[];
   readonly logPath?: string;
+  readonly branch?: { readonly decisionId: string; readonly planId: string; readonly label: string };
   readonly usage: TaskUsage;
   readonly lastError?: string;
   readonly createdAt: string;
@@ -122,6 +178,8 @@ export interface ContinuoWorkspaceDoc {
   readonly understanding?: WorkspaceUnderstanding;
   readonly context: readonly ContextEntry[];
   readonly tasks: readonly ContinuoTask[];
+  readonly trajectories: readonly Trajectory[];
+  readonly decisions: readonly Decision[];
 }
 
 export function currentTaskOf(doc: ContinuoWorkspaceDoc, sessionId: string): ContinuoTask | undefined {
@@ -144,5 +202,7 @@ export function newWorkspaceDoc(workspaceId: string, root: string): ContinuoWork
     init: { status: 'pending' },
     context: [],
     tasks: [],
+    trajectories: [],
+    decisions: [],
   };
 }

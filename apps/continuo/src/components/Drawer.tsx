@@ -1,17 +1,21 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowRight, ArrowUp, Check, CircleAlert, Play, RotateCcw, Sparkles, Square } from 'lucide-react';
-import { DEFAULT_MODEL, type ApprovalRequest, type ContinuoDoc, type ContinuoTask, type QuestionRequest, type Workspace } from '#/lib/api';
+import { DEFAULT_MODEL, type ApprovalRequest, type ContinuoDoc, type ContinuoTask, type Decision, type QuestionRequest, type Trajectory, type TrajectoryPlan, type Workspace } from '#/lib/api';
 import type { TimelineState } from '#/lib/timeline';
+import { decisionsOn, lineIsBusy, taskLabel, tasksOn } from '#/lib/trajectory';
 import { Timeline } from './Timeline';
 import { ApprovalCard, QuestionCard } from './InteractionCards';
 import { InitStatus } from './InitStatus';
-import { WorkRecord } from './WorkRecord';
+import { DecisionCard } from './DecisionCard';
+import { TrajectoryTree } from './TrajectoryTree';
+import { AbandonDialog } from './AbandonDialog';
 import { Button } from '#/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '#/components/ui/tabs';
 
 export interface DrawerProps {
   workspace: Workspace;
   doc: ContinuoDoc | null;
+  line: Trajectory | undefined;
   latest: ContinuoTask | null;
   state: TimelineState;
   questions: QuestionRequest[];
@@ -27,26 +31,24 @@ export interface DrawerProps {
   onAction: (task: ContinuoTask, action: 'pause' | 'resume') => void;
   onOpenFile: (path: string) => void;
   onStartStep: (prompt: string) => void;
-  onError: (message: string) => void;
+  onChoose: (decision: Decision, plan: TrajectoryPlan) => Promise<boolean>;
+  onExpand: (decision: Decision) => Promise<boolean>;
+  onAbandon: (decision: Decision, plan: TrajectoryPlan, reason: string) => void;
+  onSwitch: (line: Trajectory) => void;
+  onForkAfter: (task: ContinuoTask) => Promise<boolean>;
 }
 
-type Tab = 'chat' | 'log' | 'todo';
+type Tab = 'chat' | 'todo' | 'tree';
 
 const RESUMABLE = new Set(['paused', 'interrupted', 'failed', 'needs_review']);
 const isFinished = (t: ContinuoTask) => t.status === 'completed' || t.status === 'needs_review';
-
-function taskLabel(task: ContinuoTask): string {
-  if (task.name !== undefined && task.name.trim() !== '') return task.name.trim();
-  const head = (task.title.split(/[\n，。,.；;!?！？]/)[0] ?? '').trim();
-  return head === '' ? task.title : head.slice(0, 16);
-}
 
 function statusLabel(task: ContinuoTask): string {
   switch (task.status) {
     case 'queued': return '排队中';
     case 'running': return task.phase ?? '进行中';
     case 'verifying': return '核对产物';
-    case 'awaiting_user': return task.pendingInteraction === 'question' ? '等你回答' : task.pendingInteraction === 'approval' ? '等你批准' : '等你回复';
+    case 'awaiting_user': return task.pendingInteraction === 'choice' ? '等你选方案' : task.pendingInteraction === 'question' ? '等你回答' : task.pendingInteraction === 'approval' ? '等你批准' : '等你回复';
     case 'paused': return '已暂停';
     case 'interrupted': return '被打断了';
     case 'failed': return `没做完${task.lastError ? ` · ${task.lastError}` : ''}`;
@@ -65,11 +67,12 @@ function statusDot(task: ContinuoTask): string {
 export function Drawer(p: DrawerProps) {
   const [tab, setTab] = useState<Tab>('chat');
   const [draft, setDraft] = useState('');
+  const [dropping, setDropping] = useState<{ decision: Decision; plan: TrajectoryPlan } | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const lastItem = p.state.items.at(-1);
   useEffect(() => { bottomRef.current?.scrollIntoView({ block: 'end' }); }, [p.state.items.length, lastItem?.kind === 'assistant' ? lastItem.text.length : 0, p.questions.length, p.approvals.length, p.latest?.status]);
 
-  const tasks = p.doc?.tasks.filter((t) => t.kind === 'user') ?? [];
+  const tasks = p.doc === null ? [] : tasksOn(p.doc, p.line);
   const todos = tasks.filter((t) => t.status !== 'completed');
   const reading = p.doc?.init.status === 'running';
   const running = p.activeUserTask !== null && p.activeUserTask.status !== 'awaiting_user';
@@ -78,19 +81,36 @@ export function Drawer(p: DrawerProps) {
   const send = () => { p.onSend(); setDraft(''); };
   const stop = () => { if (p.activeUserTask) p.onAction(p.activeUserTask, 'pause'); };
   const focusComposer = () => { setTab('chat'); setTimeout(() => p.composerRef.current?.focus(), 50); };
+  const locked = p.sending || (p.doc !== null && lineIsBusy(p.doc, p.line));
+  const planActions = {
+    onChoose: (decision: Decision, plan: TrajectoryPlan) => { void p.onChoose(decision, plan).then((ok) => { if (ok) setTab('chat'); }); },
+    onExpand: (decision: Decision) => { void p.onExpand(decision).then((ok) => { if (ok) setTab('chat'); }); },
+    onAbandon: (decision: Decision, plan: TrajectoryPlan) => setDropping({ decision, plan }),
+    onSwitch: p.onSwitch,
+    onOpenFile: p.onOpenFile,
+  };
+  const treeActions = { ...planActions, onForkAfter: (task: ContinuoTask) => { void p.onForkAfter(task).then((ok) => { if (ok) focusComposer(); }); } };
 
-  const anchored = new Map<number, ContinuoTask[]>();
-  const trailing: ContinuoTask[] = [];
+  const extras: Array<{ at: number; node: React.ReactNode }> = [];
   for (const task of tasks.filter((t) => isFinished(t) && t.endedAt !== undefined)) {
-    const end = Date.parse(task.endedAt!);
+    extras.push({ at: Date.parse(task.endedAt!), node: <ClosingCard key={task.taskId} task={task} onOpenFile={p.onOpenFile} /> });
+  }
+  if (p.doc !== null && p.line !== undefined) {
+    for (const decision of decisionsOn(p.doc, p.line)) {
+      extras.push({ at: Date.parse(decision.createdAt), node: <DecisionCard key={decision.decisionId} doc={p.doc} line={p.line} decision={decision} locked={locked} actions={planActions} /> });
+    }
+  }
+  const anchored = new Map<number, React.ReactNode[]>();
+  const trailing: React.ReactNode[] = [];
+  for (const extra of extras.toSorted((a, b) => a.at - b.at)) {
     let index = -1;
-    p.state.items.forEach((item, i) => { if (item.at <= end) index = i; });
-    if (index === -1) trailing.push(task);
-    else anchored.set(index, [...(anchored.get(index) ?? []), task]);
+    p.state.items.forEach((item, i) => { if (item.at <= extra.at) index = i; });
+    if (index === -1) trailing.push(extra.node);
+    else anchored.set(index, [...(anchored.get(index) ?? []), extra.node]);
   }
   const nextStep = p.latest?.report?.nextStep;
   const showNextStep = nextStep !== undefined && p.latest !== null && isFinished(p.latest) && !tasks.some((t) => t.title === nextStep.prompt.slice(0, 120));
-  const card = (task: ContinuoTask) => <ClosingCard key={task.taskId} task={task} onOpenFile={p.onOpenFile} />;
+  const choosing = p.replyTarget?.pendingInteraction === 'choice';
 
   const composer = (
     <>
@@ -104,7 +124,7 @@ export function Drawer(p: DrawerProps) {
         <textarea
           ref={p.composerRef}
           rows={2}
-          placeholder={p.replyTarget ? '回复它…' : '这次想完成什么？'}
+          placeholder={choosing ? '也可以直接说你想怎么做…' : p.replyTarget ? '回复它…' : '这次想完成什么？'}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); if (!running && !p.sending) send(); } }}
@@ -128,7 +148,7 @@ export function Drawer(p: DrawerProps) {
           <TabsList>
             <TabsTrigger value="chat">对话</TabsTrigger>
             <TabsTrigger value="todo">事项{todos.length > 0 && <span className="mode-badge">{todos.length}</span>}</TabsTrigger>
-            <TabsTrigger value="log">记录</TabsTrigger>
+            <TabsTrigger value="tree">轨迹</TabsTrigger>
           </TabsList>
         </div>
 
@@ -136,8 +156,8 @@ export function Drawer(p: DrawerProps) {
           {p.error && <div className="banner banner-err mb-2">{p.error}</div>}
           <div className="drawer-body">
             {reading && p.doc && <InitStatus doc={p.doc} />}
-            {p.state.items.length > 0 && <Timeline items={p.state.items} after={(_, i) => anchored.get(i)?.map(card)} />}
-            {trailing.map(card)}
+            {p.state.items.length > 0 && <Timeline items={p.state.items} after={(_, i) => anchored.get(i)} />}
+            {trailing}
             {showNextStep && <NextStepCard step={nextStep} busy={p.sending} onStart={() => p.onStartStep(nextStep.prompt)} />}
             {p.questions.map((q) => <QuestionCard key={q.question_id} q={q} onAnswer={(answers, note) => p.onAnswer(q, answers, note)} />)}
             {p.approvals.map((a) => <ApprovalCard key={a.approval_id} a={a} root={p.doc?.root} onDecide={(d, scope) => p.onDecide(a, d, scope)} />)}
@@ -145,8 +165,9 @@ export function Drawer(p: DrawerProps) {
           </div>
           <div className="drawer-foot">{composer}</div>
         </TabsContent>
-        <TabsContent value="log" className="drawer-body">
-          {p.doc ? <WorkRecord workspaceId={p.workspace.id} revision={p.doc.revision} onError={p.onError} /> : <div className="t3 sm">打开中…</div>}
+        <TabsContent value="tree" className="flex min-h-0 flex-1 flex-col">
+          {p.error && <div className="banner banner-err mb-2">{p.error}</div>}
+          {p.doc ? <TrajectoryTree doc={p.doc} line={p.line} locked={locked} actions={treeActions} /> : <div className="t3 sm">打开中…</div>}
         </TabsContent>
         <TabsContent value="todo" className="drawer-body">
           {todos.length === 0
@@ -160,12 +181,18 @@ export function Drawer(p: DrawerProps) {
                 </div>
                 <div className="flex shrink-0 gap-1">
                   {(task.status === 'running' || task.status === 'queued') && <Button variant="ghost" size="sm" onClick={() => p.onAction(task, 'pause')}><Square size={11} fill="currentColor" />停止</Button>}
-                  {task.status === 'awaiting_user' && <Button variant="ghost" size="sm" onClick={focusComposer}><ArrowRight size={12} />去回复</Button>}
+                  {task.status === 'awaiting_user' && <Button variant="ghost" size="sm" onClick={focusComposer}><ArrowRight size={12} />{task.pendingInteraction === 'choice' ? '去选' : '去回复'}</Button>}
                   {RESUMABLE.has(task.status) && <Button variant="ghost" size="sm" onClick={() => p.onAction(task, 'resume')}>{task.status === 'failed' ? <><RotateCcw size={12} />重试</> : <><Play size={12} />继续</>}</Button>}
                 </div>
               </div>
             ))}
         </TabsContent>
+        <AbandonDialog
+          title={dropping === null ? '' : `方案 ${dropping.plan.planId} ${dropping.plan.title}`}
+          open={dropping !== null}
+          onCancel={() => setDropping(null)}
+          onConfirm={(reason) => { if (dropping !== null) p.onAbandon(dropping.decision, dropping.plan, reason); setDropping(null); }}
+        />
       </aside>
     </Tabs>
   );
@@ -183,7 +210,7 @@ function ClosingCard({ task, onOpenFile }: { task: ContinuoTask; onOpenFile: (pa
         {done ? <Check size={14} style={{ color: 'var(--ok)' }} /> : <CircleAlert size={14} style={{ color: 'var(--warn)' }} />}
         <span className="font-medium">{taskLabel(task)}</span>
         <span className="t3">· {done ? '做完了' : '还差一点'}</span>
-        <span className="t3">· {deliverables.length > 0 ? `${deliverables.length} 份文件，${ok} 份已确认在项目里` : '没有新文件'}</span>
+        <span className="t3">· {deliverables.length === 0 ? '没有新文件' : ok === deliverables.length ? `${deliverables.length} 份文件，已核对` : `${deliverables.length} 份文件，${deliverables.length - ok} 份没找到`}</span>
       </div>
       {deliverables.map((d) => (
         <div key={d.path} className="deliverable-row">

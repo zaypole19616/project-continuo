@@ -31,6 +31,7 @@ const DEFAULT_APPROVE_TOOLS = new Set([
   'select_tools',
   'WorkspaceContext',
   'ReportWorkspaceResult',
+  'Trajectory',
 ]);
 
 export class DefaultToolApprovePermissionPolicyService implements PermissionPolicy {

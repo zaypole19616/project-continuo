@@ -118,15 +118,15 @@ export function registerContinuoRoutes(app: ContinuoRouteHost, core: Scope): voi
       body: z.object({ text: z.string().min(1).max(8000).optional() }).optional(),
       success: { data: docSchema },
       errors: CONTINUO_ERRORS,
-      description: 'Task actions: {task_id}:pause stops a running task (the user pause wins over automatic continuation); {task_id}:resume continues a paused, interrupted, failed or needs_review task in its original session; {task_id}:reply sends the user reply into the task session',
+      description: 'Task actions: {task_id}:pause stops a running task (the user pause wins over automatic continuation); {task_id}:resume continues a paused, interrupted, failed or needs_review task in its original session; {task_id}:reply sends the user reply into the task session; {task_id}:fork copies the current line up to the end of that task into a new line and makes it current',
       tags: ['continuo'],
       operationId: 'continuoTaskAction',
     },
     async (req, reply) => {
       if (!flagGuard(req.id, reply)) return;
-      const parsed = parseActionSuffix({ tail: req.params.tail, allowedActions: ['pause', 'resume', 'reply'] as const, resourceLabel: 'task' });
+      const parsed = parseActionSuffix({ tail: req.params.tail, allowedActions: ['pause', 'resume', 'reply', 'fork'] as const, resourceLabel: 'task' });
       if (parsed.kind !== 'action') {
-        reply.send(errEnvelope(ErrorCode.VALIDATION_FAILED, parsed.kind === 'invalid' ? parsed.reason : 'expected {task_id}:pause, :resume or :reply', req.id));
+        reply.send(errEnvelope(ErrorCode.VALIDATION_FAILED, parsed.kind === 'invalid' ? parsed.reason : 'expected {task_id}:pause, :resume, :reply or :fork', req.id));
         return;
       }
       const text = req.body?.text;
@@ -139,7 +139,9 @@ export function registerContinuoRoutes(app: ContinuoRouteHost, core: Scope): voi
           ? await manager.pause(req.params.workspace_id, parsed.id)
           : parsed.action === 'resume'
             ? await manager.resume(req.params.workspace_id, parsed.id)
-            : await manager.reply(req.params.workspace_id, parsed.id, text!);
+            : parsed.action === 'fork'
+              ? await manager.forkAfterTask(req.params.workspace_id, parsed.id)
+              : await manager.reply(req.params.workspace_id, parsed.id, text!);
         reply.send(okEnvelope(doc, req.id));
       } catch (error) {
         sendError(reply, req.id, error);
@@ -147,6 +149,72 @@ export function registerContinuoRoutes(app: ContinuoRouteHost, core: Scope): voi
     },
   );
   app.post(taskActionRoute.path, taskActionRoute.options, taskActionRoute.handler as Parameters<ContinuoRouteHost['post']>[2]);
+
+  const decisionActionRoute = defineRoute(
+    {
+      method: 'POST',
+      path: '/workspaces/{workspace_id}/continuo/decisions/{tail}',
+      params: z.object({ workspace_id: z.string().min(1), tail: z.string().min(1) }),
+      body: z.object({ plan_id: z.string().min(1).max(8).optional(), reason: z.string().max(300).optional() }).optional(),
+      success: { data: docSchema },
+      errors: CONTINUO_ERRORS,
+      description: 'Decision point actions: {decision_id}:choose follows a plan (in place while the decision is still open on the current line, otherwise on a new line forked at the decision); {decision_id}:expand asks for more plans while it is still open; {decision_id}:abandon marks a plan abandoned with an optional reason',
+      tags: ['continuo'],
+      operationId: 'continuoDecisionAction',
+    },
+    async (req, reply) => {
+      if (!flagGuard(req.id, reply)) return;
+      const parsed = parseActionSuffix({ tail: req.params.tail, allowedActions: ['choose', 'expand', 'abandon'] as const, resourceLabel: 'decision' });
+      if (parsed.kind !== 'action') {
+        reply.send(errEnvelope(ErrorCode.VALIDATION_FAILED, parsed.kind === 'invalid' ? parsed.reason : 'expected {decision_id}:choose, :expand or :abandon', req.id));
+        return;
+      }
+      const planId = req.body?.plan_id;
+      if (parsed.action !== 'expand' && planId === undefined) {
+        reply.send(errEnvelope(ErrorCode.VALIDATION_FAILED, `${parsed.action} requires plan_id`, req.id));
+        return;
+      }
+      try {
+        const doc = parsed.action === 'choose'
+          ? await manager.choosePlan(req.params.workspace_id, parsed.id, planId!)
+          : parsed.action === 'expand'
+            ? await manager.expandPlans(req.params.workspace_id, parsed.id)
+            : await manager.abandonPlan(req.params.workspace_id, parsed.id, planId!, req.body?.reason);
+        reply.send(okEnvelope(doc, req.id));
+      } catch (error) {
+        sendError(reply, req.id, error);
+      }
+    },
+  );
+  app.post(decisionActionRoute.path, decisionActionRoute.options, decisionActionRoute.handler as Parameters<ContinuoRouteHost['post']>[2]);
+
+  const trajectoryActionRoute = defineRoute(
+    {
+      method: 'POST',
+      path: '/workspaces/{workspace_id}/continuo/trajectories/{tail}',
+      params: z.object({ workspace_id: z.string().min(1), tail: z.string().min(1) }),
+      body: z.object({}).optional(),
+      success: { data: docSchema },
+      errors: CONTINUO_ERRORS,
+      description: 'Line actions: {trajectory_id}:activate makes an existing line current again; nothing on either line is changed',
+      tags: ['continuo'],
+      operationId: 'continuoTrajectoryAction',
+    },
+    async (req, reply) => {
+      if (!flagGuard(req.id, reply)) return;
+      const parsed = parseActionSuffix({ tail: req.params.tail, allowedActions: ['activate'] as const, resourceLabel: 'trajectory' });
+      if (parsed.kind !== 'action') {
+        reply.send(errEnvelope(ErrorCode.VALIDATION_FAILED, parsed.kind === 'invalid' ? parsed.reason : 'expected {trajectory_id}:activate', req.id));
+        return;
+      }
+      try {
+        reply.send(okEnvelope(await manager.activateTrajectory(req.params.workspace_id, parsed.id), req.id));
+      } catch (error) {
+        sendError(reply, req.id, error);
+      }
+    },
+  );
+  app.post(trajectoryActionRoute.path, trajectoryActionRoute.options, trajectoryActionRoute.handler as Parameters<ContinuoRouteHost['post']>[2]);
 
   const filesRoute = defineRoute(
     {

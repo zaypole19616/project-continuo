@@ -35,8 +35,8 @@ export class ReportResultTool implements IReportResultTool {
             candidate.taskId === task.taskId
               ? {
                   ...candidate,
-                  name: args.name,
-                  category: args.category,
+                  name: candidate.name ?? args.name,
+                  category: candidate.category ?? args.category,
                   report: {
                     summary: args.summary,
                     deliverables: args.deliverables.map((item) => ({ path: item.path, note: item.note })),

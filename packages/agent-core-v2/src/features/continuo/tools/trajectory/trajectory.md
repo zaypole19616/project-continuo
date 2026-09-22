@@ -1,0 +1,7 @@
+Open a decision point when the direction of this task is genuinely the user's call, add plans to it, or list the decision points on this line.
+
+Use `propose` when the materials do not settle how to proceed and the options are different approaches, each leading to a different deliverable — for example which basis to set targets on, or which angle a review takes. That is a decision point, not a question: use this tool for it, not AskUserQuestion. Do not use it for routine tasks with an obvious path, or for a missing fact. Give as many plans as are actually different; there is no fixed number. Every plan needs a `basis` from what you read, its main `risk`, and the `prompt` that starts it. Plans must differ in approach, not in wording. After proposing, end your turn: the user picks a plan, or says what they want instead. You never pick a plan yourself.
+
+Use `expand` when the user asks for more plans. Add only plans that differ from every existing one. If nothing meaningfully different is left, send `exhausted` instead: say which directions the existing plans already cover, and ask the one question the user has to decide. Existing plans are never removed.
+
+Every plan is also written to a file in the project (its path comes back in the result and in `list`). When you need the full content of a plan that is not the one being followed — for example because the user mentions it — read that file instead of guessing.
