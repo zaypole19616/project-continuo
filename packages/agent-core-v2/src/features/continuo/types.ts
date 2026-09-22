@@ -50,18 +50,21 @@ export interface TaskDeliverable {
   readonly path: string;
   readonly note?: string;
   readonly exists?: boolean;
+  readonly turnId?: number;
+}
+
+export interface TaskNextStep {
+  readonly title: string;
+  readonly reason: string;
+  readonly prompt: string;
 }
 
 export interface TaskReport {
   readonly summary: string;
   readonly deliverables: readonly TaskDeliverable[];
   readonly unresolved: readonly string[];
+  readonly nextStep?: TaskNextStep;
   readonly reportedAt: string;
-}
-
-export interface TaskReuse {
-  readonly entries: number;
-  readonly questions: number;
 }
 
 export interface ContinuoTask {
@@ -79,7 +82,8 @@ export interface ContinuoTask {
   readonly lastReply?: string;
   readonly report?: TaskReport;
   readonly verification?: readonly string[];
-  readonly reuse?: TaskReuse;
+  readonly supplements?: readonly string[];
+  readonly sources?: readonly string[];
   readonly usage: TaskUsage;
   readonly lastError?: string;
   readonly createdAt: string;

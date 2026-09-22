@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, BookOpen, ChevronRight, LayoutGrid, List, PanelRightOpen, Search, Sparkles } from 'lucide-react';
-import { continuoFiles, type ContinuoDoc, type FileContent, type FileEntry, type FileListing } from '#/lib/api';
+import { ArrowLeft, BookOpen, ChevronRight, GitCompare, LayoutGrid, List, PanelRightOpen, Search, Sparkles } from 'lucide-react';
+import { continuoFiles, type ContinuoDoc, type ContinuoTask, type FileContent, type FileEntry, type FileListing } from '#/lib/api';
 import { renderMarkdown } from '#/lib/markdown';
+import { collapseUnchanged, diffLines } from '#/lib/diff';
 import { FileGlyph, FolderGlyph, fileTypeLabel } from './icons';
 
 export type NavTarget = { kind: 'folder'; path: string } | { kind: 'file'; path: string };
@@ -51,6 +52,7 @@ export function FileBrowser({ workspaceId, root, doc, target, agentCollapsed, se
   const rootName = root.split('/').filter(Boolean).pop() ?? '根目录';
   const folderName = crumbs.length === 0 ? rootName : crumbs.at(-1)!;
   const taskTitle = (taskId: string) => doc?.tasks.find((t) => t.taskId === taskId)?.title ?? taskId;
+  const producer = file?.producedBy === undefined ? null : doc?.tasks.find((t) => t.taskId === file.producedBy) ?? null;
   const switchView = (v: 'grid' | 'list') => { setView(v); try { localStorage.setItem('continuo.view', v); } catch {} };
   return (
     <section className="pane pane-content" aria-label="文件工作区">
@@ -78,7 +80,7 @@ export function FileBrowser({ workspaceId, root, doc, target, agentCollapsed, se
       </header>
 
       {target.kind === 'file' ? (
-        <div className="pane-body"><FilePreview file={file} taskTitle={taskTitle} onBack={() => onNavigate({ kind: 'folder', path: folderPath })} onSelectTask={onSelectTask} /></div>
+        <div className="pane-body"><FilePreview file={file} producer={producer} taskTitle={taskTitle} onBack={() => onNavigate({ kind: 'folder', path: folderPath })} onSelectTask={onSelectTask} onError={onError} /></div>
       ) : (
         <>
           <div className="toolbar chrome">
@@ -150,18 +152,43 @@ function Markers({ entry, taskTitle, onSelectTask }: { entry: FileEntry; taskTit
   );
 }
 
-function FilePreview({ file, taskTitle, onBack, onSelectTask }: { file: FileContent | null; taskTitle: (id: string) => string; onBack: () => void; onSelectTask: (id: string) => void }) {
+function FilePreview({ file, producer, taskTitle, onBack, onSelectTask, onError }: { file: FileContent | null; producer: ContinuoTask | null; taskTitle: (id: string) => string; onBack: () => void; onSelectTask: (id: string) => void; onError: (message: string) => void }) {
+  const [before, setBefore] = useState<string | null>(null);
+  const [comparing, setComparing] = useState(false);
+  const [loading, setLoading] = useState(false);
+  useEffect(() => { setBefore(null); setComparing(false); }, [file?.path]);
   if (!file) return <div className="text-3 fs-meta p-6">读取中…</div>;
   const isMd = /\.(md|markdown)$/i.test(file.path);
+  const deliverable = producer?.report?.deliverables.find((d) => d.path === file.path);
+  const canCompare = !file.binary && producer !== null && producer.sessionId !== '' && deliverable?.turnId !== undefined;
+  const compare = async () => {
+    if (comparing) { setComparing(false); return; }
+    if (before !== null) { setComparing(true); return; }
+    setLoading(true);
+    try {
+      const r = await continuoFiles.before(producer!.sessionId, deliverable!.turnId!, file.path);
+      setBefore(r.content?.content ?? '');
+      setComparing(true);
+    } catch (error) { onError((error as Error).message); } finally { setLoading(false); }
+  };
+  const rows = comparing && before !== null ? collapseUnchanged(diffLines(before, file.text ?? '')) : [];
   return (
     <div className="p-8 space-y-5 fade-in">
       <div className="flex items-center gap-3 flex-wrap chrome">
         <button className="btn btn-sm btn-ghost" onClick={onBack}><ArrowLeft size={14} />返回文件夹</button>
         <span className="text-3 fs-meta">{formatSize(file.size)} · {formatTime(file.modifiedAt)}</span>
         {file.producedBy && <button className="tag tag-done" onClick={() => onSelectTask(file.producedBy!)} title={taskTitle(file.producedBy)}><Sparkles size={12} />由任务产出 · 查看过程</button>}
+        {canCompare && <button className="btn btn-sm" disabled={loading} onClick={() => { void compare(); }}><GitCompare size={13} />{comparing ? '看正文' : '对比上一版'}</button>}
         {file.truncated && <span className="tag tag-wait">只显示前 256KB</span>}
       </div>
-      {file.binary ? <div className="text-3">这是二进制文件，Continuo 只展示文本文件的内容。</div>
+      {comparing && before !== null
+        ? <div className="diff">
+            <div className="diff-legend chrome"><span className="removed">动手前</span><span className="added">这次改成</span>{before === '' && <span className="t3">这个文件是这次新建的</span>}</div>
+            {rows.map((row, i) => row.kind === 'skip'
+              ? <div key={i} className="diff-skip">… 省略 {row.count} 行未改动</div>
+              : <div key={i} className={`diff-line ${row.kind}`}><span className="sign">{row.kind === 'added' ? '+' : row.kind === 'removed' ? '−' : ' '}</span>{row.text || '\u00A0'}</div>)}
+          </div>
+        : file.binary ? <div className="text-3">这是二进制文件，Continuo 只展示文本文件的内容。</div>
         : isMd ? <article className="md" dangerouslySetInnerHTML={{ __html: renderMarkdown(file.text ?? '') }} />
         : <pre className="md" style={{ whiteSpace: 'pre-wrap', fontFamily: 'var(--font-mono)', fontSize: 12.5 }}>{file.text}</pre>}
     </div>
