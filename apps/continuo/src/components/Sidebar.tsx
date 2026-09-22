@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ChevronDown, ChevronRight, HelpCircle, MessageSquareText, PanelLeft, Plus, Search, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, CircleHelp, HelpCircle, MessageSquareText, PanelLeft, Plus, Search, X } from 'lucide-react';
 import { DEFAULT_MODEL, forgetRecent, kimi, readRecent, type ContinuoDoc, type ContinuoTask, type Workspace } from '#/lib/api';
 import { FolderGlyph } from './icons';
 
@@ -7,9 +7,9 @@ const TASK_DOT: Record<ContinuoTask['status'], string> = {
   queued: '', running: 'running', verifying: 'running', awaiting_user: 'waiting', needs_review: 'waiting', completed: '', paused: '', interrupted: 'failed', failed: 'failed',
 };
 
-export function Sidebar({ workspace, doc, collapsed, selectedTaskId, onToggle, onSelectTask, onSwitchWorkspace, onAddWorkspace, onNewTask, onSearch, onAbout }: {
+export function Sidebar({ workspace, doc, collapsed, selectedTaskId, onToggle, onSelectTask, onSwitchWorkspace, onAddWorkspace, onNewTask, onSearch, onAbout, onGuide }: {
   workspace: Workspace | null; doc: ContinuoDoc | null; collapsed: boolean; selectedTaskId: string | null;
-  onToggle: () => void; onSelectTask: (task: ContinuoTask) => void; onSwitchWorkspace: (w: Workspace) => void; onAddWorkspace: () => void; onNewTask: () => void; onSearch: () => void; onAbout: () => void;
+  onToggle: () => void; onSelectTask: (task: ContinuoTask) => void; onSwitchWorkspace: (w: Workspace) => void; onAddWorkspace: () => void; onNewTask: () => void; onSearch: () => void; onAbout: () => void; onGuide: () => void;
 }) {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [recent, setRecent] = useState<string[]>(() => readRecent());
@@ -70,6 +70,7 @@ export function Sidebar({ workspace, doc, collapsed, selectedTaskId, onToggle, o
         {others.length === 0 && <div className="t3 xs" style={{ padding: '6px 10px' }}>{workspace ? '这里只列你在 Continuo 里打开过的文件夹' : '打开过的文件夹会列在这里'}</div>}
         {others.length > 4 && <button className="side-row t3 sm" style={{ justifyContent: 'center' }} onClick={() => setShowAll(!showAll)}>{showAll ? '收起' : `显示更多（${others.length - 4}）`}</button>}
       </div>
+      <div className="px-2 pb-1"><button className="side-row" onClick={onGuide}><CircleHelp size={16} className="ic" /><span className="flex-1">使用引导</span></button></div>
       <div className="side-footer">
         <span className="avatar">K</span>
         <div className="min-w-0 flex-1">

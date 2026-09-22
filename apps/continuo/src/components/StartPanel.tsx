@@ -5,7 +5,7 @@ import { FolderGlyph } from './icons';
 
 type Mode = 'idle' | 'new' | 'open';
 
-export function StartPanel({ onOpen, onReplayIntro }: { onOpen: (w: Workspace) => void; onReplayIntro: () => void }) {
+export function StartPanel({ onOpen }: { onOpen: (w: Workspace) => void }) {
   const [mode, setMode] = useState<Mode>('idle');
   const [browse, setBrowse] = useState<FsBrowse | null>(null);
   const [pathInput, setPathInput] = useState('');
@@ -36,19 +36,19 @@ export function StartPanel({ onOpen, onReplayIntro }: { onOpen: (w: Workspace) =
           <div className="start-hero fade-in">
             <FolderGlyph size={56} />
             <h2>从一个文件夹开始</h2>
-            <p className="t2">Continuo 住在你的文件夹里：先了解它，再接你交代的任务，做完的东西放回文件夹。</p>
+            <p className="t2">新建一个项目，或接着处理已有资料。</p>
           </div>
           {error && <div className="banner banner-err">{error}</div>}
           <div className="start-grid">
             <button className={`start-card ${mode === 'new' ? 'is-active' : ''}`} onClick={() => setMode(mode === 'new' ? 'idle' : 'new')}>
               <span className="start-icon"><FolderPlus size={20} /></span>
               <span className="start-title">新建文件夹</span>
-              <span className="start-desc">从零开始一个项目。它会随着你交代的任务，慢慢记住你怎么做事。</span>
+              <span className="start-desc">从零开始一个新项目</span>
             </button>
             <button className={`start-card ${mode === 'open' ? 'is-active' : ''}`} onClick={() => setMode(mode === 'open' ? 'idle' : 'open')}>
               <span className="start-icon"><FolderOpen size={20} /></span>
               <span className="start-title">打开已有的文件夹</span>
-              <span className="start-desc">把现有的材料交给它。它先了解你已经做到哪，再接着干。</span>
+              <span className="start-desc">接着手头的工作往下做</span>
             </button>
           </div>
 
@@ -80,8 +80,7 @@ export function StartPanel({ onOpen, onReplayIntro }: { onOpen: (w: Workspace) =
           )}
 
           <p className="t3 sm start-foot">
-            还没有合适的文件夹？<button className="link" disabled={busy} onClick={() => { void run(() => continuo.demo()); }}>用演示文件夹试试</button>，一个虚构公司的季度复盘，自带一段历史。
-            <span className="start-dot">·</span><button className="link" onClick={onReplayIntro}>重看新手引导</button>
+            它会先了解资料、记住约定和决定，让后面的工作接着进行。还没有合适的文件夹？<button className="link" disabled={busy} onClick={() => { void run(() => continuo.demo()); }}>用演示文件夹试试</button>
           </p>
         </div>
       </div>

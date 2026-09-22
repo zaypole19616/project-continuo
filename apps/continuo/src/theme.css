@@ -336,7 +336,6 @@ button.link:hover { text-decoration: underline; }
 .start-desc { font-size: var(--fs-sm); color: var(--text-2); line-height: 1.55; }
 .start-foot { text-align: center; margin: 8px 0 0; }
 .start-foot .link { padding: 0 2px; }
-.start-dot { margin: 0 6px; color: var(--text-3); }
 @media (max-width: 1000px) { .start-grid { grid-template-columns: 1fr; } }
 
 .init-stage { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 120px 20px 40px; text-align: center; }
@@ -346,7 +345,8 @@ button.link:hover { text-decoration: underline; }
 .onboard-backdrop { position: fixed; inset: 0; z-index: 50; background: rgba(28, 25, 23, 0.32); backdrop-filter: blur(6px); display: flex; align-items: center; justify-content: center; padding: 24px; }
 .onboard { width: 100%; max-width: 440px; background: var(--surface); border-radius: 24px; box-shadow: 0 24px 64px rgba(16, 24, 40, 0.18); padding: 36px 36px 28px; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 12px; }
 .onboard-icon { width: 60px; height: 60px; border-radius: 18px; background: var(--accent-soft); color: var(--accent); display: inline-flex; align-items: center; justify-content: center; margin-bottom: 6px; }
-.onboard-title { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }
+.onboard-kicker { font-size: var(--fs-xs); font-weight: 700; color: var(--accent); letter-spacing: 0.06em; }
+.onboard-title { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; margin-top: -4px; }
 .onboard-body { font-size: var(--fs-lg); line-height: 1.7; color: var(--text-2); min-height: 76px; }
 .onboard-foot { width: 100%; display: flex; align-items: center; justify-content: space-between; margin-top: 14px; }
 .onboard-dots { display: inline-flex; gap: 6px; }
