@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
 import { ApiError, kimi, readToken, setToken, touchRecent, type Workspace } from '#/lib/api';
+import { applyTheme, readThemePref, watchSystemTheme, type ThemePref } from '#/lib/theme';
 import { ONBOARDED_KEY, Onboarding } from '#/components/Onboarding';
+import { Launcher } from '#/pages/Launcher';
 import { WorkspaceView } from '#/pages/Workspace';
 import { Button } from '#/components/ui/button';
-
-const WS_KEY = 'continuo.workspace';
 
 export function App() {
   const [token, setTok] = useState<string | null>(() => readToken());
@@ -13,6 +13,10 @@ export function App() {
   const [serverOk, setServerOk] = useState<string | null>(null);
   const [failure, setFailure] = useState<'auth' | 'network' | null>(null);
   const [intro, setIntro] = useState(() => { try { return localStorage.getItem(ONBOARDED_KEY) !== '1'; } catch { return true; } });
+  const [themePref, setThemePref] = useState<ThemePref>(() => readThemePref());
+
+  useEffect(() => { applyTheme(themePref); }, [themePref]);
+  useEffect(() => watchSystemTheme(() => applyTheme(themePref)), [themePref]);
 
   useEffect(() => {
     const onHash = () => { const t = readToken(); if (t) setTok(t); };
@@ -28,12 +32,6 @@ export function App() {
         const meta = await kimi.meta();
         if (cancelled) return;
         setServerOk(meta.server_version);
-        const saved = localStorage.getItem(WS_KEY);
-        if (saved) {
-          const list = await kimi.workspaces();
-          const found = list.items.find((w) => w.id === saved);
-          if (found) { touchRecent(found.id); setWorkspace(found); }
-        }
       } catch (error) {
         if (cancelled) return;
         setServerOk(null);
@@ -58,9 +56,12 @@ export function App() {
     );
   }
   const finishIntro = () => { try { localStorage.setItem(ONBOARDED_KEY, '1'); } catch {} setIntro(false); };
+  const open = (w: Workspace) => { touchRecent(w.id); setWorkspace(w); };
   return (
     <>
-      <WorkspaceView workspace={workspace} onSwitch={(w) => { localStorage.setItem(WS_KEY, w.id); touchRecent(w.id); setWorkspace(w); }} onReplayIntro={() => setIntro(true)} />
+      {workspace
+        ? <WorkspaceView workspace={workspace} onClose={() => setWorkspace(null)} themePref={themePref} onTheme={setThemePref} />
+        : <Launcher onOpen={open} themePref={themePref} onTheme={setThemePref} onReplayIntro={() => setIntro(true)} />}
       {intro && <Onboarding onDone={finishIntro} />}
     </>
   );

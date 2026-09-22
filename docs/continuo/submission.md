@@ -86,6 +86,6 @@ pnpm run build:packages && pnpm -C apps/kimi-code run build
 KIMI_CODE_EXPERIMENTAL_CONTINUO=1 node apps/kimi-code/dist/main.mjs web --no-open --port 58627
 ```
 
-另开一个终端 `KIMI_PORT=58627 pnpm dev:continuo`，打开 `http://127.0.0.1:5180/#token=<启动时打印的 token>`。打开就是产品本身：第一次启动有一段简短引导，之后可以新建文件夹、打开已有的文件夹，或用一份合成材料的演示文件夹开始。首次未配置模型时，先运行 `node apps/kimi-code/dist/main.mjs` 并在 CLI 里 `/login`。文件留在本机，被读取的文本会随请求发送给所配置的模型。
+另开一个终端 `KIMI_PORT=58627 pnpm dev:continuo`，打开 `http://127.0.0.1:5180/#token=<启动时打印的 token>`。打开是一张启动卡：新建项目、打开已有项目、最近打开的项目，或用一份合成材料的演示项目开始；进入项目后左边是文件窗口，右边挂着对话。第一次启动有一段简短引导；深色 / 浅色可切换。首次未配置模型时，先运行 `node apps/kimi-code/dist/main.mjs` 并在 CLI 里 `/login`。文件留在本机，被读取的文本会随请求发送给所配置的模型。
 
 实现细节与边界见 [docs/continuo/README.md](README.md)。
