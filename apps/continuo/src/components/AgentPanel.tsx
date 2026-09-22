@@ -42,7 +42,7 @@ const isAwaitingReply = (t: ContinuoTask | null) => !!t && t.status === 'awaitin
 export function AgentPanel(p: AgentPanelProps) {
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const [draft, setDraft] = useState('');
-  const [picking, setPicking] = useState(false);
+  const [picking, setPicking] = useState<DOMRect | null>(null);
   const lastAssistant = p.state.items.at(-1);
   useEffect(() => { bottomRef.current?.scrollIntoView({ block: 'end' }); }, [p.state.items.length, lastAssistant?.kind === 'assistant' ? lastAssistant.text.length : 0, p.questions.length, p.approvals.length, p.selected?.status]);
 
@@ -73,14 +73,14 @@ export function AgentPanel(p: AgentPanelProps) {
           <button className="btn btn-sm btn-primary" onClick={() => p.onAction(p.continueTarget!, 'resume')}>{p.continueTarget.status === 'failed' ? <><RotateCcw size={12} />重试</> : <><Play size={12} />继续</>}</button>
         </div>
       )}
-      <div className="hero-chip-row">
-        <div className="chip-anchor">
-          <button className={`ws-chip ws-chip-btn ${p.workspace === null ? 'is-empty' : ''}`} onClick={() => setPicking(!picking)} title="选择文件夹">
+      {hero && (
+        <div className="hero-chip-row">
+          <button className={`ws-chip ws-chip-btn ${p.workspace === null ? 'is-empty' : ''}`} onClick={(e) => setPicking(picking ? null : e.currentTarget.getBoundingClientRect())} title="选择文件夹">
             <FolderOpen size={13} />{p.workspace?.name ?? '选择文件夹'}<ChevronDown size={12} />
           </button>
-          {picking && <FolderMenu currentId={p.workspace?.id} onPick={p.onPickWorkspace} onClose={() => setPicking(false)} />}
+          {picking && <FolderMenu anchor={picking} currentId={p.workspace?.id} onPick={p.onPickWorkspace} onClose={() => setPicking(null)} />}
         </div>
-      </div>
+      )}
       <div className="composer">
         <textarea ref={p.composerRef} rows={hero ? 3 : 2} placeholder={p.workspace === null ? '先选一个文件夹，再交代任务…' : awaitingReply ? '回复它…' : continuing ? '有新的要求？直接说…' : '这次想完成什么？'} value={draft} disabled={p.workspace === null} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send(); } }} />
         <div className="composer-footer chrome">

@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { ChevronRight, Folder, FolderPlus, Loader2, Play, Search } from 'lucide-react';
 import { continuo, kimi, readRecent, type FsBrowse, type Workspace } from '#/lib/api';
 import { FolderGlyph } from './icons';
 
 type Mode = 'list' | 'browse' | 'create';
 
-export function FolderMenu({ currentId, onPick, onClose }: { currentId?: string; onPick: (w: Workspace) => void; onClose: () => void }) {
+export function FolderMenu({ anchor, currentId, onPick, onClose }: { anchor: DOMRect; currentId?: string; onPick: (w: Workspace) => void; onClose: () => void }) {
   const [mode, setMode] = useState<Mode>('list');
   const [recent, setRecent] = useState<Workspace[]>([]);
   const [browse, setBrowse] = useState<FsBrowse | null>(null);
@@ -48,8 +49,16 @@ export function FolderMenu({ currentId, onPick, onClose }: { currentId?: string;
     try { onPick(await work()); onClose(); } catch (error) { setError((error as Error).message); } finally { setBusy(false); }
   };
 
-  return (
-    <div className="folder-menu" ref={box} role="dialog" aria-label="选择文件夹">
+  const width = 320;
+  const below = anchor.bottom + 8;
+  const top = below + 380 > window.innerHeight && anchor.top > 400 ? undefined : below;
+  const style: React.CSSProperties = {
+    left: Math.max(8, Math.min(anchor.left, window.innerWidth - width - 8)),
+    width,
+    ...(top === undefined ? { bottom: window.innerHeight - anchor.top + 8 } : { top }),
+  };
+  return createPortal(
+    <div className="folder-menu" ref={box} role="dialog" aria-label="选择文件夹" style={style}>
       {error && <div className="banner banner-err" style={{ margin: 8 }}>{error}</div>}
       {mode === 'list' && (
         <>
@@ -89,6 +98,7 @@ export function FolderMenu({ currentId, onPick, onClose }: { currentId?: string;
               </form>}
         </>
       )}
-    </div>
+    </div>,
+    document.body,
   );
 }

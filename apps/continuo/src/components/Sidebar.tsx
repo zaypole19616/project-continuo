@@ -12,7 +12,7 @@ export function Sidebar({ workspace, doc, workspaces, collapsed, selectedTaskId,
   onToggle: () => void; onSelectTask: (task: ContinuoTask) => void; onPickWorkspace: (w: Workspace) => void;
   onNewTask: () => void; onSearch: () => void; onAbout: () => void; onGuide: () => void;
 }) {
-  const [adding, setAdding] = useState(false);
+  const [adding, setAdding] = useState<DOMRect | null>(null);
   const tasks = doc ? [...doc.tasks].toReversed() : [];
 
   if (collapsed) {
@@ -40,10 +40,10 @@ export function Sidebar({ workspace, doc, workspaces, collapsed, selectedTaskId,
       <div className="pane-body px-2 pb-3">
         <div className="side-section">
           <span>会话</span>
-          <div className="chip-anchor">
-            <button className="btn btn-icon" style={{ width: 22, height: 22 }} title="添加文件夹" onClick={() => setAdding(!adding)}><Plus size={13} /></button>
-            {adding && <FolderMenu currentId={workspace?.id} onPick={onPickWorkspace} onClose={() => setAdding(false)} />}
-          </div>
+          <>
+            <button className="btn btn-icon" style={{ width: 22, height: 22 }} title="添加文件夹" onClick={(e) => setAdding(adding ? null : e.currentTarget.getBoundingClientRect())}><Plus size={13} /></button>
+            {adding && <FolderMenu anchor={adding} currentId={workspace?.id} onPick={onPickWorkspace} onClose={() => setAdding(null)} />}
+          </>
         </div>
         {workspaces.map((w) => {
           const current = w.id === workspace?.id;

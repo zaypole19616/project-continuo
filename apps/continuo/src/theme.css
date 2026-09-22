@@ -198,9 +198,10 @@ textarea:focus, input:focus { outline: none; border-color: var(--accent); box-sh
 .file-table tr:hover td { background: var(--surface-sunken); }
 .file-table .name-cell { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .file-table .name-text { overflow: hidden; text-overflow: ellipsis; }
-.file-table .col-mark { width: 120px; } .file-table .col-time { width: 130px; } .file-table .col-size { width: 84px; }
+.file-table .col-mark { width: 92px; } .file-table .col-time { width: 130px; } .file-table .col-size { width: 84px; }
 @container (max-width: 560px) { .file-table .col-time { display: none; } }
 @container (max-width: 440px) { .file-table .col-size { display: none; } }
+@container (max-width: 360px) { .file-table .col-mark { display: none; } }
 
 /* markdown */
 .md { font-size: var(--fs-lg); line-height: 1.7; max-width: 720px; }
@@ -421,8 +422,7 @@ button.link:hover { text-decoration: underline; }
 .side-folder { height: 38px; margin-top: 2px; background: var(--surface); border: 1px solid var(--line); }
 .side-folder:hover { background: var(--surface-hover); }
 
-.folder-menu { position: absolute; bottom: calc(100% + 8px); left: 0; z-index: 30; width: 320px; max-height: 420px; overflow: auto; padding: 6px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow-lg, 0 12px 32px rgba(16, 24, 40, 0.14)); }
-.pane-nav .folder-menu { bottom: auto; top: calc(100% + 6px); }
+.folder-menu { position: fixed; z-index: 400; max-height: 420px; overflow: auto; padding: 6px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow-lg, 0 12px 32px rgba(16, 24, 40, 0.14)); }
 .menu-label { padding: 6px 10px 2px; font-size: var(--fs-xs); color: var(--text-3); }
 .menu-row { display: flex; align-items: center; gap: 8px; width: 100%; height: 34px; padding: 0 10px; border: 0; border-radius: 8px; background: transparent; color: var(--text-1); font-size: var(--fs-md); text-align: left; cursor: pointer; }
 .menu-row:hover { background: var(--surface-hover); }
