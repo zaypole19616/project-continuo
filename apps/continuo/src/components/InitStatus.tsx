@@ -26,7 +26,6 @@ export function InitStatus({ doc, onReunderstand }: { doc: ContinuoDoc; onReunde
         <Loader2 className="size-4 shrink-0 animate-spin text-accent" />
         <div className="min-w-0">
           <div className="text-sm font-medium">{STAGES.findLast(([at]) => elapsed >= at)![1]}</div>
-          <div className="t3 xs">只读不改，不用等它读完，可以直接交代任务。</div>
         </div>
       </div>
     );

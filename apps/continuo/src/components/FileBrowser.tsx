@@ -105,7 +105,6 @@ function EmptyFolder({ query }: { query: string }) {
     <div className="flex flex-col items-center justify-center gap-3 p-16 text-center">
       <FolderGlyph size={104} />
       <div className="text-2" style={{ fontSize: 'var(--fs-chat)' }}>{query ? `没有名字包含「${query}」的项目` : '这个文件夹是空的'}</div>
-      {!query && <div className="text-3 fs-meta">在中间交代一个任务，它做出的文件会出现在这里。</div>}
     </div>
   );
 }

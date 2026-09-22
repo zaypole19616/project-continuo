@@ -52,7 +52,6 @@ export function ApprovalCard({ a, root, onDecide }: { a: ApprovalRequest; root?:
       <div className="flex items-center gap-2 fs-meta" style={{ color: 'var(--warn)' }}><ShieldAlert size={16} />要动你的文件，先问你一声</div>
       <div className="font-medium" style={{ fontSize: 'var(--fs-chat)' }}>{headline}</div>
       {detail && <pre className="p-2 overflow-auto" style={{ background: 'var(--row-hover)', borderRadius: 'var(--r-2)' }}>{detail}</pre>}
-      <div className="text-3 fs-meta">它自己的记事本不用你批；只有要写你的文件、跑命令时才会问。</div>
       <div className="flex gap-2 flex-wrap justify-end">
         <Button disabled={busy} onClick={() => { void run('rejected'); }}>拒绝</Button>
         <Button disabled={busy} onClick={() => { void run('approved', 'session'); }}>本次任务都允许</Button>

@@ -55,7 +55,7 @@ export function Sidebar({ workspace, doc, workspaces, collapsed, selectedTaskId,
             onToggle={() => toggle(w.id)} onOpen={() => onPickWorkspace(w)} onSelectTask={onSelectTask}
           />
         ))}
-        {workspaces.length === 0 && <div className="side-empty" style={{ paddingLeft: 9 }}>还没有文件夹，点上面的 ＋ 添加一个</div>}
+        {workspaces.length === 0 && <div className="side-empty" style={{ paddingLeft: 9 }}>还没有文件夹</div>}
       </div>
       <div className="px-2 pb-1"><button className="side-row" onClick={onGuide}><CircleHelp size={16} className="ic" /><span className="flex-1">使用引导</span></button></div>
       <div className="side-footer">
