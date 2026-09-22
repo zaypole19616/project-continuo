@@ -317,8 +317,8 @@ export class ContinuoTaskManager {
       return this.store.update(workspaceId, (current) => ({
         ...current,
         scan,
-        init: { status: 'completed', fingerprint, startedAt: now, endedAt: now },
-        understanding: { text: '这个文件夹是空的。工作空间已就绪，等待第一个任务；不对它的用途做任何假设。', sourceRefs: [], updatedAt: now },
+        init: { status: 'pending', fingerprint, startedAt: now, endedAt: now },
+        understanding: { text: '这个文件夹是空的。等你放进材料或交代第一件事；下次打开会重新了解一遍。', sourceRefs: [], updatedAt: now },
         activity: [...current.activity, { at: now, kind: 'system', text: '空文件夹：不需要了解，等你交代第一件事' }],
       }));
     }

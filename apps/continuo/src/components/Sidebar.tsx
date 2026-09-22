@@ -14,7 +14,7 @@ export function Sidebar({ workspace, doc, workspaces, collapsed, selectedTaskId,
   onNewTask: () => void; onSearch: () => void; onGuide: () => void;
 }) {
   const [folded, setFolded] = useState<Record<string, boolean>>(() => readFolded());
-  const tasks = doc ? [...doc.tasks].toReversed() : [];
+  const tasks = doc ? doc.tasks.filter((t) => t.kind === 'user').toReversed() : [];
   const toggle = (id: string) => setFolded((current) => { const next = { ...current, [id]: !current[id] }; writeFolded(next); return next; });
 
   if (collapsed) {
@@ -88,7 +88,7 @@ function FolderGroup({ workspace, current, tasks, open, selectedTaskId, onToggle
     let cancelled = false;
     setLoading(true);
     continuo.get(workspace.id)
-      .then((d) => { if (!cancelled) setFetched([...d.tasks].toReversed()); })
+      .then((d) => { if (!cancelled) setFetched(d.tasks.filter((t) => t.kind === 'user').toReversed()); })
       .catch(() => { if (!cancelled) setFetched([]); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
@@ -105,7 +105,7 @@ function FolderGroup({ workspace, current, tasks, open, selectedTaskId, onToggle
       </div>
       {open && list?.map((t) => (
         <button key={t.taskId} className={`side-sub ${current && t.taskId === selectedTaskId ? 'is-selected' : ''}`} onClick={() => { if (!current) onOpen(); else onSelectTask(t); }} title={t.title}>
-          <span className="flex-1 truncate">{t.kind === 'init' ? '了解这个文件夹' : t.title}</span>
+          <span className="flex-1 truncate">{t.title}</span>
           {TASK_DOT[t.status] ? <span className={`status-dot ${TASK_DOT[t.status]}`} /> : <span className="t3 xs">{shortDate(t.createdAt)}</span>}
         </button>
       ))}
