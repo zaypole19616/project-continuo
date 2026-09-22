@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { IDisposable } from '#/_base/di/lifecycle';
 import { compileContextBundle, CONTEXT_BUNDLE_MAX_CHARS } from '#/features/continuo/contextBundle';
 import { ContinuoStoreService } from '#/features/continuo/store';
+import { inheritedChoices, planPath, planStatusOn, tasksThrough } from '#/features/continuo/trajectory';
 import {
   CONTINUO_STORE_SCOPE,
   currentTaskOf,
@@ -11,6 +12,8 @@ import {
   type ContextEntry,
   type ContinuoTask,
   type ContinuoWorkspaceDoc,
+  type Decision,
+  type Trajectory,
 } from '#/features/continuo/types';
 import type { IAtomicDocumentStore } from '#/persistence/interface/atomicDocumentStore';
 
@@ -94,6 +97,67 @@ describe('currentTaskOf', () => {
   });
 });
 
+function line(overrides: Partial<Trajectory> & { trajectoryId: string }): Trajectory {
+  return { label: '', sessionId: 'session_1', status: 'current', taskIds: [], choices: [], turnCount: 0, createdAt: NOW, ...overrides };
+}
+
+function decision(overrides: Partial<Decision> = {}): Decision {
+  const plan = (planId: string, title: string) => ({ planId, title, basis: `basis ${planId}`, risk: `risk ${planId}`, prompt: `go ${planId}`, path: `work-log/plan-${planId}.md`, createdAt: NOW });
+  return { decisionId: 'dec_1', taskId: 'task_1', trajectoryId: 'main', question: 'Which target?', turnIndex: 2, plans: [plan('A', 'grow 10%'), plan('B', 'keep budget'), plan('C', 'wait')], createdAt: NOW, ...overrides };
+}
+
+describe('trajectory', () => {
+  it('tells each plan apart on the line being viewed', () => {
+    const dec = decision({ plans: decision().plans.map((plan) => (plan.planId === 'C' ? { ...plan, abandoned: { reason: 'too late', at: NOW } } : plan)) });
+    const main = line({ trajectoryId: 'main', taskIds: ['task_1'], choices: [{ decisionId: 'dec_1', planId: 'A', turnIndex: 3, at: NOW }] });
+    const other = line({ trajectoryId: 'b', sessionId: 'session_2', status: 'alternative', choices: [{ decisionId: 'dec_1', planId: 'B', turnIndex: 3, at: NOW }] });
+    const doc = { ...docWith([]), trajectories: [main, other], decisions: [dec] };
+    const [a, b, c] = dec.plans;
+    expect(planStatusOn(doc, main, dec, a!).kind).toBe('current');
+    expect(planStatusOn(doc, main, dec, b!)).toMatchObject({ kind: 'elsewhere', trajectory: { trajectoryId: 'b' } });
+    expect(planStatusOn(doc, main, dec, c!).kind).toBe('abandoned');
+    expect(planStatusOn(doc, other, dec, a!)).toMatchObject({ kind: 'elsewhere', trajectory: { trajectoryId: 'main' } });
+    expect(planStatusOn(doc, { ...other, status: 'abandoned' }, dec, b!).kind).toBe('current');
+  });
+
+  it('copies only the choices made at or before the fork turn', () => {
+    const parent = line({ trajectoryId: 'main', choices: [
+      { decisionId: 'd1', planId: 'A', turnIndex: 1, at: NOW },
+      { decisionId: 'd2', planId: 'B', turnIndex: 5, at: NOW },
+    ] });
+    expect(inheritedChoices(parent, 4).map((choice) => choice.decisionId)).toEqual(['d1']);
+    expect(inheritedChoices(parent, 5).map((choice) => choice.decisionId)).toEqual(['d1', 'd2']);
+  });
+
+  it('keeps the tasks of a line up to the first one that fails the test', () => {
+    const tasks = ['t1', 't2', 't3'].map((taskId) => task({ taskId }));
+    const doc = { ...docWith([]), tasks };
+    const parent = line({ trajectoryId: 'main', taskIds: ['t1', 't2', 't3'] });
+    expect(tasksThrough(doc, parent, (candidate) => candidate.taskId !== 't3')).toEqual(['t1', 't2']);
+  });
+
+  it('names plan files after the task, one file per plan', () => {
+    const named = task({ name: 'Q4目标', category: 'review' });
+    expect(planPath(named, 'B', '2026-09-23T04:00:00.000Z')).toMatch(/^work-log\/plan-2026-09-2\d-review-Q4目标-方案B\.md$/);
+    expect(planPath(task({ title: '按区域拆一版 Q4 目标，说明口径' }), 'A', NOW)).toContain('-按区域拆一版-Q4-目标-方案A.md');
+  });
+
+  it('injects the plan being followed and points at the files of the others', () => {
+    const main = line({ trajectoryId: 'main', taskIds: ['task_1'], choices: [{ decisionId: 'dec_1', planId: 'A', turnIndex: 3, at: NOW }] });
+    const doc = { ...docWith([], { understanding: { text: 'Q4 planning', sourceRefs: [], updatedAt: NOW } }), trajectories: [main], decisions: [decision()] };
+    const text = compileContextBundle(doc, task())!.text;
+    expect(text).toContain('Following plan A: grow 10%. Basis: basis A Risk: risk A');
+    expect(text).toContain('Plan B: keep budget — not taken. work-log/plan-B.md');
+    expect(text).not.toContain('basis B');
+  });
+
+  it('marks a decision that is still open so the agent waits for the user', () => {
+    const main = line({ trajectoryId: 'main', taskIds: ['task_1'] });
+    const doc = { ...docWith([], { understanding: { text: 'Q4 planning', sourceRefs: [], updatedAt: NOW } }), trajectories: [main], decisions: [decision()] };
+    expect(compileContextBundle(doc, task())!.text).toContain('Still open: wait for the user');
+  });
+});
+
 describe('compileContextBundle', () => {
   it('returns nothing when the folder has neither an understanding nor any points', () => {
     expect(compileContextBundle(docWith([]), task())).toBeUndefined();
@@ -163,10 +227,10 @@ describe('ContinuoStoreService', () => {
 
   it('ignores stored documents from another schema version', async () => {
     const documents = new MemoryDocumentStore();
-    await documents.set(CONTINUO_STORE_SCOPE, 'wd_old', { ...newWorkspaceDoc('wd_old', '/tmp/old'), schemaVersion: 1 });
+    await documents.set(CONTINUO_STORE_SCOPE, 'wd_old', { ...newWorkspaceDoc('wd_old', '/tmp/old'), schemaVersion: 2 });
     const store = new ContinuoStoreService(documents);
     expect(await store.load('wd_old')).toBeUndefined();
     const fresh = await store.ensure('wd_old', '/tmp/old');
-    expect(fresh.schemaVersion).toBe(2);
+    expect(fresh.schemaVersion).toBe(3);
   });
 });

@@ -8,6 +8,8 @@ import { AgentContinuoBridgeService, IAgentContinuoBridge } from './bridge';
 import { ContinuoStoreService, IContinuoStore } from './store';
 import { IReportResultTool, REPORT_RESULT_TOOL_NAME } from './tools/report-result/report-result';
 import { ReportResultTool } from './tools/report-result/reportResultTool';
+import { ITrajectoryTool, TRAJECTORY_TOOL_NAME } from './tools/trajectory/trajectory';
+import { TrajectoryTool } from './tools/trajectory/trajectoryTool';
 import { IWorkspaceContextTool, WORKSPACE_CONTEXT_TOOL_NAME } from './tools/workspace-context/workspace-context';
 import { WorkspaceContextTool } from './tools/workspace-context/workspaceContextTool';
 
@@ -33,6 +35,10 @@ export class ContinuoFeature extends Feature {
     });
     this.contributeTool(IReportResultTool, ReportResultTool, {
       name: REPORT_RESULT_TOOL_NAME,
+      domain: 'continuo',
+    });
+    this.contributeTool(ITrajectoryTool, TrajectoryTool, {
+      name: TRAJECTORY_TOOL_NAME,
       domain: 'continuo',
     });
   }

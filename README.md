@@ -35,8 +35,8 @@ Open `http://127.0.0.1:5180/#token=<token printed by kimi web>`, then create a p
 
 | Layer | Path |
 |---|---|
-| Engine feature: project context, reminder bridge, `WorkspaceContext` / `ReportWorkspaceResult` tools, profiles | `packages/agent-core-v2/src/features/continuo/` |
-| Server: task manager, deliverable verification, work-log writing, read-only file routes | `packages/kap-server/src/continuo/`, `packages/kap-server/src/routes/continuo.ts` |
+| Engine feature: project context, reminder bridge, `WorkspaceContext` / `ReportWorkspaceResult` / `Trajectory` tools, profiles | `packages/agent-core-v2/src/features/continuo/` |
+| Server: task manager, deliverable verification, work-log and plan files, lines of work on session fork, read-only file routes | `packages/kap-server/src/continuo/`, `packages/kap-server/src/routes/continuo.ts` |
 | Workbench UI | `apps/continuo/` |
 | Tests | `packages/agent-core-v2/test/features/continuo/`, `packages/agent-core-v2/test/agent/permissionPolicy/` |
 

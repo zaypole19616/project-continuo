@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ChevronLeft, Moon, Sun } from 'lucide-react';
-import { continuo, kimi, type ApprovalRequest, type ContinuoDoc, type ContinuoTask, type QuestionRequest, type Workspace } from '#/lib/api';
+import { continuo, kimi, type ApprovalRequest, type ContinuoDoc, type ContinuoTask, type Decision, type QuestionRequest, type Trajectory, type TrajectoryPlan, type Workspace } from '#/lib/api';
+import { currentLine, tasksOn } from '#/lib/trajectory';
 import { SessionStream } from '#/lib/ws';
 import { applyEvent, emptyTimeline, fromMessages, withUserMessage, type TimelineState } from '#/lib/timeline';
 import { resolveTheme, type ThemePref } from '#/lib/theme';
@@ -11,7 +12,7 @@ import { Button } from '#/components/ui/button';
 
 const ACTIVE = new Set(['queued', 'running', 'awaiting_user', 'verifying']);
 const isActive = (t: ContinuoTask) => ACTIVE.has(t.status);
-const isAwaitingReply = (t: ContinuoTask) => t.status === 'awaiting_user' && t.pendingInteraction === 'reply';
+const isAwaitingReply = (t: ContinuoTask) => t.status === 'awaiting_user' && (t.pendingInteraction === 'reply' || t.pendingInteraction === 'choice');
 const isBlocking = (t: ContinuoTask) => isActive(t) && !isAwaitingReply(t);
 const DRAWER_KEY = 'continuo.drawer';
 const DRAWER_DEFAULT = 400;
@@ -63,8 +64,10 @@ export function WorkspaceView({ workspace, onClose, themePref, onTheme }: { work
     return () => window.clearInterval(timer);
   }, [doc, refresh]);
 
-  const latest = doc?.tasks.findLast((t) => t.kind === 'user' && t.sessionId !== '') ?? null;
-  const sessionId = latest?.sessionId ?? null;
+  const line = doc === null ? undefined : currentLine(doc);
+  const lineTasks = doc === null ? [] : tasksOn(doc, line);
+  const latest = lineTasks.at(-1) ?? null;
+  const sessionId = line?.sessionId ?? null;
 
   const refreshPending = useCallback(async (sid: string) => {
     const [q, a] = await Promise.all([kimi.pendingQuestions(sid), kimi.pendingApprovals(sid)]);
@@ -90,7 +93,13 @@ export function WorkspaceView({ workspace, onClose, themePref, onTheme }: { work
         stream.subscribe((ev) => {
           setState((prev) => applyEvent(prev, ev));
           if (ev.type === 'event.session.work_changed') { void refreshPending(sessionId); void refresh(); }
-          if (ev.type === 'turn.ended') void refresh();
+          if (ev.type === 'turn.ended') {
+            void refresh();
+            void kimi.snapshot(sessionId).then((fresh) => {
+              if (cancelled) return;
+              setState((prev) => ({ ...fromMessages(prev, fresh.messages.items), busy: fresh.session.busy, pendingInteraction: fresh.session.pending_interaction ?? 'none' }));
+            }).catch(() => undefined);
+          }
         });
       } catch (error) { if (!cancelled) setError((error as Error).message); }
     })();
@@ -105,7 +114,7 @@ export function WorkspaceView({ workspace, onClose, themePref, onTheme }: { work
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  const activeUserTask = doc?.tasks.find((t) => t.kind === 'user' && isBlocking(t)) ?? null;
+  const activeUserTask = lineTasks.find(isBlocking) ?? null;
   const replyTarget = latest !== null && isAwaitingReply(latest) ? latest : null;
 
   const submit = async (text: string, reply: ContinuoTask | null) => {
@@ -133,6 +142,16 @@ export function WorkspaceView({ workspace, onClose, themePref, onTheme }: { work
     setError(null);
     try { setDoc(await continuo.taskAction(workspaceId, task.taskId, a)); } catch (error) { setError((error as Error).message); }
   };
+
+  const run = async (work: () => Promise<ContinuoDoc>): Promise<boolean> => {
+    setSending(true); setError(null);
+    try { setDoc(await work()); return true; } catch (error) { setError((error as Error).message); return false; } finally { setSending(false); }
+  };
+  const choose = (decision: Decision, plan: TrajectoryPlan) => run(() => continuo.decisionAction(workspaceId, decision.decisionId, 'choose', { plan_id: plan.planId }));
+  const expand = (decision: Decision) => run(() => continuo.decisionAction(workspaceId, decision.decisionId, 'expand'));
+  const abandon = (decision: Decision, plan: TrajectoryPlan, reason: string) => { void run(() => continuo.decisionAction(workspaceId, decision.decisionId, 'abandon', { plan_id: plan.planId, reason: reason.trim() === '' ? undefined : reason.trim() })); };
+  const switchLine = (target: Trajectory) => { void run(() => continuo.activateLine(workspaceId, target.trajectoryId)); };
+  const forkAfter = (task: ContinuoTask) => run(() => continuo.taskAction(workspaceId, task.taskId, 'fork'));
 
   const dark = resolveTheme(themePref) === 'dark';
   const startDrag = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -175,13 +194,14 @@ export function WorkspaceView({ workspace, onClose, themePref, onTheme }: { work
           onDoubleClick={() => setDrawerWidth(DRAWER_DEFAULT)}
         />
         <Drawer
-          workspace={workspace} doc={doc} latest={latest} state={state} questions={questions} approvals={approvals} error={error}
+          workspace={workspace} doc={doc} line={line} latest={latest} state={state} questions={questions} approvals={approvals} error={error}
           activeUserTask={activeUserTask} replyTarget={replyTarget} composerRef={composerRef} sending={sending}
           onSend={send}
           onAnswer={async (q, answers, note) => { if (!sessionId) return; await kimi.resolveQuestion(sessionId, q.question_id, answers, note); await refreshPending(sessionId); void refresh(); }}
           onDecide={async (a, d, scope) => { if (!sessionId) return; await kimi.resolveApproval(sessionId, a.approval_id, d, scope); await refreshPending(sessionId); void refresh(); }}
           onAction={(t, a) => { void action(t, a); }} onOpenFile={(path) => setTarget({ kind: 'file', path })}
-          onStartStep={(text) => { if (!sending) void submit(text, null); }} onError={setError}
+          onStartStep={(text) => { if (!sending) void submit(text, null); }}
+          onChoose={choose} onExpand={expand} onAbandon={abandon} onSwitch={switchLine} onForkAfter={forkAfter}
         />
       </div>
     </div>

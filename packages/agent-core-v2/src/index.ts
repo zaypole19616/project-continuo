@@ -738,6 +738,7 @@ export * from '#/features/todo/todoService';
 export * from '#/features/todo/tools/todo-list/todo-list';
 import '#/features/todo/todoFeature';
 export * from '#/features/continuo/types';
+export * from '#/features/continuo/trajectory';
 export * from '#/features/continuo/store';
 export * from '#/features/continuo/contextBundle';
 export * from '#/features/continuo/bridge';
@@ -746,6 +747,7 @@ export { CONTINUO_INIT_PROFILE } from '#/features/continuo/profile/continuoInit'
 export { CONTINUO_WORKER_PROFILE } from '#/features/continuo/profile/continuoWorker';
 export { WORKSPACE_CONTEXT_TOOL_NAME } from '#/features/continuo/tools/workspace-context/workspace-context';
 export { REPORT_RESULT_TOOL_NAME } from '#/features/continuo/tools/report-result/report-result';
+export { TRAJECTORY_TOOL_NAME } from '#/features/continuo/tools/trajectory/trajectory';
 import '#/features/continuo/continuoFeature';
 
 export * from '#/features/notify/flag';

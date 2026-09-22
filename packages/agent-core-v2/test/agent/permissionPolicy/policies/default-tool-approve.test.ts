@@ -71,6 +71,7 @@ describe('DefaultToolApprovePermissionPolicyService', () => {
     ['UpdateGoal', { status: 'complete' }],
     ['WorkspaceContext', { understanding: 'a folder', sourceRefs: [] }],
     ['ReportWorkspaceResult', { summary: 'done', deliverables: [], unresolved: [] }],
+    ['Trajectory', { action: 'list' }],
   ] as const)('approves %s', (toolName, args) => {
     expect(policy.evaluate(policyContext(toolName, args))).toEqual({ kind: 'approve' });
   });
