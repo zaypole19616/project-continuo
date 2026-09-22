@@ -88,9 +88,6 @@ export function AgentPanel(p: AgentPanelProps) {
           <button className="send" title="发送" disabled={!p.doc || p.sending} onClick={send}><ArrowUp size={16} /></button>
         </div>
       </div>
-      <div className="chat-status chrome">
-        <span className="t3 xs">{p.workspace === null ? '先在上面选一个文件夹' : p.connection === 'connecting' ? '连接中…' : continuing ? '会在这个会话里接着干；要另起一个，点左上角「新会话」' : 'Enter 发送 · Shift + Enter 换行'}</span>
-      </div>
     </>
   );
 
@@ -112,9 +109,7 @@ export function AgentPanel(p: AgentPanelProps) {
               <div className="wordmark">Contin<i>uo</i></div>
               {p.workspace === null
                 ? <p className="t2 hero-brief">选一个文件夹交给它：先了解这个文件夹，再接你交代的任务，做完的东西放回文件夹。</p>
-                : p.doc && (p.doc.init.status === 'running'
-                    ? <p className="t3 sm hero-brief">它正在了解这个文件夹，进度在右边；有想做的事可以直接说。</p>
-                    : <p className="t3 sm hero-brief">{memorySummary(p.doc)}<button className="link" onClick={() => p.onSide('context')}>{p.doc.context.some((e) => e.status === 'candidate') ? '去确认' : '查看'}</button></p>)}
+                : p.doc && p.doc.init.status !== 'running' && <p className="t3 sm hero-brief">{memorySummary(p.doc)}<button className="link" onClick={() => p.onSide('context')}>{p.doc.context.some((e) => e.status === 'candidate') ? '去确认' : '查看'}</button></p>}
               <div className="hero-composer">{composer}</div>
             </div>
           )}
@@ -127,9 +122,6 @@ export function AgentPanel(p: AgentPanelProps) {
           )}
           {p.questions.map((q) => <QuestionCard key={q.question_id} q={q} onAnswer={(answers, note) => p.onAnswer(q, answers, note)} />)}
           {p.approvals.map((a) => <ApprovalCard key={a.approval_id} a={a} root={p.doc?.root} onDecide={(d, scope) => p.onDecide(a, d, scope)} />)}
-          {isAwaitingReply(p.selected) && p.selected?.lastReply && (
-            <div className="banner banner-warn">在下面回复它，它会接着干。</div>
-          )}
           <div ref={bottomRef} />
         </div>
       </div>
@@ -181,9 +173,6 @@ function ClosingCard({ task, doc, onOpenFile }: { task: ContinuoTask; doc: Conti
             </div>
           </details>
         )}
-        <div className="deliverable-row t3" style={{ fontSize: 'var(--fs-xs)' }}>
-          {done ? '下次打开这个文件夹，它记住的事都还在，不用再交代一遍。' : '补完上面的事再标记完成；记住的事已经保存，不会丢。'}
-        </div>
       </div>
     </div>
   );

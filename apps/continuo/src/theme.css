@@ -291,7 +291,6 @@ button.link:hover { text-decoration: underline; }
 .send { width: 28px; height: 28px; border-radius: var(--radius-full); border: 0; background: var(--color-send-bg); color: var(--color-send-icon); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: var(--shadow-send); transition: background var(--motion-fast); }
 .send:hover { background: var(--color-send-bg-hover); }
 .send:disabled { background: var(--color-send-bg-disabled); color: var(--color-send-icon-disabled); cursor: default; box-shadow: none; }
-.chat-status { display: flex; align-items: center; gap: 8px; padding: 10px 6px 0; }
 .ws-chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 8px; background: var(--surface-sunken); font-size: var(--fs-xs); color: var(--text-2); }
 .suggest { display: flex; flex-wrap: wrap; gap: 8px; }
 .understand { border: 1px solid var(--accent-line); background: var(--accent-soft); border-radius: 14px; padding: 14px 16px; }
@@ -357,7 +356,6 @@ button.link:hover { text-decoration: underline; }
 .side-row, .side-sub, .brand, .model-chip, .ws-chip, .chat-title { white-space: nowrap; }
 .pane-agent { container-type: inline-size; }
 @container (max-width: 420px) { .model-chip { display: none; } }
-@container (max-width: 360px) { .chat-status .mono { display: none; } }
 
 .ws-forget { display: none; width: 22px; height: 22px; border: 0; border-radius: 6px; background: transparent; color: var(--text-3); align-items: center; justify-content: center; cursor: pointer; flex: none; }
 .ws-forget:hover { background: var(--surface-selected); color: var(--text-1); }
