@@ -16,10 +16,7 @@ const newRequestId = () => `req_${Date.now().toString(36)}_${Math.random().toStr
 
 function pickDefaultTask(doc: ContinuoDoc): ContinuoTask | null {
   const users = doc.tasks.filter((t) => t.kind === 'user');
-  const active = users.find(isActive);
-  if (active) return active;
-  if (users.length === 0) return doc.tasks.find((t) => t.kind === 'init' && t.sessionId !== '') ?? null;
-  return null;
+  return users.find(isActive) ?? null;
 }
 
 function useMediaQuery(query: string): boolean {
