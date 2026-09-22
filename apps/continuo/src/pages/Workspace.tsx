@@ -37,7 +37,7 @@ export function WorkspaceView({ workspace, onSwitch, onClose, onAbout, onReplayI
   const workspaceId = workspace?.id ?? null;
   const [doc, setDoc] = useState<ContinuoDoc | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [sideMode, setSideMode] = useState<SideMode | null>(() => { try { const v = localStorage.getItem('continuo.side'); return v === 'none' ? null : v === 'context' ? 'context' : 'files'; } catch { return 'files'; } });
+  const [sideMode, setSideMode] = useState<SideMode | null>(() => { try { const v = localStorage.getItem('continuo.side'); return v === 'none' ? null : v === 'context' || v === 'log' ? v : 'files'; } catch { return 'files'; } });
   const [navCollapsed, setNavCollapsed] = useState(() => readPref('continuo.nav.collapsed', false));
   const narrow = useMediaQuery('(max-width: 1000px) and (min-width: 761px)');
   const [target, setTarget] = useState<NavTarget>({ kind: 'folder', path: '' });
@@ -141,6 +141,12 @@ export function WorkspaceView({ workspace, onSwitch, onClose, onAbout, onReplayI
     } catch (error) { setError((error as Error).message); } finally { setSending(false); }
   };
 
+  const startStep = async (text: string) => {
+    if (!workspace || sending) return;
+    setSending(true); setError(null);
+    try { const r = await continuo.createTask(workspace.id, text, newRequestId()); setDoc(r.doc); userPicked.current = false; setSelectedId(r.task.taskId); } catch (error) { setError((error as Error).message); } finally { setSending(false); }
+  };
+
   const action = async (task: ContinuoTask, a: 'pause' | 'resume' | 'complete') => {
     if (!workspace) return;
     setError(null);
@@ -184,7 +190,7 @@ export function WorkspaceView({ workspace, onSwitch, onClose, onAbout, onReplayI
         onSend={() => { void send(); }}
         onAnswer={async (q, answers, note) => { if (!sessionId) return; await kimi.resolveQuestion(sessionId, q.question_id, answers, note); await refreshPending(sessionId); void refresh(); }}
         onDecide={async (a, d, scope) => { if (!sessionId) return; await kimi.resolveApproval(sessionId, a.approval_id, d, scope); await refreshPending(sessionId); void refresh(); }}
-        onAction={(t, a) => { void action(t, a); }} onOpenFile={openFile} onAbout={(bet) => onAbout(bet)} onPatchContext={patchContext} onReunderstand={() => { void reunderstand(); }}
+        onAction={(t, a) => { void action(t, a); }} onOpenFile={openFile} onAbout={(bet) => onAbout(bet)} onPatchContext={patchContext} onReunderstand={() => { void reunderstand(); }} onStartStep={(text) => { void startStep(text); }}
       />
       {sideMode !== null && (
         <SidePanel mode={sideMode} onMode={setSide} workspaceId={workspace.id} root={workspace.root} doc={doc} target={target} onNavigate={setTarget} onSelectTask={selectTask} onPatchContext={patchContext} onError={setError} searchRef={searchRef} />

@@ -1,4 +1,4 @@
-import { IContinuoStore, IFlagService, IWorkspaceService, type Scope } from '@moonshot-ai/agent-core-v2';
+import { IFlagService, IWorkspaceService, type Scope } from '@moonshot-ai/agent-core-v2';
 import { z } from 'zod';
 
 import { ContinuoError, ContinuoTaskManager } from '../continuo/taskManager';
@@ -6,7 +6,7 @@ import { errEnvelope, okEnvelope } from '../envelope';
 import { defineRoute } from '../middleware/defineRoute';
 import { parseActionSuffix } from './action-suffix';
 import { listFiles, readTextFile } from '../continuo/files';
-import { materializeDemoWorkspace, seedDemoDoc } from '../continuo/demoWorkspace';
+import { materializeDemoWorkspace } from '../continuo/demoWorkspace';
 import { toWireWorkspace } from './workspaces';
 import { ErrorCode } from '../protocol/error-codes';
 
@@ -217,21 +217,15 @@ export function registerContinuoRoutes(app: ContinuoRouteHost, core: Scope): voi
       body: z.object({}).optional(),
       success: { data: docSchema },
       errors: CONTINUO_ERRORS,
-      description: 'Create (once) a synthetic demo folder under the home directory, register it as a workspace, and seed its Continuo history',
+      description: 'Create (once) a synthetic demo folder under the home directory and register it as a workspace',
       tags: ['continuo'],
       operationId: 'continuoDemoWorkspace',
     },
     async (req, reply) => {
       if (!flagGuard(req.id, reply)) return;
       try {
-        const { root, created } = await materializeDemoWorkspace();
+        const { root } = await materializeDemoWorkspace();
         const ws = await core.accessor.get(IWorkspaceService).createOrTouch(root, undefined);
-        const store = core.accessor.get(IContinuoStore);
-        const existing = await store.load(ws.id);
-        if (existing === undefined || (created && !existing.tasks.some((task) => task.kind === 'user'))) {
-          await store.ensure(ws.id, root);
-          await store.update(ws.id, () => seedDemoDoc(ws.id, root));
-        }
         reply.send(okEnvelope(await toWireWorkspace(core, ws), req.id));
       } catch (error) {
         sendError(reply, req.id, error);

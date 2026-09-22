@@ -14,6 +14,8 @@ import {
 } from './workspace-context';
 import DESCRIPTION from './workspace-context.md?raw';
 
+const KIND_LABEL: Record<ContextEntry['kind'], string> = { convention: '约定', background: '背景', decision: '决定', progress: '进度', material: '材料' };
+
 const GUIDE_FILE_PATTERN = /(^|\/)(readme|agents|claude)(\.[a-z0-9]+)?$/i;
 
 export class WorkspaceContextTool implements IWorkspaceContextTool {
@@ -47,7 +49,7 @@ export class WorkspaceContextTool implements IWorkspaceContextTool {
             await this.store.update(doc.workspaceId, (current) => ({
               ...current,
               understanding: { text, sourceRefs, updatedAt: new Date().toISOString() },
-              activity: [...current.activity, { at: new Date().toISOString(), taskId, kind: 'context', text: 'Workspace understanding updated' }],
+              activity: [...current.activity, { at: new Date().toISOString(), taskId, kind: 'context', text: '写下了对这个文件夹的理解' }],
             }));
             return { isError: false, output: 'Understanding recorded.' };
           }
@@ -88,7 +90,7 @@ export class WorkspaceContextTool implements IWorkspaceContextTool {
               ],
               activity: [
                 ...current.activity,
-                { at: new Date().toISOString(), taskId, kind: 'context', text: `${entry.status === 'active' ? 'Recorded' : 'Proposed'} ${entry.kind}: ${entry.text}` },
+                { at: new Date().toISOString(), taskId, kind: 'context', text: `${entry.status === 'active' ? '记住了一条' : '提出一条待确认的'}${KIND_LABEL[entry.kind]}：${entry.text}` },
               ],
             }));
             const verb = entry.status === 'active' ? 'is now effective' : 'is recorded as a candidate pending user confirmation';
@@ -102,7 +104,7 @@ export class WorkspaceContextTool implements IWorkspaceContextTool {
             await this.store.update(doc.workspaceId, (current) => ({
               ...current,
               context: current.context.map((entry) => (entry.id === entryId ? { ...entry, status: 'inactive' as const, updatedAt: new Date().toISOString() } : entry)),
-              activity: [...current.activity, { at: new Date().toISOString(), taskId, kind: 'context', text: `Deactivated ${entryId}` }],
+              activity: [...current.activity, { at: new Date().toISOString(), taskId, kind: 'context', text: '停用了一条记住的事' }],
             }));
             return { isError: false, output: `Entry ${entryId} deactivated.` };
           }

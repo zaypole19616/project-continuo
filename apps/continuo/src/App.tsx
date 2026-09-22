@@ -5,7 +5,7 @@ import { WorkspaceView } from '#/pages/Workspace';
 import { About, type BetId } from '#/pages/About';
 
 const WS_KEY = 'continuo.workspace';
-const BETS = new Set(['legibility', 'proactiveness', 'clarity', 'direction']);
+const BETS = new Set(['orderliness', 'proactiveness', 'clarity', 'direction']);
 
 type Route = { kind: 'app' } | { kind: 'about'; page: BetId | 'index' };
 

@@ -2,12 +2,11 @@ import { access, mkdir, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 
-import { CONTINUO_SCHEMA_VERSION, type ContextEntry, type ContinuoTask, type ContinuoWorkspaceDoc } from '@moonshot-ai/agent-core-v2';
 
 export const DEMO_WORKSPACE_DIRNAME = 'Continuo Demo';
 export const DEMO_WORKSPACE_FOLDER = 'Northwind-Q2-复盘';
 
-export const DEMO_FILES: Record<string, string> = {
+const DEMO_FILES: Record<string, string> = {
   'README.md': `# Northwind 季度复盘项目
 
 这个文件夹用来准备 Northwind（虚构公司）2026 年 Q2 的经营复盘材料。
@@ -104,61 +103,4 @@ export async function materializeDemoWorkspace(): Promise<{ root: string; create
 
 async function exists(path: string): Promise<boolean> {
   try { await access(path); return true; } catch { return false; }
-}
-
-const SEED_INIT_TASK = 'task_demo_init';
-const SEED_DRAFT_TASK = 'task_demo_draft';
-const T0 = '2026-09-15T02:00:00.000Z';
-const T1 = '2026-09-15T02:01:20.000Z';
-const T2 = '2026-09-15T02:05:00.000Z';
-const T3 = '2026-09-15T02:08:30.000Z';
-const T4 = '2026-09-18T02:10:00.000Z';
-
-const SEED_UNDERSTANDING = '这是 Northwind（虚构公司）2026 年 Q2 经营复盘材料的准备工作文件夹。原始材料在 materials/（只读），写作产物放 drafts/（文件名 YYYY-MM-DD-主题.md），archive/ 是历史归档不代表当前进度。写作风格：中文、先结论后数据、每个数字标注来源文件。顶层指南是 README.md。';
-
-function entry(id: string, fields: Omit<ContextEntry, 'id' | 'scope' | 'revision' | 'updatedAt'> & { updatedAt?: string }): ContextEntry {
-  return { id, scope: { type: 'workspace' }, revision: 1, updatedAt: fields.updatedAt ?? fields.createdAt, ...fields };
-}
-
-const SEED_CONTEXT: readonly ContextEntry[] = [
-  entry('ctx_demo_01', { kind: 'convention', origin: 'file', status: 'active', text: '目录分工：materials/ 是原始材料，只读；drafts/ 放写作产物，文件名用 YYYY-MM-DD-主题.md；archive/ 是历史归档，不代表当前进度。', sourceRefs: ['README.md'], taskId: SEED_INIT_TASK, createdAt: T1 }),
-  entry('ctx_demo_02', { kind: 'convention', origin: 'file', status: 'active', text: '写作风格约定：用中文，先结论后数据，每个数字必须标注来源文件。', sourceRefs: ['README.md'], taskId: SEED_INIT_TASK, createdAt: T1 }),
-  entry('ctx_demo_03', { kind: 'material', origin: 'agent', status: 'active', text: 'materials/ 里有三份 Q2 原始材料：财务摘要、客户反馈摘录、9 月 10 日经营会纪要。', sourceRefs: ['materials/q2-financials.md', 'materials/customer-feedback.md', 'materials/meeting-2026-09-10.md'], taskId: SEED_INIT_TASK, createdAt: T1 }),
-  entry('ctx_demo_04', { kind: 'decision', origin: 'agent', status: 'active', text: '9 月 10 日经营会定的复盘框架：只讲增长来源、毛利下滑原因、下季度动作三件事。', sourceRefs: ['materials/meeting-2026-09-10.md'], taskId: SEED_INIT_TASK, createdAt: T1 }),
-  entry('ctx_demo_05', { kind: 'background', origin: 'agent', status: 'candidate', text: 'drafts/ 里的 Q1 复盘旧稿只供参考结构；archive/ 里的旧做法已废弃。', sourceRefs: ['drafts/2026-06-30-q1-review.md', 'archive/2025-notes.md'], taskId: SEED_INIT_TASK, createdAt: T1 }),
-  entry('ctx_demo_06', { kind: 'convention', origin: 'user', status: 'active', text: '改稿时另存为新文件，不覆盖旧稿；文件名用当天日期。', sourceRefs: ['user: "改稿另存新文件，别覆盖旧的"'], taskId: SEED_DRAFT_TASK, createdAt: T3 }),
-  entry('ctx_demo_07', { kind: 'progress', origin: 'agent', status: 'active', text: 'Task "起草一份 Q2 经营复盘初稿，放到 drafts/。" completed; deliverables: drafts/2026-09-15-q2-review.md.', sourceRefs: [`task:${SEED_DRAFT_TASK}`, 'drafts/2026-09-15-q2-review.md'], taskId: SEED_DRAFT_TASK, createdAt: T3 }),
-  entry('ctx_demo_08', { kind: 'decision', origin: 'user', status: 'active', text: '定价方案（9 月 18 日定）：标准版 10 月 1 日起上调 5%，企业版年度合同价不变，老客户 Q4 前按原价锁定。', sourceRefs: ['user: "定价按上周会议定的：标准版 10 月 1 日起上调 5%，企业版年度合同价不变，老客户 Q4 前按原价锁定"'], createdAt: T4 }),
-];
-
-const SEED_TASKS: readonly ContinuoTask[] = [
-  { taskId: SEED_INIT_TASK, kind: 'init', title: '了解这个文件夹', trigger: 'demo', sessionId: '', promptIds: [], status: 'completed', pauseRequested: false, contextRevision: 1, usage: { steps: 8, inputTokens: 0, cacheReadTokens: 0, outputTokens: 0 }, createdAt: T0, updatedAt: T1, endedAt: T1 },
-  {
-    taskId: SEED_DRAFT_TASK, kind: 'user', title: '起草一份 Q2 经营复盘初稿，放到 drafts/。', trigger: 'demo', sessionId: '', promptIds: [], status: 'completed', pauseRequested: false, contextRevision: 2,
-    report: { summary: '按 2026-09-10 经营会"只讲三件事"的框架起草了 Q2 经营复盘初稿，存至 drafts/2026-09-15-q2-review.md。全文中文、先结论后数据，每个数字标注来源文件；定价一节按会议纪要标为待决策。', deliverables: [{ path: 'drafts/2026-09-15-q2-review.md', note: 'Q2 经营复盘初稿：总体结论、增长来源、毛利下滑、定价、Q3 动作', exists: true }], unresolved: [], reportedAt: T3 },
-    reuse: { entries: 4, questions: 0 }, usage: { steps: 12, inputTokens: 0, cacheReadTokens: 0, outputTokens: 0 }, createdAt: T2, updatedAt: T3, endedAt: T3,
-  },
-];
-
-export function seedDemoDoc(workspaceId: string, root: string): ContinuoWorkspaceDoc {
-  return {
-    schemaVersion: CONTINUO_SCHEMA_VERSION,
-    workspaceId,
-    root,
-    revision: 1,
-    createdAt: T0,
-    updatedAt: T4,
-    openCount: 1,
-    init: { status: 'completed', taskId: SEED_INIT_TASK, startedAt: T0, endedAt: T1 },
-    understanding: { text: SEED_UNDERSTANDING, sourceRefs: ['README.md', 'materials/q2-financials.md', 'materials/customer-feedback.md', 'materials/meeting-2026-09-10.md', 'drafts/2026-06-30-q1-review.md', 'archive/2025-notes.md'], updatedAt: T1 },
-    context: SEED_CONTEXT,
-    tasks: SEED_TASKS,
-    activity: [
-      { at: T0, kind: 'system', text: 'Workspace opened for the first time' },
-      { at: T1, taskId: SEED_INIT_TASK, kind: 'task', text: 'Understanding recorded from README.md and materials/' },
-      { at: T3, taskId: SEED_DRAFT_TASK, kind: 'task', text: 'Task completed: drafts/2026-09-15-q2-review.md' },
-      { at: T4, kind: 'context', text: 'Recorded decision: 定价方案（2026-09-18 定）' },
-      { at: T4, kind: 'system', text: 'Demo history bundled with the demo folder; the sessions behind these tasks were not kept' },
-    ],
-  };
 }

@@ -1,10 +1,11 @@
-import { FolderOpen, Layers } from 'lucide-react';
+import { FolderOpen, History, Layers } from 'lucide-react';
 import type { ContextEntry, ContinuoDoc, ContinuoTask } from '#/lib/api';
 import { ContextPanel } from './ContextPanel';
 import { FileBrowser, type NavTarget } from './FileBrowser';
 import { FileTree } from './FileTree';
+import { WorkRecord } from './WorkRecord';
 
-export type SideMode = 'files' | 'context';
+export type SideMode = 'files' | 'context' | 'log';
 
 export function SidePanel({ mode, onMode, workspaceId, root, doc, target, onNavigate, onSelectTask, onPatchContext, onError, searchRef }: {
   mode: SideMode; onMode: (m: SideMode) => void;
@@ -21,6 +22,7 @@ export function SidePanel({ mode, onMode, workspaceId, root, doc, target, onNavi
         <div className="seg" role="tablist">
           <ModeTab active={mode === 'files'} label="文件" onClick={() => onMode('files')}><FolderOpen size={15} /></ModeTab>
           <ModeTab active={mode === 'context'} label="记住的事" badge={pending || undefined} onClick={() => onMode('context')}><Layers size={15} /></ModeTab>
+          <ModeTab active={mode === 'log'} label="工作记录" onClick={() => onMode('log')}><History size={15} /></ModeTab>
         </div>
       </header>
       {mode === 'files' && (
@@ -32,6 +34,7 @@ export function SidePanel({ mode, onMode, workspaceId, root, doc, target, onNavi
         </div>
       )}
       {mode === 'context' && <div className="pane-body p-4">{doc ? <ContextPanel doc={doc} onPatch={onPatchContext} onOpenFile={(p) => onNavigate({ kind: 'file', path: p })} /> : <Loading />}</div>}
+      {mode === 'log' && <div className="pane-body p-4">{doc ? <WorkRecord workspaceId={workspaceId} revision={doc.revision} onError={onError} /> : <Loading />}</div>}
     </aside>
   );
 }

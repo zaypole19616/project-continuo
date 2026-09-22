@@ -16,7 +16,6 @@ import {
   ISessionContext,
   ISessionManager,
   IWorkspaceService,
-  compileContextBundle,
   getLiveSessionById,
   resumeSessionById,
   type ContextEntry,
@@ -38,11 +37,18 @@ export { ContinuoError } from './errors';
 
 interface Attachment {
   readonly dispose: () => void;
-  readonly writes: Map<string, string>;
+  readonly writes: Map<string, { path: string; turnId?: number }>;
+  readonly reads: Set<string>;
   reply: string;
 }
 
 const INIT_STEP_BUDGET = 8;
+
+function readPath(display: unknown): string | undefined {
+  if (typeof display !== 'object' || display === null) return undefined;
+  const view = display as { kind?: string; operation?: string; path?: string };
+  return view.kind === 'file_io' && view.operation === 'read' && typeof view.path === 'string' ? view.path : undefined;
+}
 
 function writtenPath(display: unknown): string | undefined {
   if (typeof display !== 'object' || display === null) return undefined;
@@ -88,7 +94,7 @@ export class ContinuoTaskManager {
       root: workspace.root,
       openCount: current.openCount + 1,
       tasks: current.tasks.map((task) => this.reconcileOnOpen(task)),
-      activity: [...current.activity, { at: new Date().toISOString(), kind: 'system', text: current.openCount === 0 ? 'Workspace opened for the first time' : 'Workspace reopened' }],
+      activity: [...current.activity, { at: new Date().toISOString(), kind: 'system', text: current.openCount === 0 ? '第一次打开这个文件夹' : '重新打开这个文件夹' }],
     }));
     doc = await this.refreshSourceFingerprints(workspaceId);
     if (doc.init.status === 'pending' || doc.init.status === 'failed' || doc.init.status === 'stopped') {
@@ -138,7 +144,6 @@ export class ContinuoTaskManager {
       status: 'queued',
       pauseRequested: false,
       contextRevision: doc.revision,
-      reuse: { entries: compileContextBundle(doc, undefined)?.entryIds.length ?? 0, questions: 0 },
       usage: EMPTY_USAGE,
       createdAt: now,
       updatedAt: now,
@@ -147,7 +152,7 @@ export class ContinuoTaskManager {
     await this.store.update(workspaceId, (current) => ({
       ...current,
       tasks: [...current.tasks, task],
-      activity: [...current.activity, { at: now, taskId, kind: 'task', text: `Task created by user: ${task.title}` }],
+      activity: [...current.activity, { at: now, taskId, kind: 'task', text: `新任务：${task.title}` }],
     }));
     this.attach(workspaceId, taskId, session, agent);
     const promptId = this.submitPrompt(agent, text);
@@ -206,7 +211,7 @@ export class ContinuoTaskManager {
     await this.ensureModel(agent);
     this.attach(workspaceId, taskId, session, agent);
     const promptId = this.submitPrompt(agent, text);
-    return this.patchTask(workspaceId, taskId, (current) => ({ ...current, status: 'running', pendingInteraction: 'none', phase: undefined, trigger: 'reply' as TaskTrigger, promptIds: [...current.promptIds, promptId], endedAt: undefined, verification: undefined }), { activity: `User replied: ${text.length > 80 ? `${text.slice(0, 80)}…` : text}` });
+    return this.patchTask(workspaceId, taskId, (current) => ({ ...current, status: 'running', pendingInteraction: 'none', phase: undefined, trigger: 'reply' as TaskTrigger, promptIds: [...current.promptIds, promptId], supplements: [...(current.supplements ?? []), text], endedAt: undefined, verification: undefined }), { activity: `你补充了要求：${text.length > 60 ? `${text.slice(0, 60)}…` : text}` });
   }
 
   async complete(workspaceId: string, taskId: string): Promise<ContinuoWorkspaceDoc> {
@@ -216,7 +221,7 @@ export class ContinuoTaskManager {
       throw new ContinuoError('invalid_state', `task ${taskId} is ${task.status}; only tasks waiting for your reply or review can be marked done`);
     }
     const endedAt = new Date().toISOString();
-    return this.patchTask(workspaceId, taskId, (current) => ({ ...current, status: 'completed', pendingInteraction: 'none', phase: undefined, endedAt }), { activity: 'Marked done by the user' });
+    return this.patchTask(workspaceId, taskId, (current) => ({ ...current, status: 'completed', pendingInteraction: 'none', phase: undefined, endedAt }), { activity: '你把这个任务标记为完成' });
   }
 
   async updateContextEntry(workspaceId: string, entryId: string, patch: { text?: string; status?: 'active' | 'inactive'; expectedRevision: number }): Promise<ContinuoWorkspaceDoc> {
@@ -238,32 +243,27 @@ export class ContinuoTaskManager {
       return {
         ...current,
         context,
-        activity: [...current.activity, { at: now, kind: 'user', text: patch.text !== undefined ? `User corrected ${entryId}: ${patch.text}` : `User set ${entryId} to ${patch.status}` }],
+        activity: [...current.activity, { at: now, kind: 'user', text: patch.text !== undefined ? `你改了一条记住的事：${patch.text}` : patch.status === 'active' ? '你确认了一条记住的事' : '你停用了一条记住的事' }],
       };
     });
   }
 
   async workLog(workspaceId: string): Promise<string> {
     const doc = await this.requireDoc(workspaceId);
-    const lines: string[] = [`# Continuo work log — ${doc.root}`, ''];
-    lines.push(`Opened ${doc.openCount} time(s). Initialization: ${doc.init.status}.`, '');
-    if (doc.understanding !== undefined) lines.push('## Workspace understanding', '', doc.understanding.text, '', `Sources: ${doc.understanding.sourceRefs.join(', ') || '—'}`, '');
-    lines.push('## Effective context', '');
-    for (const entry of doc.context.filter((candidate) => candidate.status === 'active')) lines.push(`- (${entry.kind}, ${entry.origin}) ${entry.text}${entry.sourceRefs.length > 0 ? ` — ${entry.sourceRefs.join(', ')}` : ''}`);
-    if (!doc.context.some((candidate) => candidate.status === 'active')) lines.push('- none yet');
-    lines.push('', '## Tasks', '');
-    for (const task of doc.tasks) {
-      lines.push(`### ${task.title}`, '', `- Status: ${task.status}${task.lastError ? ` (${task.lastError})` : ''}`, `- Trigger: ${task.trigger}; created ${task.createdAt}${task.endedAt ? `; ended ${task.endedAt}` : ''}`, `- Usage: ${task.usage.steps} steps, ${task.usage.inputTokens} input (${task.usage.cacheReadTokens} cached), ${task.usage.outputTokens} output`);
-      if (task.report !== undefined) {
-        lines.push(`- Result: ${task.report.summary}`);
-        for (const item of task.report.deliverables) lines.push(`  - ${item.path}${item.exists === false ? ' (missing)' : ''}${item.note ? `: ${item.note}` : ''}`);
-        for (const item of task.report.unresolved) lines.push(`  - unresolved: ${item}`);
-      }
-      if (task.verification !== undefined && task.verification.length > 0) lines.push(`- Verification: ${task.verification.join('; ')}`);
+    const byDay = new Map<string, Array<{ at: string; text: string }>>();
+    for (const entry of doc.activity) {
+      const day = entry.at.slice(0, 10);
+      const list = byDay.get(day) ?? [];
+      list.push({ at: entry.at, text: entry.text });
+      byDay.set(day, list);
+    }
+    const lines: string[] = [];
+    for (const [day, items] of [...byDay.entries()].toReversed()) {
+      lines.push(`## ${day}`, '');
+      for (const item of items) lines.push(`- ${item.at.slice(11, 16)} ${item.text}`);
       lines.push('');
     }
-    lines.push('## Activity', '');
-    for (const entry of doc.activity.slice(-120)) lines.push(`- ${entry.at} [${entry.kind}] ${entry.text}`);
+    if (lines.length === 0) lines.push('还没有工作记录。');
     return lines.join('\n');
   }
 
@@ -292,7 +292,7 @@ export class ContinuoTaskManager {
         scan,
         init: { status: 'completed', fingerprint, startedAt: now, endedAt: now },
         understanding: { text: '这个文件夹是空的。工作空间已就绪，等待第一个任务；不对它的用途做任何假设。', sourceRefs: [], updatedAt: now },
-        activity: [...current.activity, { at: now, kind: 'system', text: 'Empty folder: workspace ready, no scan needed' }],
+        activity: [...current.activity, { at: now, kind: 'system', text: '空文件夹：不需要了解，等你交代第一件事' }],
       }));
     }
     const session = await this.core.accessor.get(ISessionManager).create({ workspaceId, workDir: doc.root, mainAgentBinding: { profile: CONTINUO_INIT_PROFILE } });
@@ -318,7 +318,7 @@ export class ContinuoTaskManager {
       scan,
       init: { status: 'running', fingerprint, taskId, startedAt: now },
       tasks: [...current.tasks, task],
-      activity: [...current.activity, { at: now, taskId, kind: 'task', text: `Structure scan: ${scan.counts.dirs} folders, ${scan.counts.files} files${scan.truncated ? ' (truncated)' : ''}; ${scan.guideFiles.length} guide file(s)` }],
+      activity: [...current.activity, { at: now, taskId, kind: 'task', text: '开始了解这个文件夹' }],
     }));
     this.attach(workspaceId, taskId, session, agent);
     const prompt = [
@@ -358,15 +358,12 @@ export class ContinuoTaskManager {
       void this.patchTask(workspaceId, taskId, (current) => {
         if (current.status !== 'running' && current.status !== 'awaiting_user') return current;
         const pending = change.state.pendingInteraction;
-        if (pending !== 'none') {
-          const asked = pending === 'question' && current.pendingInteraction !== 'question';
-          return { ...current, status: 'awaiting_user', pendingInteraction: pending, phase: pending === 'question' ? '等待你回答' : '等待你批准', reuse: asked && current.reuse !== undefined ? { ...current.reuse, questions: current.reuse.questions + 1 } : current.reuse };
-        }
+        if (pending !== 'none') return { ...current, status: 'awaiting_user', pendingInteraction: pending, phase: pending === 'question' ? '等待你回答' : '等待你批准' };
         if (current.status === 'awaiting_user' && change.state.busy) return { ...current, status: 'running', pendingInteraction: 'none', phase: undefined };
         return current;
       }, { silent: true });
     });
-    this.attachments.set(taskId, { dispose: () => { onEvent.dispose(); onActivity.dispose(); }, writes: new Map(), reply: '' });
+    this.attachments.set(taskId, { dispose: () => { onEvent.dispose(); onActivity.dispose(); }, writes: new Map(), reads: new Set(), reply: '' });
   }
 
   private async onAgentEvent(workspaceId: string, taskId: string, event: Record<string, unknown>): Promise<void> {
@@ -396,9 +393,13 @@ export class ContinuoTaskManager {
     }
     if (type === 'tool.call.started') {
       const description = typeof event['description'] === 'string' ? event['description'] : typeof event['name'] === 'string' ? event['name'] : 'tool';
+      const attachment = this.attachments.get(taskId);
+      const turnId = typeof event['turnId'] === 'number' ? event['turnId'] : undefined;
       const written = writtenPath(event['display']);
-      if (written !== undefined) this.attachments.get(taskId)?.writes.set(String(event['toolCallId']), written);
-      await this.patchTask(workspaceId, taskId, (current) => ({ ...current, phase: description }), { activity: description });
+      if (written !== undefined) attachment?.writes.set(String(event['toolCallId']), { path: written, turnId });
+      const read = readPath(event['display']);
+      if (read !== undefined) attachment?.reads.add(read);
+      await this.patchTask(workspaceId, taskId, (current) => ({ ...current, phase: description }), { silent: true });
       return;
     }
     if (type === 'tool.result') {
@@ -418,12 +419,12 @@ export class ContinuoTaskManager {
     const endedAt = new Date().toISOString();
     if (reason === 'cancelled') {
       const status: TaskStatus = task.pauseRequested ? 'paused' : 'interrupted';
-      await this.patchTask(workspaceId, taskId, (current) => ({ ...current, status, phase: undefined, pendingInteraction: 'none', endedAt }), { activity: status === 'paused' ? 'Paused by user' : 'Turn cancelled' });
+      await this.patchTask(workspaceId, taskId, (current) => ({ ...current, status, phase: undefined, pendingInteraction: 'none', endedAt }), { activity: status === 'paused' ? '你暂停了这个任务' : '这一轮被中断' });
       if (task.kind === 'init') await this.store.update(workspaceId, (current) => ({ ...current, init: { ...current.init, status: 'stopped', endedAt } }));
       return;
     }
     if (reason === 'failed' || reason === 'blocked') {
-      await this.patchTask(workspaceId, taskId, (current) => ({ ...current, status: 'failed', phase: undefined, pendingInteraction: 'none', lastError: errorMessage ?? reason, endedAt }), { activity: `Failed: ${errorMessage ?? reason}` });
+      await this.patchTask(workspaceId, taskId, (current) => ({ ...current, status: 'failed', phase: undefined, pendingInteraction: 'none', lastError: errorMessage ?? reason, endedAt }), { activity: `这次没能完成：${errorMessage ?? reason}` });
       if (task.kind === 'init') await this.store.update(workspaceId, (current) => ({ ...current, init: { ...current.init, status: 'failed', endedAt } }));
       return;
     }
@@ -432,7 +433,7 @@ export class ContinuoTaskManager {
         ...current,
         init: { ...current.init, status: current.scan?.truncated === true ? 'partial' : 'completed', endedAt },
         tasks: current.tasks.map((candidate) => (candidate.taskId === taskId ? { ...candidate, status: 'completed' as TaskStatus, phase: undefined, endedAt, updatedAt: endedAt } : candidate)),
-        activity: [...current.activity, { at: endedAt, taskId, kind: 'task', text: current.understanding === undefined ? 'Initialization finished without a recorded understanding' : 'Initialization finished' }],
+        activity: [...current.activity, { at: endedAt, taskId, kind: 'task', text: current.understanding === undefined ? '了解结束，但没有形成理解' : '了解完成' }],
       }));
       return;
     }
@@ -440,26 +441,33 @@ export class ContinuoTaskManager {
     const fresh = await this.requireDoc(workspaceId);
     const current = this.requireTask(fresh, taskId);
     const notes: string[] = [];
-    const observed = [...new Set(this.attachments.get(taskId)?.writes.values() ?? [])].map((path) => this.relativeToRoot(fresh.root, path));
+    const observedWrites = new Map<string, number | undefined>();
+    for (const item of this.attachments.get(taskId)?.writes.values() ?? []) observedWrites.set(this.relativeToRoot(fresh.root, item.path), item.turnId);
+    const observed = [...observedWrites.keys()];
+    const sources = [...new Set([...(current.sources ?? []), ...[...(this.attachments.get(taskId)?.reads ?? [])].map((path) => this.relativeToRoot(fresh.root, path))])].slice(0, 40);
     let report = current.report;
     if (report === undefined && observed.length > 0) {
-      report = { summary: 'Deliverables inferred from file writes; the agent did not report a result.', deliverables: observed.map((path) => ({ path, note: 'observed write' })), unresolved: [], reportedAt: endedAt };
+      report = { summary: '产物由实际写入的文件推断得出；Agent 这次没有上报。', deliverables: observed.map((path) => ({ path, note: '实际写入', turnId: observedWrites.get(path) })), unresolved: [], reportedAt: endedAt };
       notes.push('agent did not report; deliverables inferred from observed writes');
     } else if (report === undefined) {
       const reply = (this.attachments.get(taskId)?.reply ?? '').trim().slice(0, 4000);
       await this.store.update(workspaceId, (doc2) => ({
         ...doc2,
         tasks: doc2.tasks.map((candidate) => candidate.taskId === taskId
-          ? { ...candidate, status: 'awaiting_user' as TaskStatus, pendingInteraction: 'reply' as const, phase: '已回复，等你确认或继续', lastReply: reply === '' ? undefined : reply, verification: ['no files written and no result report; the agent replied and is waiting for you'], reuse: candidate.reuse === undefined ? undefined : { ...candidate.reuse, questions: candidate.reuse.questions + 1 }, updatedAt: endedAt }
+          ? { ...candidate, status: 'awaiting_user' as TaskStatus, pendingInteraction: 'reply' as const, phase: '已回复，等你确认或继续', lastReply: reply === '' ? undefined : reply, verification: ['no files written and no result report; the agent replied and is waiting for you'], updatedAt: endedAt }
           : candidate),
-        activity: [...doc2.activity, { at: endedAt, taskId, kind: 'task' as const, text: 'Replied without writing files; waiting for the user' }],
+        activity: [...doc2.activity, { at: endedAt, taskId, kind: 'task' as const, text: '它回复了你，没有改动文件，在等你回话' }],
       }));
       return;
     } else {
+      report = { ...report, deliverables: report.deliverables.map((item) => {
+        const rel = this.relativeToRoot(fresh.root, item.path);
+        return observedWrites.has(rel) ? { ...item, path: rel, turnId: observedWrites.get(rel) } : item;
+      }) };
       const reported = new Set(report.deliverables.map((item) => this.relativeToRoot(fresh.root, item.path)));
       const unreported = observed.filter((path) => !reported.has(path));
       if (unreported.length > 0) {
-        report = { ...report, deliverables: [...report.deliverables, ...unreported.map((path) => ({ path, note: 'written but not reported' }))] };
+        report = { ...report, deliverables: [...report.deliverables, ...unreported.map((path) => ({ path, note: '写了但没上报', turnId: observedWrites.get(path) }))] };
         notes.push(`written but not reported: ${unreported.join(', ')}`);
       }
     }
@@ -477,13 +485,13 @@ export class ContinuoTaskManager {
     await this.store.update(workspaceId, (doc2) => ({
       ...doc2,
       tasks: doc2.tasks.map((candidate) => candidate.taskId === taskId
-        ? { ...candidate, status, phase: undefined, pendingInteraction: 'none', verification: notes, report: finalReport, lastReply: lastReply === '' ? candidate.lastReply : lastReply, endedAt, updatedAt: endedAt }
+        ? { ...candidate, status, phase: undefined, pendingInteraction: 'none', verification: notes, report: finalReport, sources, lastReply: lastReply === '' ? candidate.lastReply : lastReply, endedAt, updatedAt: endedAt }
         : candidate),
       context: progress === undefined ? doc2.context : [...doc2.context, progress],
       activity: [
         ...doc2.activity,
-        { at: endedAt, taskId, kind: 'task' as const, text: status === 'completed' ? `Completed: ${deliverables.length} deliverable(s) verified` : `Needs review: ${notes.join('; ')}` },
-        ...(progress === undefined ? [] : [{ at: endedAt, taskId, kind: 'context' as const, text: `Recorded progress: ${progress.text}` }]),
+        { at: endedAt, taskId, kind: 'task' as const, text: status === 'completed' ? `任务完成：${deliverables.length} 份产物已核对` : `还差一点：${notes.join('；')}` },
+        ...(progress === undefined ? [] : [{ at: endedAt, taskId, kind: 'context' as const, text: `记下一条进度：${progress.text}` }]),
       ],
     }));
     await this.refreshSourceFingerprints(workspaceId);
@@ -493,8 +501,8 @@ export class ContinuoTaskManager {
     const existing = deliverables.filter((item) => item.exists !== false).map((item) => item.path);
     if (existing.length === 0 && status === 'completed') return undefined;
     const text = status === 'completed'
-      ? `Task "${task.title}" completed; deliverables: ${existing.join(', ')}.`
-      : `Task "${task.title}" ended but needs review${existing.length > 0 ? `; files so far: ${existing.join(', ')}` : ''}.`;
+      ? `任务「${task.title}」已完成，产物：${existing.join('、')}。`
+      : `任务「${task.title}」还差一点${existing.length > 0 ? `，已有产物：${existing.join('、')}` : ''}。`;
     return { id: `ctx_${randomUUID().slice(0, 8)}`, kind: 'progress', text, scope: { type: 'workspace' }, sourceRefs: [`task:${task.taskId}`, ...existing], origin: 'agent', status: 'active', revision: 1, taskId: task.taskId, createdAt: at, updatedAt: at };
   }
 
@@ -520,7 +528,7 @@ export class ContinuoTaskManager {
         return { ...entry, status: 'stale' as const, sourceFingerprint: print, revision: entry.revision + 1, updatedAt: now };
       });
       if (stale.length === 0 && context.every((entry, index) => entry === current.context[index])) return current;
-      return { ...current, context, activity: stale.length === 0 ? current.activity : [...current.activity, ...stale.map((text) => ({ at: now, kind: 'context' as const, text: `Source changed, entry marked stale: ${text}` }))] };
+      return { ...current, context, activity: stale.length === 0 ? current.activity : [...current.activity, ...stale.map((text) => ({ at: now, kind: 'context' as const, text: `来源变了，暂时不用这条：${text}` }))] };
     });
   }
 
