@@ -1,15 +1,19 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { ChevronDown, ChevronRight, Check, CircleAlert, Loader2 } from 'lucide-react';
 import type { TimelineItem, ToolCall } from '#/lib/timeline';
 import { renderMarkdown } from '#/lib/markdown';
 
 const REASON_LABEL: Record<string, string> = { completed: '本轮完成', cancelled: '已停止', failed: '本轮失败', blocked: '被阻塞，需要处理' };
 
-export function Timeline({ items, emptyHint }: { items: TimelineItem[]; emptyHint?: string }) {
-  if (items.length === 0) return <div className="t3 p-6 text-center sm">{emptyHint ?? '还没有对话。'}</div>;
+export function Timeline({ items, after }: { items: TimelineItem[]; after?: (item: TimelineItem, index: number) => React.ReactNode }) {
   return (
     <div className="space-y-5">
-      {items.map((it) => it.kind === 'user' ? <div key={it.id} className="flex flex-col items-end gap-1 fade-in"><div className="msg-user">{it.text}</div><span className="t3 xs">{clock(it.at)}</span></div> : <AssistantTurn key={it.id} item={it} />)}
+      {items.map((it, i) => (
+        <Fragment key={it.id}>
+          {it.kind === 'user' ? <div className="flex flex-col items-end gap-1 fade-in"><div className="msg-user">{it.text}</div><span className="t3 xs">{clock(it.at)}</span></div> : <AssistantTurn item={it} />}
+          {after?.(it, i)}
+        </Fragment>
+      ))}
     </div>
   );
 }

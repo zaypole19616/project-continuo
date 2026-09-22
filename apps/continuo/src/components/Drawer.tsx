@@ -1,26 +1,24 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowRight, ArrowUp, Check, ChevronDown, CircleAlert, Play, RotateCcw, Sparkles, Square, SquarePen } from 'lucide-react';
-import { DEFAULT_MODEL, type ApprovalRequest, type ContextEntry, type ContinuoDoc, type ContinuoTask, type QuestionRequest, type Workspace } from '#/lib/api';
+import { ArrowRight, ArrowUp, Check, CircleAlert, Play, RotateCcw, Sparkles, Square } from 'lucide-react';
+import { DEFAULT_MODEL, type ApprovalRequest, type ContinuoDoc, type ContinuoTask, type QuestionRequest, type Workspace } from '#/lib/api';
 import type { TimelineState } from '#/lib/timeline';
 import { Timeline } from './Timeline';
 import { ApprovalCard, QuestionCard } from './InteractionCards';
-import { ContextPanel } from './ContextPanel';
+import { InitStatus } from './InitStatus';
 import { WorkRecord } from './WorkRecord';
 import { Button } from '#/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '#/components/ui/tabs';
-import { DropdownMenu, DropdownMenuCheck, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '#/components/ui/dropdown-menu';
 
 export interface DrawerProps {
   workspace: Workspace;
   doc: ContinuoDoc | null;
-  selected: ContinuoTask | null;
-  sessions: ContinuoTask[];
+  latest: ContinuoTask | null;
   state: TimelineState;
   questions: QuestionRequest[];
   approvals: ApprovalRequest[];
   error: string | null;
   activeUserTask: ContinuoTask | null;
-  continueTarget: ContinuoTask | null;
+  replyTarget: ContinuoTask | null;
   composerRef: React.RefObject<HTMLTextAreaElement | null>;
   sending: boolean;
   onSend: () => void;
@@ -28,21 +26,32 @@ export interface DrawerProps {
   onDecide: (a: ApprovalRequest, d: 'approved' | 'rejected', scope?: 'session') => Promise<void>;
   onAction: (task: ContinuoTask, action: 'pause' | 'resume' | 'complete') => void;
   onOpenFile: (path: string) => void;
-  onPatchContext: (entry: ContextEntry, body: { text?: string; status?: 'active' | 'inactive' }) => Promise<void>;
-  onReunderstand: () => void;
   onStartStep: (prompt: string) => void;
-  onSelectTask: (task: ContinuoTask) => void;
-  onNewSession: () => void;
   onError: (message: string) => void;
 }
 
-type Tab = 'chat' | 'context' | 'log';
+type Tab = 'chat' | 'log' | 'todo';
 
-const isAwaitingReply = (t: ContinuoTask | null) => !!t && t.status === 'awaiting_user' && t.pendingInteraction === 'reply';
+const RESUMABLE = new Set(['paused', 'interrupted', 'failed', 'needs_review']);
+const isFinished = (t: ContinuoTask) => t.status === 'completed' || t.status === 'needs_review';
 
-function taskDot(task: ContinuoTask): string {
+function statusLabel(task: ContinuoTask): string {
+  switch (task.status) {
+    case 'queued': return '排队中';
+    case 'running': return task.phase ?? '进行中';
+    case 'verifying': return '核对产物';
+    case 'awaiting_user': return task.pendingInteraction === 'question' ? '等你回答' : task.pendingInteraction === 'approval' ? '等你批准' : '等你回复';
+    case 'paused': return '已暂停';
+    case 'interrupted': return '被打断了';
+    case 'failed': return `没做完${task.lastError ? ` · ${task.lastError}` : ''}`;
+    case 'needs_review': return '还差一点';
+    default: return '';
+  }
+}
+
+function statusDot(task: ContinuoTask): string {
   if (task.status === 'running' || task.status === 'verifying' || task.status === 'queued') return 'running';
-  if (task.status === 'awaiting_user' && (task.pendingInteraction === 'question' || task.pendingInteraction === 'approval')) return 'waiting';
+  if (task.status === 'awaiting_user') return 'waiting';
   if (task.status === 'failed' || task.status === 'interrupted') return 'failed';
   return '';
 }
@@ -51,33 +60,46 @@ export function Drawer(p: DrawerProps) {
   const [tab, setTab] = useState<Tab>('chat');
   const [draft, setDraft] = useState('');
   const bottomRef = useRef<HTMLDivElement | null>(null);
-  const lastAssistant = p.state.items.at(-1);
-  useEffect(() => { bottomRef.current?.scrollIntoView({ block: 'end' }); }, [p.state.items.length, lastAssistant?.kind === 'assistant' ? lastAssistant.text.length : 0, p.questions.length, p.approvals.length, p.selected?.status]);
+  const lastItem = p.state.items.at(-1);
+  useEffect(() => { bottomRef.current?.scrollIntoView({ block: 'end' }); }, [p.state.items.length, lastItem?.kind === 'assistant' ? lastItem.text.length : 0, p.questions.length, p.approvals.length, p.latest?.status]);
 
-  const pendingContext = p.doc?.context.filter((e) => e.kind !== 'progress' && (e.status === 'candidate' || e.status === 'stale')).length ?? 0;
+  const tasks = p.doc?.tasks.filter((t) => t.kind === 'user') ?? [];
+  const todos = tasks.filter((t) => t.status !== 'completed');
   const reading = p.doc?.init.status === 'running';
-  const continuing = p.continueTarget !== null;
-  const awaitingReply = isAwaitingReply(p.continueTarget);
   const running = p.activeUserTask !== null && p.activeUserTask.status !== 'awaiting_user';
-  const hero = p.selected === null;
+  const resumable = p.latest !== null && RESUMABLE.has(p.latest.status) ? p.latest : null;
   const modelName = DEFAULT_MODEL.split('/').pop();
   const send = () => { p.onSend(); setDraft(''); };
   const stop = () => { if (p.activeUserTask) p.onAction(p.activeUserTask, 'pause'); };
+  const focusComposer = () => { setTab('chat'); setTimeout(() => p.composerRef.current?.focus(), 50); };
+
+  const anchored = new Map<number, ContinuoTask[]>();
+  const trailing: ContinuoTask[] = [];
+  for (const task of tasks.filter((t) => isFinished(t) && t.endedAt !== undefined)) {
+    const end = Date.parse(task.endedAt!);
+    let index = -1;
+    p.state.items.forEach((item, i) => { if (item.at <= end) index = i; });
+    if (index === -1) trailing.push(task);
+    else anchored.set(index, [...(anchored.get(index) ?? []), task]);
+  }
+  const nextStep = p.latest?.report?.nextStep;
+  const showNextStep = nextStep !== undefined && p.latest !== null && isFinished(p.latest) && !tasks.some((t) => t.title === nextStep.prompt.slice(0, 120));
+  const card = (task: ContinuoTask) => p.doc && <ClosingCard key={task.taskId} task={task} doc={p.doc} onOpenFile={p.onOpenFile} />;
 
   const composer = (
     <>
-      {p.continueTarget && (p.continueTarget.status === 'paused' || p.continueTarget.status === 'interrupted' || p.continueTarget.status === 'failed' || p.continueTarget.status === 'needs_review') && (
+      {resumable && (
         <div className="state-bar chrome">
-          <span className="t2 sm flex-1">{p.continueTarget.status === 'paused' ? '已暂停，工作留在这里' : p.continueTarget.status === 'interrupted' ? '被打断了，可以接着做' : p.continueTarget.status === 'failed' ? '这次没做完，可以再试' : '还差一点，还没算完成'}</span>
-          {p.continueTarget.status === 'needs_review' && <Button size="sm" onClick={() => p.onAction(p.continueTarget!, 'complete')}><Check size={12} />标记完成</Button>}
-          <Button variant="default" size="sm" onClick={() => p.onAction(p.continueTarget!, 'resume')}>{p.continueTarget.status === 'failed' ? <><RotateCcw size={12} />重试</> : <><Play size={12} />继续</>}</Button>
+          <span className="t2 sm flex-1">{resumable.status === 'paused' ? '已暂停，工作留在这里' : resumable.status === 'interrupted' ? '被打断了，可以接着做' : resumable.status === 'failed' ? '这次没做完，可以再试' : '还差一点，还没算完成'}</span>
+          {resumable.status === 'needs_review' && <Button size="sm" onClick={() => p.onAction(resumable, 'complete')}><Check size={12} />标记完成</Button>}
+          <Button variant="default" size="sm" onClick={() => p.onAction(resumable, 'resume')}>{resumable.status === 'failed' ? <><RotateCcw size={12} />重试</> : <><Play size={12} />继续</>}</Button>
         </div>
       )}
       <div className="composer">
         <textarea
           ref={p.composerRef}
           rows={2}
-          placeholder={awaitingReply ? '回复它…' : continuing ? '有新的要求？直接说…' : '这次想完成什么？'}
+          placeholder={p.replyTarget ? '回复它…' : '这次想完成什么？'}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); if (!running && !p.sending) send(); } }}
@@ -94,57 +116,50 @@ export function Drawer(p: DrawerProps) {
   );
 
   return (
-    <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)} className="panel-box" aria-label="对话" asChild>
+    <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)} className="panel-box drawer" aria-label="对话" asChild>
       <aside>
         <div className="drawer-head">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button className="session-btn" title={p.selected?.title ?? '新会话'}>
-                <span className="truncate">{p.selected?.title ?? '新会话'}</span><ChevronDown size={14} className="t3 shrink-0" />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent className="w-72">
-              <DropdownMenuItem onSelect={p.onNewSession}><SquarePen />新会话</DropdownMenuItem>
-              {p.sessions.length > 0 && <DropdownMenuSeparator />}
-              {p.sessions.map((t) => (
-                <DropdownMenuItem key={t.taskId} onSelect={() => p.onSelectTask(t)} title={t.title}>
-                  <span className="flex-1 truncate">{t.title}</span>
-                  {taskDot(t) ? <span className={`status-dot ${taskDot(t)}`} /> : <DropdownMenuCheck shown={t.taskId === p.selected?.taskId} />}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <span className="flex-1" />
           <TabsList>
             <TabsTrigger value="chat">对话</TabsTrigger>
-            <TabsTrigger value="context">记住的事{reading ? <span className="status-dot running" /> : pendingContext > 0 && <span className="mode-badge">{pendingContext}</span>}</TabsTrigger>
             <TabsTrigger value="log">记录</TabsTrigger>
+            <TabsTrigger value="todo">事项{todos.length > 0 && <span className="mode-badge">{todos.length}</span>}</TabsTrigger>
           </TabsList>
         </div>
 
         <TabsContent value="chat" className="flex min-h-0 flex-1 flex-col">
-          {p.error && <div className="banner banner-err mx-3 mt-3">{p.error}</div>}
-          <div className={`drawer-body ${hero ? 'is-hero' : ''}`}>
-            {hero
-              ? p.doc && !reading && <p className="hero-line">{memorySummary(p.doc)}<button className="link" onClick={() => setTab('context')}>{pendingContext > 0 ? '去确认' : '查看'}</button></p>
-              : <Timeline items={p.state.items} emptyHint="这个会话还没有内容。" />}
-            {p.selected && p.doc && (p.selected.status === 'completed' || p.selected.status === 'needs_review') && (
-              <ClosingCard task={p.selected} doc={p.doc} onOpenFile={p.onOpenFile} />
-            )}
-            {p.selected?.report?.nextStep && p.selected.status !== 'running' && !p.doc?.tasks.some((t) => t.title === p.selected!.report!.nextStep!.prompt.slice(0, 120)) && (
-              <NextStepCard step={p.selected.report.nextStep} busy={p.sending} onStart={() => p.onStartStep(p.selected!.report!.nextStep!.prompt)} />
-            )}
+          {p.error && <div className="banner banner-err mb-2">{p.error}</div>}
+          <div className="drawer-body">
+            {reading && p.doc && <InitStatus doc={p.doc} />}
+            {p.state.items.length > 0 && <Timeline items={p.state.items} after={(_, i) => anchored.get(i)?.map(card)} />}
+            {trailing.map(card)}
+            {showNextStep && <NextStepCard step={nextStep} busy={p.sending} onStart={() => p.onStartStep(nextStep.prompt)} />}
             {p.questions.map((q) => <QuestionCard key={q.question_id} q={q} onAnswer={(answers, note) => p.onAnswer(q, answers, note)} />)}
             {p.approvals.map((a) => <ApprovalCard key={a.approval_id} a={a} root={p.doc?.root} onDecide={(d, scope) => p.onDecide(a, d, scope)} />)}
             <div ref={bottomRef} />
           </div>
           <div className="drawer-foot">{composer}</div>
         </TabsContent>
-        <TabsContent value="context" className="drawer-body">
-          {p.doc ? <ContextPanel doc={p.doc} onPatch={p.onPatchContext} onOpenFile={p.onOpenFile} onReunderstand={p.onReunderstand} /> : <div className="t3 sm">打开中…</div>}
-        </TabsContent>
         <TabsContent value="log" className="drawer-body">
           {p.doc ? <WorkRecord workspaceId={p.workspace.id} revision={p.doc.revision} onError={p.onError} /> : <div className="t3 sm">打开中…</div>}
+        </TabsContent>
+        <TabsContent value="todo" className="drawer-body">
+          {todos.length === 0
+            ? <div className="t3 sm">没有进行中的事项。</div>
+            : todos.toReversed().map((task) => (
+              <div key={task.taskId} className="todo-row">
+                <span className={`status-dot ${statusDot(task)}`} />
+                <div className="min-w-0 flex-1">
+                  <div className="todo-title">{task.title}</div>
+                  <div className="todo-meta">{statusLabel(task)}</div>
+                </div>
+                <div className="flex shrink-0 gap-1">
+                  {(task.status === 'running' || task.status === 'queued') && <Button variant="ghost" size="sm" onClick={() => p.onAction(task, 'pause')}><Square size={11} fill="currentColor" />停止</Button>}
+                  {task.status === 'awaiting_user' && <Button variant="ghost" size="sm" onClick={focusComposer}><ArrowRight size={12} />去回复</Button>}
+                  {task.status === 'needs_review' && <Button variant="ghost" size="sm" onClick={() => p.onAction(task, 'complete')}><Check size={12} />标记完成</Button>}
+                  {RESUMABLE.has(task.status) && <Button variant="ghost" size="sm" onClick={() => p.onAction(task, 'resume')}>{task.status === 'failed' ? <><RotateCcw size={12} />重试</> : <><Play size={12} />继续</>}</Button>}
+                </div>
+              </div>
+            ))}
         </TabsContent>
       </aside>
     </Tabs>
@@ -178,8 +193,8 @@ function ClosingCard({ task, doc, onOpenFile }: { task: ContinuoTask; doc: Conti
           <span className="t3 xs">这次记住了</span>
           {remembered.slice(0, 4).map((e) => (
             <span key={e.id} className="flex items-start gap-2">
-              <Check size={13} style={{ color: e.status === 'active' ? 'var(--ok)' : 'var(--warn)', marginTop: 3, flex: 'none' }} />
-              <span>{e.text}{e.status === 'candidate' && <span className="t3"> · 等你确认</span>}</span>
+              <Check size={13} style={{ color: 'var(--ok)', marginTop: 3, flex: 'none' }} />
+              <span>{e.text}</span>
             </span>
           ))}
         </div>
@@ -194,13 +209,6 @@ function ClosingCard({ task, doc, onOpenFile }: { task: ContinuoTask; doc: Conti
       )}
     </div>
   );
-}
-
-function memorySummary(doc: ContinuoDoc): string {
-  const remembered = doc.context.filter((e) => e.status === 'active' && e.kind !== 'progress').length;
-  const pending = doc.context.filter((e) => e.status === 'candidate').length;
-  if (remembered === 0 && pending === 0) return '它已经了解了这个项目。';
-  return pending > 0 ? `记住了 ${remembered} 件事，还有 ${pending} 条推断等你确认。` : `记住了 ${remembered} 件事。`;
 }
 
 function coveredBy(item: string, step: { title: string; reason: string }): boolean {

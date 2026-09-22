@@ -10,10 +10,5 @@ export function WorkRecord({ workspaceId, revision, onError }: { workspaceId: st
     return () => { cancelled = true; };
   }, [workspaceId, revision]);
   if (markdown === null) return <div className="t3 sm">读取中…</div>;
-  return (
-    <div className="space-y-2">
-      <div className="t3 xs">这个文件夹里发生过的事，按日期排列。</div>
-      <article className="md work-record" dangerouslySetInnerHTML={{ __html: renderMarkdown(markdown) }} />
-    </div>
-  );
+  return <article className="md work-record" dangerouslySetInnerHTML={{ __html: renderMarkdown(markdown) }} />;
 }

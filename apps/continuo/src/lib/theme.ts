@@ -6,9 +6,9 @@ const media = window.matchMedia('(prefers-color-scheme: dark)');
 export function readThemePref(): ThemePref {
   try {
     const v = localStorage.getItem(KEY);
-    return v === 'light' || v === 'system' ? v : 'dark';
+    return v === 'light' || v === 'dark' ? v : 'system';
   } catch {
-    return 'dark';
+    return 'system';
   }
 }
 
