@@ -54,7 +54,7 @@ export function FileBrowser({ workspaceId, root, doc, target, agentCollapsed, se
     <section className="pane pane-content" aria-label="文件工作区">
       <header className="pane-header chrome" style={{ height: 56 }}>
         <div className="crumbs flex-1 min-w-0">
-          <button onClick={() => onNavigate({ kind: 'folder', path: '' })} className="flex items-center gap-1" title="工作空间"><FolderGlyph size={18} /><span className="crumb-root-label">工作空间</span></button>
+          <button onClick={() => onNavigate({ kind: 'folder', path: '' })} className="flex items-center gap-1" title="文件夹"><FolderGlyph size={18} /><span className="crumb-root-label">文件夹</span></button>
           <ChevronRight size={14} className="text-3" />
           {crumbs.length === 0 && target.kind === 'folder' ? <span className="current">{rootName}</span> : <button onClick={() => onNavigate({ kind: 'folder', path: '' })}>{rootName}</button>}
           {crumbs.map((c, i) => {
@@ -100,7 +100,7 @@ function EmptyFolder({ query }: { query: string }) {
     <div className="flex flex-col items-center justify-center gap-3 p-16 text-center">
       <FolderGlyph size={104} />
       <div className="text-2" style={{ fontSize: 'var(--fs-chat)' }}>{query ? `没有名字包含「${query}」的项目` : '这个文件夹是空的'}</div>
-      {!query && <div className="text-3 fs-meta">在右侧交代一个任务，产物会出现在这里。</div>}
+      {!query && <div className="text-3 fs-meta">在中间交代一个任务，它做出的文件会出现在这里。</div>}
     </div>
   );
 }

@@ -241,6 +241,7 @@ textarea:focus, input:focus { outline: none; border-color: var(--accent); box-sh
 .open-hero { max-width: 760px; margin: 0 auto; padding: 96px 32px 40px; text-align: center; }
 .open-hero h1 { font-size: var(--fs-display); font-weight: 800; letter-spacing: -0.03em; margin: 18px 0 10px; }
 .open-hero p { color: var(--text-2); font-size: 17px; margin: 0; }
+.open-hero .open-tagline { color: var(--text-1); font-weight: 600; margin-bottom: 8px; }
 .open-input { display: flex; align-items: center; gap: 8px; height: 56px; padding: 0 10px 0 20px; border-radius: 28px; background: var(--surface); border: 1px solid var(--line-strong); box-shadow: var(--shadow-input); }
 .open-input input { flex: 1; border: 0; background: transparent; box-shadow: none; padding: 0; font-size: var(--fs-lg); }
 .open-input input:focus { box-shadow: none; }

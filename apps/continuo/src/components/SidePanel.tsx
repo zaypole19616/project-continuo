@@ -20,7 +20,7 @@ export function SidePanel({ mode, onMode, workspaceId, root, doc, target, onNavi
       <header className="pane-header chrome" style={{ padding: '0 8px 0 12px' }}>
         <div className="seg" role="tablist">
           <ModeTab active={mode === 'files'} label="文件" onClick={() => onMode('files')}><FolderOpen size={15} /></ModeTab>
-          <ModeTab active={mode === 'context'} label="Context" badge={pending || undefined} onClick={() => onMode('context')}><Layers size={15} /></ModeTab>
+          <ModeTab active={mode === 'context'} label="记住的事" badge={pending || undefined} onClick={() => onMode('context')}><Layers size={15} /></ModeTab>
         </div>
       </header>
       {mode === 'files' && (

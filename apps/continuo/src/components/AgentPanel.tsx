@@ -30,10 +30,13 @@ export interface AgentPanelProps {
   onPatchContext: (entry: ContextEntry, body: { text?: string; status?: 'active' | 'inactive' }) => Promise<void>;
 }
 
-const DEMOS: Array<{ bet: string; en: string; title: string; desc: string; prompt: string; generic: string }> = [
-  { bet: 'legibility', en: 'Legibility', title: '它按你的规矩干活', desc: '先在 Context 里改一条约定，再交代任务，看产物是否照改后的规矩落位、命名。', prompt: '起草一份 Q2 经营复盘初稿，放到 drafts/。', generic: '基于这个文件夹里的材料，起草一份总结初稿，按这里的约定放好、命名好。' },
-  { bet: 'proactiveness', en: 'Proactiveness', title: '缺决定时它停下来问', desc: '材料里没有的决定它不编。你回一句，它在原会话接着干，中途可停可续。', prompt: '给 Q2 复盘初稿补一节「下季度价格动作」，价格方向和幅度按我的决定写，材料里没有的不要编。', generic: '找出这个文件夹里需要我拍板的事，列出来问我，不要自己替我决定。' },
-  { bet: 'clarity', en: 'Clarity', title: '完成由文件证明', desc: '任务结束时核验产物是否真的存在；有未解决项就进待复核，不假装完成。', prompt: '基于 Q2 复盘初稿写一份 200 字以内的高管摘要，放到 drafts/。', generic: '把这个文件夹里最新的一份产物压缩成 200 字以内的摘要，另存为新文件。' },
+export type BetKey = 'legibility' | 'proactiveness' | 'clarity';
+export const BET_LABEL: Record<BetKey, string> = { legibility: '有章法', proactiveness: '不乱打扰', clarity: '说清楚' };
+
+const DEMOS: Array<{ bet: BetKey; title: string; desc: string; prompt: string; generic: string }> = [
+  { bet: 'legibility', title: '它按你的规矩干活', desc: '先在右侧「记住的事」里改一条约定，再交代任务，看它做出的文件是否照改后的规矩放好、命名。', prompt: '起草一份 Q2 经营复盘初稿，放到 drafts/。', generic: '基于这个文件夹里的材料，起草一份总结初稿，按这里的约定放好、命名好。' },
+  { bet: 'proactiveness', title: '缺决定时它停下来问', desc: '材料里没有的决定它不编。你回一句，它接着干，中途可停可续。', prompt: '给 Q2 复盘初稿补一节「下季度价格动作」，价格方向和幅度按我的决定写，材料里没有的不要编。', generic: '找出这个文件夹里需要我拍板的事，列出来问我，不要自己替我决定。' },
+  { bet: 'clarity', title: '做完了才说做完', desc: '任务结束时核对文件是不是真的在文件夹里；没做到的如实列出，不假装完成。', prompt: '基于 Q2 复盘初稿写一份 200 字以内的高管摘要，放到 drafts/。', generic: '把这个文件夹里最新的一份产物压缩成 200 字以内的摘要，另存为新文件。' },
 ];
 
 const isAwaitingReply = (t: ContinuoTask | null) => !!t && t.status === 'awaiting_user' && t.pendingInteraction === 'reply';
@@ -49,7 +52,7 @@ export function AgentPanel(p: AgentPanelProps) {
   const continuing = p.continueTarget !== null;
   const awaitingReply = isAwaitingReply(p.continueTarget);
   const isDemo = p.workspaceName === DEMO_WORKSPACE_NAME;
-  const title = p.selected ? (p.selected.kind === 'init' ? '了解这个工作空间' : p.selected.title) : '新任务';
+  const title = p.selected ? (p.selected.kind === 'init' ? '了解这个文件夹' : p.selected.title) : '新任务';
   const modelName = DEFAULT_MODEL.split('/').pop();
   const initRunning = p.doc?.init.status === 'running';
   const showEmpty = !p.selected && p.doc && !initRunning;
@@ -72,7 +75,7 @@ export function AgentPanel(p: AgentPanelProps) {
         <div className="chat-col">
           {initRunning && p.doc && (
             <div className="understand fade-in">
-              <BetChip en="Clarity" onClick={() => p.onAbout('clarity')} />
+              <BetChip bet="clarity" onClick={() => p.onAbout('clarity')} />
               <div className="flex items-center gap-2 font-medium"><Loader2 size={15} className="spin" style={{ color: 'var(--accent)' }} />正在了解这个文件夹，先理解再动手</div>
               <div className="t2 sm" style={{ marginTop: 4 }}>{p.doc.scan ? `${p.doc.scan.counts.dirs} 个文件夹、${p.doc.scan.counts.files} 个文件${p.doc.scan.guideFiles.length > 0 ? `，先读 ${p.doc.scan.guideFiles.join('、')}` : ''}。` : ''}只读，不会改动任何文件。</div>
             </div>
@@ -80,11 +83,11 @@ export function AgentPanel(p: AgentPanelProps) {
           {showEmpty && (
             <div className="empty-hero fade-in">
               <h2>把工作交给 Continuo</h2>
-              <p className="t2" style={{ margin: '0 0 22px' }}>它已经了解了这个文件夹。下面三张卡各演示一个判断，点一下就开始。</p>
+              <p className="t2" style={{ margin: '0 0 22px' }}>它已经了解了这个文件夹。下面三张卡各演示一件事，点一下就开始。</p>
               <div className="demo-grid">
                 {DEMOS.map((d) => (
                   <button key={d.bet} className="demo-card" onClick={() => fill(isDemo ? d.prompt : d.generic)}>
-                    <span className="demo-en">{d.en}</span>
+                    <span className="demo-en">{BET_LABEL[d.bet]}</span>
                     <span className="demo-title">{d.title}</span>
                     <span className="demo-desc">{d.desc}</span>
                   </button>
@@ -96,13 +99,13 @@ export function AgentPanel(p: AgentPanelProps) {
             <UnderstandingCard doc={p.doc} onContext={() => p.onSide('context')} onAbout={() => p.onAbout('clarity')} onPatch={p.onPatchContext} />
           )}
           {!showEmpty && <Timeline items={p.selected?.kind === 'init' ? p.state.items.filter((it) => it.kind !== 'user') : p.state.items} emptyHint={p.selected ? (p.selected.kind === 'init' ? undefined : '这个任务还没有对话。') : undefined} />}
-          {p.selected?.report && (p.selected.report.deliverables.length > 0 || p.selected.report.unresolved.length > 0) && (p.selected.status === 'completed' || p.selected.status === 'needs_review') && (
-            <DeliverableCard task={p.selected} onOpenFile={p.onOpenFile} onAbout={() => p.onAbout('clarity')} />
+          {p.selected && p.doc && p.selected.kind === 'user' && (p.selected.status === 'completed' || p.selected.status === 'needs_review') && (
+            <ClosingCard task={p.selected} doc={p.doc} onOpenFile={p.onOpenFile} onAbout={() => p.onAbout('clarity')} />
           )}
-          {p.questions.map((q) => <div key={q.question_id} className="space-y-2"><BetChip en="Proactiveness" note="需要你决定时才打扰" onClick={() => p.onAbout('proactiveness')} /><QuestionCard q={q} onAnswer={(answers, note) => p.onAnswer(q, answers, note)} /></div>)}
-          {p.approvals.map((a) => <div key={a.approval_id} className="space-y-2"><BetChip en="Proactiveness" note="写文件前先问你" onClick={() => p.onAbout('proactiveness')} /><ApprovalCard a={a} onDecide={(d, scope) => p.onDecide(a, d, scope)} /></div>)}
+          {p.questions.map((q) => <div key={q.question_id} className="space-y-2"><BetChip bet="proactiveness" note="需要你决定时才打扰" onClick={() => p.onAbout('proactiveness')} /><QuestionCard q={q} onAnswer={(answers, note) => p.onAnswer(q, answers, note)} /></div>)}
+          {p.approvals.map((a) => <div key={a.approval_id} className="space-y-2"><BetChip bet="proactiveness" note="动你的文件前先问你" onClick={() => p.onAbout('proactiveness')} /><ApprovalCard a={a} root={p.doc?.root} onDecide={(d, scope) => p.onDecide(a, d, scope)} /></div>)}
           {isAwaitingReply(p.selected) && p.selected?.lastReply && (
-            <div className="banner banner-warn"><BetChip en="Proactiveness" note="它在等你回复，看板不会假装完成" onClick={() => p.onAbout('proactiveness')} />在下面回复它，任务会在原会话接着干。</div>
+            <div className="banner banner-warn"><BetChip bet="proactiveness" note="它在等你回复，不会假装完成" onClick={() => p.onAbout('proactiveness')} />在下面回复它，它会接着干。</div>
           )}
           <div ref={bottomRef} />
         </div>
@@ -112,14 +115,14 @@ export function AgentPanel(p: AgentPanelProps) {
           {p.activeUserTask ? (
             <div className="composer" style={{ padding: '12px 14px 12px 18px', display: 'flex', alignItems: 'center', gap: 12 }}>
               <Loader2 size={16} className="spin" style={{ color: 'var(--accent)' }} />
-              <span className="t2 flex-1 sm">{p.activeUserTask.status === 'awaiting_user' ? (p.activeUserTask.pendingInteraction === 'approval' ? '在等你批准上面的操作' : '在等你回答上面的问题') : `正在执行：${p.activeUserTask.phase ?? p.activeUserTask.title}`}</span>
+              <span className="t2 flex-1 sm">{p.activeUserTask.status === 'awaiting_user' ? (p.activeUserTask.pendingInteraction === 'approval' ? '在等你允许上面的操作' : '在等你回答上面的问题') : `正在执行：${p.activeUserTask.phase ?? p.activeUserTask.title}`}</span>
               <button className="btn btn-sm" onClick={() => p.onAction(p.activeUserTask!, 'pause')}><Square size={12} />停止</button>
             </div>
           ) : (
             <>
               {p.continueTarget && (p.continueTarget.status === 'paused' || p.continueTarget.status === 'interrupted' || p.continueTarget.status === 'failed' || p.continueTarget.status === 'needs_review') && (
                 <div className="state-bar chrome">
-                  <span className="t2 sm flex-1">{p.continueTarget.status === 'paused' ? '任务已暂停' : p.continueTarget.status === 'interrupted' ? '任务被中断' : p.continueTarget.status === 'failed' ? '上次执行失败' : '任务待复核：有未解决项'}</span>
+                  <span className="t2 sm flex-1">{p.continueTarget.status === 'paused' ? '任务已暂停' : p.continueTarget.status === 'interrupted' ? '任务被中断' : p.continueTarget.status === 'failed' ? '上次执行失败' : '还差一点：有没做到的事'}</span>
                   {p.continueTarget.status === 'needs_review' && <button className="btn btn-sm" onClick={() => p.onAction(p.continueTarget!, 'complete')}><Check size={12} />标记完成</button>}
                   <button className="btn btn-sm btn-primary" onClick={() => p.onAction(p.continueTarget!, 'resume')}>{p.continueTarget.status === 'failed' ? <><RotateCcw size={12} />重试</> : <><Play size={12} />继续</>}</button>
                 </div>
@@ -144,8 +147,8 @@ export function AgentPanel(p: AgentPanelProps) {
   );
 }
 
-export function BetChip({ en, note, onClick }: { en: string; note?: string; onClick: () => void }) {
-  return <button className="bet-chip chrome" onClick={onClick} title="这体现的是哪个判断">{en}{note ? <span className="t3"> · {note}</span> : null}</button>;
+export function BetChip({ bet, note, onClick }: { bet: BetKey; note?: string; onClick: () => void }) {
+  return <button className="bet-chip chrome" onClick={onClick} title="这背后的想法">{BET_LABEL[bet]}{note ? <span className="t3"> · {note}</span> : null}</button>;
 }
 
 function UnderstandingCard({ doc, onContext, onAbout, onPatch }: { doc: ContinuoDoc; onContext: () => void; onAbout: () => void; onPatch: (entry: ContextEntry, body: { text?: string; status?: 'active' | 'inactive' }) => Promise<void> }) {
@@ -156,13 +159,13 @@ function UnderstandingCard({ doc, onContext, onAbout, onPatch }: { doc: Continuo
   return (
     <div className="understand fade-in space-y-3">
       <div>
-        <BetChip en="Clarity" note="理解有来源，先确认再生效" onClick={onAbout} />
+        <BetChip bet="clarity" note="每条理解都有来源，确认了才会用" onClick={onAbout} />
         <div className="font-medium" style={{ margin: '6px 0' }}>我对这个文件夹的理解</div>
         <div className="sm" style={{ lineHeight: 1.65 }}>{doc.understanding!.text}</div>
       </div>
       {active.length > 0 && (
         <div className="space-y-1">
-          <div className="t3 xs">已生效 · 来自文件或你的确认</div>
+          <div className="t3 xs">已记住 · 来自文件或你的确认</div>
           {active.slice(0, 4).map((e) => <div key={e.id} className="sm flex items-start gap-2"><Check size={14} style={{ color: 'var(--ok)', marginTop: 3 }} /><span>{e.text}</span></div>)}
         </div>
       )}
@@ -179,36 +182,53 @@ function UnderstandingCard({ doc, onContext, onAbout, onPatch }: { doc: Continuo
         </div>
       )}
       <div className="flex items-center gap-2">
-        <span className="tag tag-done">{active.length} 条已生效</span>
+        <span className="tag tag-done">记住了 {active.length} 件事</span>
         {candidates.length > 0 && <span className="tag tag-wait">{candidates.length} 条待确认</span>}
         <span className="flex-1" />
-        <button className="btn btn-sm" onClick={onContext}>去纠正或查看来源</button>
+        <button className="btn btn-sm" onClick={onContext}>查看或修改</button>
       </div>
     </div>
   );
 }
 
-function DeliverableCard({ task, onOpenFile, onAbout }: { task: ContinuoTask; onOpenFile: (path: string) => void; onAbout: () => void }) {
-  const r = task.report!;
-  const ok = r.deliverables.filter((d) => d.exists !== false).length;
+function ClosingCard({ task, doc, onOpenFile, onAbout }: { task: ContinuoTask; doc: ContinuoDoc; onOpenFile: (path: string) => void; onAbout: () => void }) {
+  const deliverables = task.report?.deliverables ?? [];
+  const unresolved = task.report?.unresolved ?? [];
+  const ok = deliverables.filter((d) => d.exists !== false).length;
+  const remembered = doc.context.filter((e) => e.taskId === task.taskId && e.kind !== 'progress' && (e.status === 'active' || e.status === 'candidate'));
+  const done = task.status === 'completed';
   return (
     <div className="space-y-2">
-      <BetChip en="Clarity" note="完成由文件证明，不由模型自报" onClick={onAbout} />
+      <BetChip bet="clarity" note="做没做完，看文件说话" onClick={onAbout} />
       <div className="deliverable fade-in">
         <div className="deliverable-head">
-          {task.status === 'completed' ? <Check size={14} style={{ color: 'var(--ok)' }} /> : <CircleAlert size={14} style={{ color: 'var(--warn)' }} />}
-          <span className="font-medium">{r.deliverables.length} 个产物</span>
-          <span className="t3">· 已核验 {ok} 个存在</span>
-          {task.status === 'needs_review' && <span className="tag tag-wait" style={{ marginLeft: 'auto' }}>待复核</span>}
+          {done ? <Check size={14} style={{ color: 'var(--ok)' }} /> : <CircleAlert size={14} style={{ color: 'var(--warn)' }} />}
+          <span className="font-medium">{done ? '这个任务做完了' : '还差一点'}</span>
+          <span className="t3">· {deliverables.length > 0 ? `做出 ${deliverables.length} 份文件，${ok} 份已确认在文件夹里` : '没有新文件'}</span>
         </div>
-        {r.deliverables.map((d) => (
+        {deliverables.map((d) => (
           <div key={d.path} className="deliverable-row">
             {d.exists === false ? <CircleAlert size={13} style={{ color: 'var(--err)' }} /> : <Check size={13} style={{ color: 'var(--ok)' }} />}
             <span className="path" onClick={() => onOpenFile(d.path)} title="在右侧打开">{d.path}</span>
-            {d.note && <span className="t3 xs truncate" style={{ maxWidth: '40%' }}>{d.note}</span>}
+            {d.exists === false && <span className="t3 xs">没找到这个文件</span>}
+            {d.note && d.exists !== false && <span className="t3 xs truncate" style={{ maxWidth: '40%' }}>{d.note}</span>}
           </div>
         ))}
-        {r.unresolved.map((u) => <div key={u} className="deliverable-row" style={{ color: '#b36b00' }}><CircleAlert size={13} />未解决：{u}</div>)}
+        {unresolved.map((u) => <div key={u} className="deliverable-row" style={{ color: '#b36b00' }}><CircleAlert size={13} />还没做到：{u}</div>)}
+        {remembered.length > 0 && (
+          <div className="deliverable-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 4 }}>
+            <span className="t3 xs">这次记住了</span>
+            {remembered.slice(0, 4).map((e) => (
+              <span key={e.id} className="flex items-start gap-2">
+                <Check size={13} style={{ color: e.status === 'active' ? 'var(--ok)' : 'var(--warn)', marginTop: 3, flex: 'none' }} />
+                <span>{e.text}{e.status === 'candidate' && <span className="t3"> · 等你确认</span>}</span>
+              </span>
+            ))}
+          </div>
+        )}
+        <div className="deliverable-row t3" style={{ fontSize: 'var(--fs-xs)' }}>
+          {done ? '下次打开这个文件夹，它记住的事都还在，不用再交代一遍。' : '补完上面的事再标记完成；记住的事已经保存，不会丢。'}
+        </div>
       </div>
     </div>
   );

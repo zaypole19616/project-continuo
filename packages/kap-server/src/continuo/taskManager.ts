@@ -482,7 +482,7 @@ export class ContinuoTaskManager {
     const text = status === 'completed'
       ? `Task "${task.title}" completed; deliverables: ${existing.join(', ')}.`
       : `Task "${task.title}" ended but needs review${existing.length > 0 ? `; files so far: ${existing.join(', ')}` : ''}.`;
-    return { id: `ctx_${randomUUID().slice(0, 8)}`, kind: 'progress', text, scope: { type: 'workspace' }, sourceRefs: [`task:${task.taskId}`, ...existing], origin: 'agent', status: 'active', revision: 1, createdAt: at, updatedAt: at };
+    return { id: `ctx_${randomUUID().slice(0, 8)}`, kind: 'progress', text, scope: { type: 'workspace' }, sourceRefs: [`task:${task.taskId}`, ...existing], origin: 'agent', status: 'active', revision: 1, taskId: task.taskId, createdAt: at, updatedAt: at };
   }
 
   private async refreshSourceFingerprints(workspaceId: string): Promise<ContinuoWorkspaceDoc> {
