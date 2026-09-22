@@ -2,23 +2,11 @@ import { useEffect, useState } from 'react';
 import { ApiError, kimi, readToken, setToken, touchRecent, type Workspace } from '#/lib/api';
 import { ONBOARDED_KEY, Onboarding } from '#/components/Onboarding';
 import { WorkspaceView } from '#/pages/Workspace';
-import { About, type BetId } from '#/pages/About';
 
 const WS_KEY = 'continuo.workspace';
-const BETS = new Set(['orderliness', 'proactiveness', 'clarity', 'direction']);
-
-type Route = { kind: 'app' } | { kind: 'about'; page: BetId | 'index' };
-
-function readRoute(): Route {
-  const h = window.location.hash.replace(/^#/, '');
-  const m = /^\/about(?:\/([a-z]+))?$/.exec(h);
-  if (m) return { kind: 'about', page: m[1] && BETS.has(m[1]) ? (m[1] as BetId) : 'index' };
-  return { kind: 'app' };
-}
 
 export function App() {
   const [token, setTok] = useState<string | null>(() => readToken());
-  const [route, setRoute] = useState<Route>(() => readRoute());
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [checking, setChecking] = useState(true);
   const [serverOk, setServerOk] = useState<string | null>(null);
@@ -26,7 +14,7 @@ export function App() {
   const [intro, setIntro] = useState(() => { try { return localStorage.getItem(ONBOARDED_KEY) !== '1'; } catch { return true; } });
 
   useEffect(() => {
-    const onHash = () => { const t = readToken(); if (t) setTok(t); setRoute(readRoute()); };
+    const onHash = () => { const t = readToken(); if (t) setTok(t); };
     window.addEventListener('hashchange', onHash);
     return () => window.removeEventListener('hashchange', onHash);
   }, []);
@@ -56,10 +44,6 @@ export function App() {
     return () => { cancelled = true; };
   }, [token]);
 
-  const goAbout = (page: BetId | 'index' = 'index') => { window.location.hash = page === 'index' ? '/about' : `/about/${page}`; };
-  const goApp = () => { window.location.hash = ''; setRoute({ kind: 'app' }); };
-
-  if (route.kind === 'about') return <About page={route.page} onNavigate={goAbout} onOpenApp={goApp} />;
   if (checking) return <Center>正在连接本地服务…</Center>;
   if (!serverOk) {
     return (
@@ -75,7 +59,7 @@ export function App() {
   const finishIntro = () => { try { localStorage.setItem(ONBOARDED_KEY, '1'); } catch {} setIntro(false); };
   return (
     <>
-      <WorkspaceView workspace={workspace} onSwitch={(w) => { localStorage.setItem(WS_KEY, w.id); touchRecent(w.id); setWorkspace(w); }} onAbout={(bet) => goAbout(bet && BETS.has(bet) ? (bet as BetId) : 'index')} onReplayIntro={() => setIntro(true)} />
+      <WorkspaceView workspace={workspace} onSwitch={(w) => { localStorage.setItem(WS_KEY, w.id); touchRecent(w.id); setWorkspace(w); }} onReplayIntro={() => setIntro(true)} />
       {intro && <Onboarding onDone={finishIntro} />}
     </>
   );

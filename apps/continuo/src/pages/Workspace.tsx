@@ -32,7 +32,7 @@ function useMediaQuery(query: string): boolean {
 const readPref = (key: string, fallback: boolean) => { try { const v = localStorage.getItem(key); return v === null ? fallback : v === '1'; } catch { return fallback; } };
 const writePref = (key: string, value: boolean) => { try { localStorage.setItem(key, value ? '1' : '0'); } catch {} };
 
-export function WorkspaceView({ workspace, onSwitch, onAbout, onReplayIntro }: { workspace: Workspace | null; onSwitch: (w: Workspace) => void; onAbout: (bet?: string) => void; onReplayIntro: () => void }) {
+export function WorkspaceView({ workspace, onSwitch, onReplayIntro }: { workspace: Workspace | null; onSwitch: (w: Workspace) => void; onReplayIntro: () => void }) {
   const workspaceId = workspace?.id ?? null;
   const [doc, setDoc] = useState<ContinuoDoc | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -192,7 +192,7 @@ export function WorkspaceView({ workspace, onSwitch, onAbout, onReplayIntro }: {
 
   return (
     <div className={`shell ${navCollapsed ? 'nav-collapsed' : ''} ${sideMode === null || !workspace ? 'side-collapsed' : ''}`}>
-      <Sidebar workspace={workspace} doc={doc} workspaces={workspaces} collapsed={navCollapsed || narrow} selectedTaskId={selectedId} onToggle={toggleNav} onSelectTask={selectTask} onPickWorkspace={onSwitch} onNewTask={focusComposer} onSearch={focusSearch} onAbout={() => onAbout()} onGuide={onReplayIntro} />
+      <Sidebar workspace={workspace} doc={doc} workspaces={workspaces} collapsed={navCollapsed || narrow} selectedTaskId={selectedId} onToggle={toggleNav} onSelectTask={selectTask} onPickWorkspace={onSwitch} onNewTask={focusComposer} onSearch={focusSearch} onGuide={onReplayIntro} />
       <AgentPanel
         workspace={workspace} doc={doc} sideMode={sideMode} onSide={setSide}
         selected={selected} state={state} questions={questions} approvals={approvals} connection={connection} error={error}
@@ -200,7 +200,7 @@ export function WorkspaceView({ workspace, onSwitch, onAbout, onReplayIntro }: {
         onSend={() => { void send(); }}
         onAnswer={async (q, answers, note) => { if (!sessionId) return; await kimi.resolveQuestion(sessionId, q.question_id, answers, note); await refreshPending(sessionId); void refresh(); }}
         onDecide={async (a, d, scope) => { if (!sessionId) return; await kimi.resolveApproval(sessionId, a.approval_id, d, scope); await refreshPending(sessionId); void refresh(); }}
-        onAction={(t, a) => { void action(t, a); }} onOpenFile={openFile} onAbout={(bet) => onAbout(bet)} onPatchContext={patchContext} onReunderstand={() => { void reunderstand(); }} onStartStep={(text) => { void startStep(text); }} onPickWorkspace={onSwitch}
+        onAction={(t, a) => { void action(t, a); }} onOpenFile={openFile} onPatchContext={patchContext} onReunderstand={() => { void reunderstand(); }} onStartStep={(text) => { void startStep(text); }} onPickWorkspace={onSwitch}
       />
       {sideMode !== null && workspace && (
         <SidePanel mode={sideMode} onMode={setSide} workspaceId={workspace.id} root={workspace.root} doc={doc} target={target} onNavigate={setTarget} onSelectTask={selectTask} onPatchContext={patchContext} onError={setError} searchRef={searchRef} />
