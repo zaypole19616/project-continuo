@@ -486,3 +486,11 @@ button.link:hover { text-decoration: underline; }
 .wordmark { font-size: 34px; font-weight: var(--weight-semibold); letter-spacing: -0.02em; margin: 0 0 4px; }
 .wordmark i { font-style: normal; color: var(--color-accent); }
 .hero-chip-row { display: flex; margin: 0 0 8px; }
+
+.turn-status { display: flex; align-items: center; gap: 10px; font-size: var(--fs-sm); color: var(--text-2); }
+.turn-avatar { width: 22px; height: 22px; flex: none; border-radius: 50%; background: var(--color-accent); box-shadow: 0 0 0 4px var(--accent-soft); position: relative; animation: turn-pulse 1.6s ease-in-out infinite; }
+.turn-avatar::before, .turn-avatar::after { content: ''; position: absolute; top: 7px; width: 3px; height: 7px; border-radius: 2px; background: #fff; }
+.turn-avatar::before { left: 6px; }
+.turn-avatar::after { right: 6px; }
+@keyframes turn-pulse { 0%, 100% { box-shadow: 0 0 0 4px var(--accent-soft); } 50% { box-shadow: 0 0 0 7px var(--accent-soft); } }
+@media (prefers-reduced-motion: reduce) { .turn-avatar { animation: none; } }

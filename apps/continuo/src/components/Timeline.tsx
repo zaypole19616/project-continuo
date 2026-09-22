@@ -17,9 +17,14 @@ export function Timeline({ items, emptyHint }: { items: TimelineItem[]; emptyHin
 function AssistantTurn({ item }: { item: Extract<TimelineItem, { kind: 'assistant' }> }) {
   return (
     <div className="space-y-3 fade-in">
+      {!item.ended && (
+        <div className="turn-status">
+          <span className="turn-avatar" />
+          <span>{item.text ? '正在回答' : item.tools.length > 0 ? '正在动手' : '正在思考中'}</span>
+        </div>
+      )}
       {item.tools.length > 0 && <ActivityTimeline tools={item.tools} />}
       {item.text && (item.ended ? <div className="msg-assistant md" style={{ whiteSpace: 'normal' }} dangerouslySetInnerHTML={{ __html: renderMarkdown(item.text) }} /> : <div className="msg-assistant">{item.text}</div>)}
-      {!item.ended && !item.text && item.tools.length === 0 && <div className="text-3 fs-meta flex items-center gap-2"><Loader2 size={14} className="spin" />正在思考…</div>}
       {item.ended && item.ended.reason === 'completed' && (item.text || item.tools.length > 0) && <div className="t3 xs">{clock(item.at)}</div>}
       {item.ended && item.ended.reason !== 'completed' && (
         <div className="fs-meta flex items-start gap-2" style={{ color: item.ended.reason === 'cancelled' ? 'var(--text-3)' : 'var(--err)' }}>

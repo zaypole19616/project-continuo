@@ -4,9 +4,12 @@ import { continuo, DEFAULT_MODEL, type ContinuoDoc, type ContinuoTask, type Work
 import { FolderMenu } from './FolderMenu';
 import { Button } from '#/components/ui/button';
 
-const TASK_DOT: Record<ContinuoTask['status'], string> = {
-  queued: '', running: 'running', verifying: 'running', awaiting_user: 'waiting', needs_review: 'waiting', completed: '', paused: '', interrupted: 'failed', failed: 'failed',
-};
+function taskDot(task: ContinuoTask): string {
+  if (task.status === 'running' || task.status === 'verifying' || task.status === 'queued') return 'running';
+  if (task.status === 'awaiting_user' && (task.pendingInteraction === 'question' || task.pendingInteraction === 'approval')) return 'waiting';
+  if (task.status === 'failed' || task.status === 'interrupted') return 'failed';
+  return '';
+}
 
 export function Sidebar({ workspace, doc, workspaces, collapsed, selectedTaskId, onToggle, onSelectTask, onPickWorkspace, onNewTask, onSearch, onGuide }: {
   workspace: Workspace | null; doc: ContinuoDoc | null; workspaces: Workspace[]; collapsed: boolean; selectedTaskId: string | null;
@@ -106,7 +109,7 @@ function FolderGroup({ workspace, current, tasks, open, selectedTaskId, onToggle
       {open && list?.map((t) => (
         <button key={t.taskId} className={`side-sub ${current && t.taskId === selectedTaskId ? 'is-selected' : ''}`} onClick={() => { if (!current) onOpen(); else onSelectTask(t); }} title={t.title}>
           <span className="flex-1 truncate">{t.title}</span>
-          {TASK_DOT[t.status] ? <span className={`status-dot ${TASK_DOT[t.status]}`} /> : <span className="t3 xs">{shortDate(t.createdAt)}</span>}
+          {taskDot(t) ? <span className={`status-dot ${taskDot(t)}`} /> : <span className="t3 xs">{shortDate(t.createdAt)}</span>}
         </button>
       ))}
       {open && (loading ? <div className="side-empty">读取中…</div> : list?.length === 0 && <div className="side-empty">还没有会话</div>)}
