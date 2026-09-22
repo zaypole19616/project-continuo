@@ -75,7 +75,7 @@ export function App() {
   const finishIntro = () => { try { localStorage.setItem(ONBOARDED_KEY, '1'); } catch {} setIntro(false); };
   return (
     <>
-      <WorkspaceView workspace={workspace} onSwitch={(w) => { localStorage.setItem(WS_KEY, w.id); touchRecent(w.id); setWorkspace(w); }} onClose={() => { localStorage.removeItem(WS_KEY); setWorkspace(null); }} onAbout={(bet) => goAbout(bet && BETS.has(bet) ? (bet as BetId) : 'index')} onReplayIntro={() => setIntro(true)} />
+      <WorkspaceView workspace={workspace} onSwitch={(w) => { localStorage.setItem(WS_KEY, w.id); touchRecent(w.id); setWorkspace(w); }} onAbout={(bet) => goAbout(bet && BETS.has(bet) ? (bet as BetId) : 'index')} onReplayIntro={() => setIntro(true)} />
       {intro && <Onboarding onDone={finishIntro} />}
     </>
   );

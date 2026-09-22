@@ -1,14 +1,14 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { ArrowRight, ArrowUp, Check, CircleAlert, FolderOpen, Loader2, PanelRight, PanelRightClose, Play, RotateCcw, Sparkles, Square } from 'lucide-react';
-import { DEFAULT_MODEL, type ApprovalRequest, type ContextEntry, type ContinuoDoc, type ContinuoTask, type QuestionRequest } from '#/lib/api';
+import { ArrowRight, ArrowUp, Check, ChevronDown, CircleAlert, FolderOpen, Loader2, PanelRight, PanelRightClose, Play, RotateCcw, Sparkles, Square } from 'lucide-react';
+import { DEFAULT_MODEL, type ApprovalRequest, type ContextEntry, type ContinuoDoc, type ContinuoTask, type QuestionRequest, type Workspace } from '#/lib/api';
 import type { TimelineState } from '#/lib/timeline';
 import { Timeline } from './Timeline';
 import { ApprovalCard, QuestionCard } from './InteractionCards';
 import type { SideMode } from './SidePanel';
-import { shortDate } from './Sidebar';
+import { FolderMenu } from './FolderMenu';
 
 export interface AgentPanelProps {
-  workspaceName: string;
+  workspace: Workspace | null;
   doc: ContinuoDoc | null;
   sideMode: SideMode | null;
   onSide: (mode: SideMode | null) => void;
@@ -31,6 +31,7 @@ export interface AgentPanelProps {
   onPatchContext: (entry: ContextEntry, body: { text?: string; status?: 'active' | 'inactive' }) => Promise<void>;
   onReunderstand: () => void;
   onStartStep: (prompt: string) => void;
+  onPickWorkspace: (w: Workspace) => void;
 }
 
 export type BetKey = 'orderliness' | 'proactiveness' | 'clarity';
@@ -41,6 +42,7 @@ const isAwaitingReply = (t: ContinuoTask | null) => !!t && t.status === 'awaitin
 export function AgentPanel(p: AgentPanelProps) {
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const [draft, setDraft] = useState('');
+  const [picking, setPicking] = useState(false);
   const lastAssistant = p.state.items.at(-1);
   useEffect(() => { bottomRef.current?.scrollIntoView({ block: 'end' }); }, [p.state.items.length, lastAssistant?.kind === 'assistant' ? lastAssistant.text.length : 0, p.questions.length, p.approvals.length, p.selected?.status]);
 
@@ -48,12 +50,48 @@ export function AgentPanel(p: AgentPanelProps) {
   const pendingContext = p.doc?.context.filter((e) => e.status === 'candidate' || e.status === 'stale').length ?? 0;
   const continuing = p.continueTarget !== null;
   const awaitingReply = isAwaitingReply(p.continueTarget);
-  const title = p.selected ? (p.selected.kind === 'init' ? '了解这个文件夹' : p.selected.title) : '新任务';
+  const title = p.selected ? (p.selected.kind === 'init' ? '了解这个文件夹' : p.selected.title) : '新对话';
   const modelName = DEFAULT_MODEL.split('/').pop();
   const initRunning = p.doc?.init.status === 'running';
-  const showEmpty = !p.selected && p.doc && !initRunning;
+  const hero = !p.selected && !initRunning;
   const lastMode = useRef<SideMode>('files');
   useEffect(() => { if (p.sideMode !== null) lastMode.current = p.sideMode; }, [p.sideMode]);
+  const send = () => { p.onSend(); setDraft(''); };
+
+  const composer = p.activeUserTask ? (
+    <div className="composer" style={{ padding: '12px 14px 12px 18px', display: 'flex', alignItems: 'center', gap: 12 }}>
+      <Loader2 size={16} className="spin" style={{ color: 'var(--accent)' }} />
+      <span className="t2 flex-1 sm">{p.activeUserTask.status === 'awaiting_user' ? (p.activeUserTask.pendingInteraction === 'approval' ? '要动你的文件，等你点允许' : '有一个决定需要你') : `正在做：${p.activeUserTask.phase ?? p.activeUserTask.title}`}</span>
+      <button className="btn btn-sm" onClick={() => p.onAction(p.activeUserTask!, 'pause')}><Square size={12} />停止</button>
+    </div>
+  ) : (
+    <>
+      {p.continueTarget && (p.continueTarget.status === 'paused' || p.continueTarget.status === 'interrupted' || p.continueTarget.status === 'failed' || p.continueTarget.status === 'needs_review') && (
+        <div className="state-bar chrome">
+          <span className="t2 sm flex-1">{p.continueTarget.status === 'paused' ? '已暂停，工作留在这里' : p.continueTarget.status === 'interrupted' ? '被打断了，可以接着做' : p.continueTarget.status === 'failed' ? '这次没做完，可以再试' : '还差一点，还没算完成'}</span>
+          {p.continueTarget.status === 'needs_review' && <button className="btn btn-sm" onClick={() => p.onAction(p.continueTarget!, 'complete')}><Check size={12} />标记完成</button>}
+          <button className="btn btn-sm btn-primary" onClick={() => p.onAction(p.continueTarget!, 'resume')}>{p.continueTarget.status === 'failed' ? <><RotateCcw size={12} />重试</> : <><Play size={12} />继续</>}</button>
+        </div>
+      )}
+      <div className="composer">
+        <textarea ref={p.composerRef} rows={hero ? 3 : 2} placeholder={p.workspace === null ? '先选一个文件夹，再交代任务…' : awaitingReply ? '回复它…' : continuing ? '有新的要求？直接说…' : '这次想完成什么？'} value={draft} disabled={p.workspace === null} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send(); } }} />
+        <div className="composer-footer chrome">
+          <span className="model-chip">✳ {modelName}</span>
+          <div className="chip-anchor">
+            <button className={`ws-chip ws-chip-btn ${p.workspace === null ? 'is-empty' : ''}`} onClick={() => setPicking(!picking)} title="选择文件夹">
+              <FolderOpen size={13} />{p.workspace?.name ?? '选择文件夹'}<ChevronDown size={12} />
+            </button>
+            {picking && <FolderMenu currentId={p.workspace?.id} onPick={p.onPickWorkspace} onClose={() => setPicking(false)} />}
+          </div>
+          <span className="flex-1" />
+          <button className="send" title="发送" disabled={!p.doc || p.sending} onClick={send}><ArrowUp size={16} /></button>
+        </div>
+      </div>
+      <div className="chat-status chrome">
+        <span className="t3 xs">{p.workspace === null ? '先从右下角选一个文件夹' : p.connection === 'connecting' ? '连接中…' : continuing ? '会在这个对话里接着干；要另起一个，点左上角「新对话」' : 'Enter 发送 · Shift + Enter 换行'}</span>
+      </div>
+    </>
+  );
 
   return (
     <section className="pane pane-main" aria-label="对话">
@@ -66,20 +104,25 @@ export function AgentPanel(p: AgentPanelProps) {
       </header>
       {p.error && <div className="banner banner-err mx-auto mt-3" style={{ maxWidth: 760 }}>{p.error}</div>}
 
-      <div className="pane-body chat-body">
+      <div className={`pane-body chat-body ${hero ? 'is-hero' : ''}`}>
         <div className="chat-col">
-          {initRunning && p.doc && <InitStage startedAt={p.doc.init.startedAt} />}
-          {showEmpty && p.doc && (
-            <div className="empty-hero fade-in">
-              <h2>{p.doc.tasks.some((t) => t.kind === 'user') ? '这次，想做什么？' : '准备好了，开始吧。'}</h2>
-              {p.doc.understanding && <p className="t2 empty-brief">{p.doc.understanding.text}</p>}
-              <p className="t3 sm" style={{ margin: '0 0 22px' }}>{memorySummary(p.doc)}<button className="link" onClick={() => p.onSide('context')}>{p.doc.context.some((e) => e.status === 'candidate') ? '去确认' : '查看'}</button></p>
+          {hero && (
+            <div className="hero fade-in">
+              <h2>{p.workspace === null ? '从一个文件夹开始' : p.doc?.tasks.some((t) => t.kind === 'user') ? '这次，想做什么？' : '准备好了，开始吧。'}</h2>
+              {p.workspace === null
+                ? <p className="t2 hero-brief">选一个文件夹交给 Continuo：它先了解这个文件夹，再接你交代的任务，做完的东西放回文件夹。</p>
+                : <>
+                    {p.doc?.understanding && <p className="t2 hero-brief">{p.doc.understanding.text}</p>}
+                    {p.doc && <p className="t3 sm" style={{ margin: 0 }}>{memorySummary(p.doc)}<button className="link" onClick={() => p.onSide('context')}>{p.doc.context.some((e) => e.status === 'candidate') ? '去确认' : '查看'}</button></p>}
+                  </>}
+              <div className="hero-composer">{composer}</div>
             </div>
           )}
+          {initRunning && p.doc && <InitStage startedAt={p.doc.init.startedAt} />}
           {p.selected && p.selected.kind === 'init' && p.doc?.understanding && (
             <UnderstandingCard doc={p.doc} onContext={() => p.onSide('context')} onAbout={() => p.onAbout('clarity')} onReunderstand={p.onReunderstand} />
           )}
-          {!showEmpty && !initRunning && <Timeline items={p.selected?.kind === 'init' ? p.state.items.filter((it) => it.kind !== 'user') : p.state.items} emptyHint={p.selected ? (p.selected.kind === 'init' ? undefined : p.selected.sessionId === '' ? `这是演示夹自带的上次任务（${shortDate(p.selected.createdAt)}），对话没有随演示夹保存；下面是它当时的收尾。` : '这个任务还没有对话。') : undefined} />}
+          {!hero && !initRunning && <Timeline items={p.selected?.kind === 'init' ? p.state.items.filter((it) => it.kind !== 'user') : p.state.items} emptyHint={p.selected?.kind === 'init' ? undefined : '这个对话还没有内容。'} />}
           {p.selected && p.doc && p.selected.kind === 'user' && (p.selected.status === 'completed' || p.selected.status === 'needs_review') && (
             <ClosingCard task={p.selected} doc={p.doc} onOpenFile={p.onOpenFile} onAbout={() => p.onAbout('clarity')} />
           )}
@@ -94,39 +137,7 @@ export function AgentPanel(p: AgentPanelProps) {
           <div ref={bottomRef} />
         </div>
       </div>
-      <div className="chat-footer">
-        <div className="chat-col">
-          {p.activeUserTask ? (
-            <div className="composer" style={{ padding: '12px 14px 12px 18px', display: 'flex', alignItems: 'center', gap: 12 }}>
-              <Loader2 size={16} className="spin" style={{ color: 'var(--accent)' }} />
-              <span className="t2 flex-1 sm">{p.activeUserTask.status === 'awaiting_user' ? (p.activeUserTask.pendingInteraction === 'approval' ? '要动你的文件，等你点允许' : '有一个决定需要你') : `正在做：${p.activeUserTask.phase ?? p.activeUserTask.title}`}</span>
-              <button className="btn btn-sm" onClick={() => p.onAction(p.activeUserTask!, 'pause')}><Square size={12} />停止</button>
-            </div>
-          ) : (
-            <>
-              {p.continueTarget && (p.continueTarget.status === 'paused' || p.continueTarget.status === 'interrupted' || p.continueTarget.status === 'failed' || p.continueTarget.status === 'needs_review') && (
-                <div className="state-bar chrome">
-                  <span className="t2 sm flex-1">{p.continueTarget.status === 'paused' ? '已暂停，工作留在这里' : p.continueTarget.status === 'interrupted' ? '被打断了，可以接着做' : p.continueTarget.status === 'failed' ? '这次没做完，可以再试' : '还差一点，还没算完成'}</span>
-                  {p.continueTarget.status === 'needs_review' && <button className="btn btn-sm" onClick={() => p.onAction(p.continueTarget!, 'complete')}><Check size={12} />标记完成</button>}
-                  <button className="btn btn-sm btn-primary" onClick={() => p.onAction(p.continueTarget!, 'resume')}>{p.continueTarget.status === 'failed' ? <><RotateCcw size={12} />重试</> : <><Play size={12} />继续</>}</button>
-                </div>
-              )}
-              <div className="composer">
-                <textarea ref={p.composerRef} rows={2} placeholder={awaitingReply ? '回复它…' : continuing ? '有新的要求？直接说…' : '这次想完成什么？'} value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); p.onSend(); setDraft(''); } }} />
-                <div className="composer-footer chrome">
-                  <span className="model-chip">✳ {modelName}</span>
-                  <span className="ws-chip"><FolderOpen size={13} />{p.workspaceName}</span>
-                  <span className="flex-1" />
-                  <button className="send" title="发送" disabled={!p.doc || p.sending} onClick={() => { p.onSend(); setDraft(''); }}><ArrowUp size={16} /></button>
-                </div>
-              </div>
-            </>
-          )}
-          <div className="chat-status chrome">
-            <span className="t3 xs">{p.connection === 'connecting' ? '连接中…' : continuing ? '会在这个任务里接着干；要另起一个，点左上角「新任务」' : 'Enter 发送 · Shift + Enter 换行'}</span>
-          </div>
-        </div>
-      </div>
+      {!hero && <div className="chat-footer"><div className="chat-col">{composer}</div></div>}
     </section>
   );
 }
