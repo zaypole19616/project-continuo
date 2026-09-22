@@ -6,7 +6,6 @@ import { ContinuoStoreService } from '#/features/continuo/store';
 import {
   CONTINUO_STORE_SCOPE,
   EMPTY_USAGE,
-  isEffectiveEntry,
   newWorkspaceDoc,
   type ContextEntry,
   type ContinuoTask,
@@ -17,17 +16,7 @@ import type { IAtomicDocumentStore } from '#/persistence/interface/atomicDocumen
 const NOW = '2026-09-20T00:00:00.000Z';
 
 function entry(overrides: Partial<ContextEntry> & { id: string; text: string }): ContextEntry {
-  return {
-    kind: 'background',
-    scope: { type: 'workspace' },
-    sourceRefs: [],
-    origin: 'agent',
-    status: 'active',
-    revision: 1,
-    createdAt: NOW,
-    updatedAt: NOW,
-    ...overrides,
-  };
+  return { sourceRefs: [], createdAt: NOW, ...overrides };
 }
 
 function task(overrides: Partial<ContinuoTask> = {}): ContinuoTask {
@@ -85,61 +74,35 @@ class MemoryDocumentStore implements IAtomicDocumentStore {
   }
 }
 
-describe('isEffectiveEntry', () => {
-  it('keeps only active entries and task-scoped entries of the current task', () => {
-    expect(isEffectiveEntry(entry({ id: 'a', text: 'x' }), undefined)).toBe(true);
-    expect(isEffectiveEntry(entry({ id: 'b', text: 'x', status: 'candidate' }), undefined)).toBe(false);
-    expect(isEffectiveEntry(entry({ id: 'c', text: 'x', status: 'stale' }), 'task_1')).toBe(false);
-    expect(isEffectiveEntry(entry({ id: 'd', text: 'x', scope: { type: 'task', taskId: 'task_1' } }), 'task_1')).toBe(true);
-    expect(isEffectiveEntry(entry({ id: 'e', text: 'x', scope: { type: 'task', taskId: 'task_1' } }), 'task_2')).toBe(false);
-  });
-});
-
 describe('compileContextBundle', () => {
-  it('returns nothing when there is neither understanding nor effective context', () => {
-    expect(compileContextBundle(docWith([entry({ id: 'a', text: 'x', status: 'candidate' })]), task())).toBeUndefined();
+  it('returns nothing when the folder has neither an understanding nor any points', () => {
+    expect(compileContextBundle(docWith([]), task())).toBeUndefined();
   });
 
-  it('injects only effective entries, decisions and conventions first, and names the current task', () => {
+  it('injects the understanding, the points with their sources and the current task', () => {
     const doc = docWith([
-      entry({ id: 'bg', text: 'background fact', kind: 'background' }),
-      entry({ id: 'cand', text: 'unconfirmed guess', status: 'candidate' }),
-      entry({ id: 'conv', text: 'deliverables go in drafts/', kind: 'convention', origin: 'file', sourceRefs: ['README.md'] }),
-      entry({ id: 'dec', text: 'only three topics', kind: 'decision', origin: 'user' }),
-      entry({ id: 'other', text: 'belongs to another task', scope: { type: 'task', taskId: 'task_9' } }),
-      entry({ id: 'old', text: 'superseded wording', status: 'superseded' }),
+      entry({ id: 'conv', text: 'deliverables go in drafts/', sourceRefs: ['README.md'] }),
+      entry({ id: 'bg', text: 'materials/ is read-only', sourceRefs: ['AGENTS.md'] }),
     ], { understanding: { text: 'A folder for the Q2 review.', sourceRefs: ['README.md'], updatedAt: NOW } });
-    const bundle = compileContextBundle(doc, task());
+    const bundle = compileContextBundle(doc, task({ supplements: ['keep it under 150 words'] }));
     expect(bundle).toBeDefined();
     expect(bundle!.revision).toBe(7);
-    expect(bundle!.entryIds).toEqual(['dec', 'conv', 'bg']);
+    expect(bundle!.entryIds).toEqual(['conv', 'bg']);
     const text = bundle!.text;
     expect(text).toContain('A folder for the Q2 review.');
-    expect(text.indexOf('only three topics')).toBeLessThan(text.indexOf('deliverables go in drafts/'));
-    expect(text.indexOf('deliverables go in drafts/')).toBeLessThan(text.indexOf('background fact'));
-    expect(text).toContain('[confirmed by user]');
-    expect(text).toContain('(source: README.md) [from files]');
-    expect(text).not.toContain('unconfirmed guess');
-    expect(text).not.toContain('belongs to another task');
-    expect(text).not.toContain('superseded wording');
+    expect(text).toContain('- deliverables go in drafts/ (source: README.md)');
     expect(text).toContain('Current task: write the Q2 review');
+    expect(text).toContain('The user added: keep it under 150 words');
   });
 
-  it('flags stale entries separately so the agent re-checks their sources', () => {
-    const doc = docWith([entry({ id: 's', text: 'numbers from the old export', status: 'stale', sourceRefs: ['materials/q2.md'] })], {
-      understanding: { text: 'Q2 review folder', sourceRefs: [], updatedAt: NOW },
-    });
-    const text = compileContextBundle(doc, task())!.text;
-    expect(text).toContain('source files changed');
-    expect(text).toContain('numbers from the old export (source: materials/q2.md)');
-    expect(text).not.toContain('- Project background: numbers from the old export');
+  it('points the agent at the folder and its work logs instead of a remembered ledger', () => {
+    const doc = docWith([], { understanding: { text: 'Q2 review folder', sourceRefs: [], updatedAt: NOW } });
+    expect(compileContextBundle(doc, task())!.text).toContain('work-log/');
   });
 
-  it('stays within the character budget while never dropping decisions or conventions', () => {
-    const filler = Array.from({ length: 40 }, (_, index) => entry({ id: `m${index}`, kind: 'material', text: 'm'.repeat(400), updatedAt: `2026-09-20T00:00:${String(index).padStart(2, '0')}.000Z` }));
-    const doc = docWith([...filler, entry({ id: 'dec', kind: 'decision', text: 'd'.repeat(500), updatedAt: '2026-09-21T00:00:00.000Z' })]);
-    const bundle = compileContextBundle(doc, task())!;
-    expect(bundle.entryIds).toContain('dec');
+  it('stays within the character budget', () => {
+    const filler = Array.from({ length: 40 }, (_, index) => entry({ id: `m${index}`, text: 'm'.repeat(400) }));
+    const bundle = compileContextBundle(docWith(filler), task())!;
     expect(bundle.entryIds.length).toBeLessThanOrEqual(30);
     expect(bundle.text.length).toBeLessThanOrEqual(CONTEXT_BUNDLE_MAX_CHARS + 600);
   });
@@ -167,26 +130,23 @@ describe('ContinuoStoreService', () => {
     expect(doc?.revision).toBe(26);
   });
 
-  it('caps the activity log and notifies listeners', async () => {
+  it('notifies listeners until they unsubscribe', async () => {
     const store = new ContinuoStoreService(new MemoryDocumentStore());
     await store.ensure('wd_1', '/tmp/ws');
     const seen: number[] = [];
     const off = store.onDidChange((doc) => { seen.push(doc.revision); });
-    const many = Array.from({ length: 450 }, (_, index) => ({ at: NOW, kind: 'tool' as const, text: `step ${index}` }));
-    const doc = await store.update('wd_1', (current) => ({ ...current, activity: many }));
-    expect(doc.activity).toHaveLength(400);
-    expect(doc.activity[0]?.text).toBe('step 50');
+    await store.update('wd_1', (current) => ({ ...current, openCount: 1 }));
     off();
-    await store.log('wd_1', { kind: 'system', text: 'after unsubscribe' });
+    await store.update('wd_1', (current) => ({ ...current, openCount: 2 }));
     expect(seen).toEqual([2]);
   });
 
   it('ignores stored documents from another schema version', async () => {
     const documents = new MemoryDocumentStore();
-    await documents.set(CONTINUO_STORE_SCOPE, 'wd_old', { ...newWorkspaceDoc('wd_old', '/tmp/old'), schemaVersion: 0 });
+    await documents.set(CONTINUO_STORE_SCOPE, 'wd_old', { ...newWorkspaceDoc('wd_old', '/tmp/old'), schemaVersion: 1 });
     const store = new ContinuoStoreService(documents);
     expect(await store.load('wd_old')).toBeUndefined();
     const fresh = await store.ensure('wd_old', '/tmp/old');
-    expect(fresh.schemaVersion).toBe(1);
+    expect(fresh.schemaVersion).toBe(2);
   });
 });

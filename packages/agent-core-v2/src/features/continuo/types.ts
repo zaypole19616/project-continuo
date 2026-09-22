@@ -1,33 +1,15 @@
-export const CONTINUO_SCHEMA_VERSION = 1;
+export const CONTINUO_SCHEMA_VERSION = 2;
 export const CONTINUO_STORE_SCOPE = 'continuo-workspace';
-
-export type ContextKind = 'convention' | 'background' | 'decision' | 'progress' | 'material';
-export type ContextOrigin = 'user' | 'file' | 'agent';
-export type ContextStatus = 'candidate' | 'active' | 'stale' | 'superseded' | 'inactive';
-
-export interface ContextScope {
-  readonly type: 'workspace' | 'task';
-  readonly taskId?: string;
-}
 
 export interface ContextEntry {
   readonly id: string;
-  readonly kind: ContextKind;
   readonly text: string;
-  readonly scope: ContextScope;
   readonly sourceRefs: readonly string[];
-  readonly sourceFingerprint?: string;
-  readonly origin: ContextOrigin;
-  readonly status: ContextStatus;
-  readonly revision: number;
-  readonly supersedes?: string;
-  readonly taskId?: string;
   readonly createdAt: string;
-  readonly updatedAt: string;
 }
 
 export type TaskKind = 'init' | 'user';
-export type TaskTrigger = 'first_open' | 'user' | 'resume' | 'reopen' | 'reply' | 'demo';
+export type TaskTrigger = 'first_open' | 'user' | 'resume' | 'reply';
 export type TaskStatus =
   | 'queued'
   | 'running'
@@ -59,6 +41,14 @@ export interface TaskNextStep {
   readonly prompt: string;
 }
 
+export interface TaskRound {
+  readonly at: string;
+  readonly prompt: string;
+  readonly reads: readonly string[];
+  readonly writes: readonly string[];
+  readonly reply: string;
+}
+
 export interface TaskReport {
   readonly summary: string;
   readonly deliverables: readonly TaskDeliverable[];
@@ -84,18 +74,13 @@ export interface ContinuoTask {
   readonly verification?: readonly string[];
   readonly supplements?: readonly string[];
   readonly sources?: readonly string[];
+  readonly rounds?: readonly TaskRound[];
+  readonly logPath?: string;
   readonly usage: TaskUsage;
   readonly lastError?: string;
   readonly createdAt: string;
   readonly updatedAt: string;
   readonly endedAt?: string;
-}
-
-export interface ActivityEntry {
-  readonly at: string;
-  readonly taskId?: string;
-  readonly kind: 'task' | 'tool' | 'context' | 'system' | 'user';
-  readonly text: string;
 }
 
 export interface ScanEntry {
@@ -130,12 +115,11 @@ export interface ContinuoWorkspaceDoc {
   readonly createdAt: string;
   readonly updatedAt: string;
   readonly openCount: number;
-  readonly init: { readonly status: InitStatus; readonly fingerprint?: string; readonly taskId?: string; readonly startedAt?: string; readonly endedAt?: string };
+  readonly init: { readonly status: InitStatus; readonly taskId?: string; readonly startedAt?: string; readonly endedAt?: string };
   readonly scan?: WorkspaceScan;
   readonly understanding?: WorkspaceUnderstanding;
   readonly context: readonly ContextEntry[];
   readonly tasks: readonly ContinuoTask[];
-  readonly activity: readonly ActivityEntry[];
 }
 
 export const EMPTY_USAGE: TaskUsage = { steps: 0, inputTokens: 0, cacheReadTokens: 0, outputTokens: 0 };
@@ -153,12 +137,5 @@ export function newWorkspaceDoc(workspaceId: string, root: string): ContinuoWork
     init: { status: 'pending' },
     context: [],
     tasks: [],
-    activity: [],
   };
-}
-
-export function isEffectiveEntry(entry: ContextEntry, taskId: string | undefined): boolean {
-  if (entry.status !== 'active') return false;
-  if (entry.scope.type === 'workspace') return true;
-  return taskId !== undefined && entry.scope.taskId === taskId;
 }

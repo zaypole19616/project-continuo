@@ -13,6 +13,18 @@ const ACTIVE = new Set(['queued', 'running', 'awaiting_user', 'verifying']);
 const isActive = (t: ContinuoTask) => ACTIVE.has(t.status);
 const isAwaitingReply = (t: ContinuoTask) => t.status === 'awaiting_user' && t.pendingInteraction === 'reply';
 const isBlocking = (t: ContinuoTask) => isActive(t) && !isAwaitingReply(t);
+const DRAWER_KEY = 'continuo.drawer';
+const DRAWER_DEFAULT = 400;
+
+function readDrawerWidth(): number {
+  try {
+    const stored = Number(localStorage.getItem(DRAWER_KEY));
+    return stored >= 320 && stored <= 760 ? stored : DRAWER_DEFAULT;
+  } catch {
+    return DRAWER_DEFAULT;
+  }
+}
+
 const newRequestId = () => `req_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 
 export function WorkspaceView({ workspace, onClose, themePref, onTheme }: { workspace: Workspace; onClose: () => void; themePref: ThemePref; onTheme: (pref: ThemePref) => void }) {
@@ -28,6 +40,8 @@ export function WorkspaceView({ workspace, onClose, themePref, onTheme }: { work
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const searchRef = useRef<HTMLInputElement | null>(null);
   const pendingUser = useRef<{ sessionId: string; text: string } | null>(null);
+  const dragging = useRef(false);
+  const [drawerWidth, setDrawerWidth] = useState(readDrawerWidth);
 
   const refresh = useCallback(async () => {
     try { const d = await continuo.get(workspaceId); setDoc(d); return d; } catch (error) { setError((error as Error).message); return null; }
@@ -115,12 +129,27 @@ export function WorkspaceView({ workspace, onClose, themePref, onTheme }: { work
     void submit(text, replyTarget);
   };
 
-  const action = async (task: ContinuoTask, a: 'pause' | 'resume' | 'complete') => {
+  const action = async (task: ContinuoTask, a: 'pause' | 'resume') => {
     setError(null);
     try { setDoc(await continuo.taskAction(workspaceId, task.taskId, a)); } catch (error) { setError((error as Error).message); }
   };
 
   const dark = resolveTheme(themePref) === 'dark';
+  const startDrag = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    dragging.current = true;
+  };
+  const onDrag = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragging.current) return;
+    setDrawerWidth(Math.min(760, Math.max(320, window.innerWidth - e.clientX)));
+  };
+  const endDrag = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragging.current) return;
+    dragging.current = false;
+    e.currentTarget.releasePointerCapture(e.pointerId);
+    try { localStorage.setItem(DRAWER_KEY, String(drawerWidth)); } catch {}
+  };
 
   return (
     <div className="project">
@@ -132,8 +161,19 @@ export function WorkspaceView({ workspace, onClose, themePref, onTheme }: { work
         <span className="flex-1" />
         <button className="icon-btn" title={dark ? '切换到浅色' : '切换到深色'} onClick={() => onTheme(dark ? 'light' : 'dark')}>{dark ? <Sun size={16} /> : <Moon size={16} />}</button>
       </div>
-      <div className="project-body">
+      <div className="project-body" style={{ '--drawer-w': `${drawerWidth}px` } as React.CSSProperties}>
         <Finder workspaceId={workspaceId} root={workspace.root} doc={doc} target={target} onNavigate={setTarget} onError={setError} searchRef={searchRef} />
+        <div
+          className={`drawer-resizer ${dragging.current ? 'is-dragging' : ''}`}
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="调整对话框宽度"
+          onPointerDown={startDrag}
+          onPointerMove={onDrag}
+          onPointerUp={endDrag}
+          onPointerCancel={endDrag}
+          onDoubleClick={() => setDrawerWidth(DRAWER_DEFAULT)}
+        />
         <Drawer
           workspace={workspace} doc={doc} latest={latest} state={state} questions={questions} approvals={approvals} error={error}
           activeUserTask={activeUserTask} replyTarget={replyTarget} composerRef={composerRef} sending={sending}

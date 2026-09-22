@@ -8,8 +8,8 @@ export function Finder({ workspaceId, root, doc, target, onNavigate, onError, se
   return (
     <section className="panel-box finder" aria-label="项目文件">
       <FileBrowser
-        workspaceId={workspaceId} root={root} doc={doc} target={target} agentCollapsed={false} searchRef={searchRef}
-        onNavigate={onNavigate} onOpenAgent={() => undefined} onSelectTask={() => undefined} onError={onError}
+        workspaceId={workspaceId} root={root} doc={doc} target={target} searchRef={searchRef}
+        onNavigate={onNavigate} onError={onError}
       />
     </section>
   );

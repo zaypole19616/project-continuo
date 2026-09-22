@@ -2,13 +2,7 @@ import { createDecorator, type ServiceIdentifier } from '#/_base/di/instantiatio
 import { Service } from '#/_base/di/service';
 import { IAtomicDocumentStore } from '#/persistence/interface/atomicDocumentStore';
 
-import {
-  CONTINUO_SCHEMA_VERSION,
-  CONTINUO_STORE_SCOPE,
-  newWorkspaceDoc,
-  type ActivityEntry,
-  type ContinuoWorkspaceDoc,
-} from './types';
+import { CONTINUO_SCHEMA_VERSION, CONTINUO_STORE_SCOPE, newWorkspaceDoc, type ContinuoWorkspaceDoc } from './types';
 
 export type DocMutator = (doc: ContinuoWorkspaceDoc) => ContinuoWorkspaceDoc;
 
@@ -18,13 +12,10 @@ export interface IContinuoStore {
   peek(workspaceId: string): ContinuoWorkspaceDoc | undefined;
   ensure(workspaceId: string, root: string): Promise<ContinuoWorkspaceDoc>;
   update(workspaceId: string, mutate: DocMutator): Promise<ContinuoWorkspaceDoc>;
-  log(workspaceId: string, entry: Omit<ActivityEntry, 'at'>): Promise<void>;
   onDidChange(listener: (doc: ContinuoWorkspaceDoc) => void): () => void;
 }
 
 export const IContinuoStore: ServiceIdentifier<IContinuoStore> = createDecorator<IContinuoStore>('continuoStore');
-
-const MAX_ACTIVITY = 400;
 
 export class ContinuoStoreService extends Service implements IContinuoStore {
   declare readonly _serviceBrand: undefined;
@@ -71,18 +62,10 @@ export class ContinuoStoreService extends Service implements IContinuoStore {
         ...next,
         revision: current.revision + 1,
         updatedAt: new Date().toISOString(),
-        activity: next.activity.length > MAX_ACTIVITY ? next.activity.slice(next.activity.length - MAX_ACTIVITY) : next.activity,
       };
       await this.persist(stamped);
       return stamped;
     });
-  }
-
-  async log(workspaceId: string, entry: Omit<ActivityEntry, 'at'>): Promise<void> {
-    await this.update(workspaceId, (doc) => ({
-      ...doc,
-      activity: [...doc.activity, { ...entry, at: new Date().toISOString() }],
-    }));
   }
 
   onDidChange(listener: (doc: ContinuoWorkspaceDoc) => void): () => void {

@@ -1,10 +1,5 @@
-Read or update the Continuo workspace context: the small set of durable facts this workspace keeps across tasks (conventions such as where results go, project background, decisions, current progress, reusable materials).
+Record what this folder is, so later tasks start without the user explaining the background again. Call this once, near the end of your read-through.
 
-Actions:
-- `list`: show the entries that are currently effective plus pending candidates.
-- `propose`: record something you inferred. Give `kind`, `text`, and `sourceRefs` (file paths you actually read). Entries backed by project guide files (README, AGENTS.md, CLAUDE.md) become effective immediately; pure inferences stay candidates until the user confirms.
-- `apply_user_instruction`: record a convention or correction the user stated explicitly in this conversation. Put the user's words in `quote`. It becomes effective immediately and, when `supersedes` names an older entry id, that entry stops applying.
-- `deactivate`: stop applying an entry that is wrong or no longer relevant.
-- `set_understanding`: replace the short summary of what this workspace is and how it is organized. Include `sourceRefs`.
+Give `understanding` (two or three sentences: what the folder is for, where inputs live, where results go, what is archive rather than current) with the `sourceRefs` it is based on, and up to eight `points` that later tasks need — a naming or filing convention, a decision already made, where a kind of material lives. Every point needs the files it came from; if you cannot name a file for it, leave it out rather than guessing.
 
-Keep entries short and concrete. Never record secrets, credentials, or one-off requirements as workspace-wide rules; a requirement that only applies to the current task should use `scope: "task"`.
+Keep each point to one sentence and leave the detail in the cited files. Never record secrets or credentials. Calling this again replaces what was recorded before.

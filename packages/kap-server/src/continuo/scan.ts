@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import { readdir, stat } from 'node:fs/promises';
 import { extname, join, relative } from 'node:path';
 
@@ -31,7 +30,7 @@ export async function scanWorkspace(root: string): Promise<WorkspaceScan> {
     }
     let names: string[];
     try {
-      names = (await readdir(current.abs)).sort();
+      names = (await readdir(current.abs)).toSorted();
     } catch {
       unscanned.push(relative(root, current.abs) || '.');
       continue;
@@ -63,17 +62,11 @@ export async function scanWorkspace(root: string): Promise<WorkspaceScan> {
   return { scannedAt: new Date().toISOString(), entries, guideFiles, truncated, unscanned, counts: { dirs, files, byExt } };
 }
 
-export function scanFingerprint(scan: WorkspaceScan): string {
-  const hash = createHash('sha1');
-  for (const entry of scan.entries) hash.update(`${entry.path}:${entry.kind}:${entry.size ?? 0}\n`);
-  return hash.digest('hex').slice(0, 16);
-}
-
 export function renderScanForPrompt(scan: WorkspaceScan, root: string): string {
   const lines: string[] = [];
   lines.push(`Workspace root: ${root}`);
   lines.push(`Structure scan: ${scan.counts.dirs} folders, ${scan.counts.files} files${scan.truncated ? ' (scan truncated; not everything is listed)' : ''}.`);
-  const exts = Object.entries(scan.counts.byExt).sort((a, b) => b[1] - a[1]).slice(0, 12).map(([ext, count]) => `${ext} ×${count}`);
+  const exts = Object.entries(scan.counts.byExt).toSorted((a, b) => b[1] - a[1]).slice(0, 12).map(([ext, count]) => `${ext} ×${count}`);
   if (exts.length > 0) lines.push(`File types: ${exts.join(', ')}.`);
   if (scan.guideFiles.length > 0) lines.push(`Guide files found (read these first): ${scan.guideFiles.join(', ')}`);
   else lines.push('No guide files (README, AGENTS.md, CLAUDE.md) were found at the top levels.');

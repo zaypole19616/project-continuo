@@ -1,4 +1,4 @@
-import { IFlagService, IWorkspaceService, type Scope } from '@moonshot-ai/agent-core-v2';
+import { IFlagService, type Scope } from '@moonshot-ai/agent-core-v2';
 import { z } from 'zod';
 
 import { ContinuoError, ContinuoTaskManager } from '../continuo/taskManager';
@@ -6,19 +6,11 @@ import { errEnvelope, okEnvelope } from '../envelope';
 import { defineRoute } from '../middleware/defineRoute';
 import { parseActionSuffix } from './action-suffix';
 import { listFiles, readTextFile } from '../continuo/files';
-import { materializeDemoWorkspace } from '../continuo/demoWorkspace';
-import { toWireWorkspace } from './workspaces';
 import { ErrorCode } from '../protocol/error-codes';
 
 const workspaceParamSchema = z.object({ workspace_id: z.string().min(1) });
-const entryParamSchema = z.object({ workspace_id: z.string().min(1), entry_id: z.string().min(1) });
 const openBodySchema = z.object({ client_request_id: z.string().min(1).optional() });
 const createTaskBodySchema = z.object({ text: z.string().min(1).max(8000), client_request_id: z.string().min(1).optional() });
-const contextPatchBodySchema = z.object({
-  text: z.string().min(1).max(600).optional(),
-  status: z.enum(['active', 'inactive']).optional(),
-  expected_revision: z.number().int().nonnegative(),
-});
 const docSchema = z.record(z.string(), z.unknown());
 const workLogSchema = z.object({ markdown: z.string() });
 
@@ -71,29 +63,6 @@ export function registerContinuoRoutes(app: ContinuoRouteHost, core: Scope): voi
     },
   );
   app.post(openRoute.path, openRoute.options, openRoute.handler as Parameters<ContinuoRouteHost['post']>[2]);
-
-  const reunderstandRoute = defineRoute(
-    {
-      method: 'POST',
-      path: '/workspaces/{workspace_id}/continuo::reunderstand',
-      params: workspaceParamSchema,
-      body: z.object({}).optional(),
-      success: { data: docSchema },
-      errors: CONTINUO_ERRORS,
-      description: 'Read the folder again and rebuild the understanding with a fresh init task',
-      tags: ['continuo'],
-      operationId: 'continuoReunderstand',
-    },
-    async (req, reply) => {
-      if (!flagGuard(req.id, reply)) return;
-      try {
-        reply.send(okEnvelope(await manager.reunderstand(req.params.workspace_id), req.id));
-      } catch (error) {
-        sendError(reply, req.id, error);
-      }
-    },
-  );
-  app.post(reunderstandRoute.path, reunderstandRoute.options, reunderstandRoute.handler as Parameters<ContinuoRouteHost['post']>[2]);
 
   const getRoute = defineRoute(
     {
@@ -150,15 +119,15 @@ export function registerContinuoRoutes(app: ContinuoRouteHost, core: Scope): voi
       body: z.object({ text: z.string().min(1).max(8000).optional() }).optional(),
       success: { data: docSchema },
       errors: CONTINUO_ERRORS,
-      description: 'Task actions: {task_id}:pause stops a running task (the user pause wins over automatic continuation); {task_id}:resume continues a paused, interrupted, failed or needs_review task in its original session; {task_id}:reply sends the user reply into the task session; {task_id}:complete marks a task that is waiting for the user as done',
+      description: 'Task actions: {task_id}:pause stops a running task (the user pause wins over automatic continuation); {task_id}:resume continues a paused, interrupted, failed or needs_review task in its original session; {task_id}:reply sends the user reply into the task session',
       tags: ['continuo'],
       operationId: 'continuoTaskAction',
     },
     async (req, reply) => {
       if (!flagGuard(req.id, reply)) return;
-      const parsed = parseActionSuffix({ tail: req.params.tail, allowedActions: ['pause', 'resume', 'reply', 'complete'] as const, resourceLabel: 'task' });
+      const parsed = parseActionSuffix({ tail: req.params.tail, allowedActions: ['pause', 'resume', 'reply'] as const, resourceLabel: 'task' });
       if (parsed.kind !== 'action') {
-        reply.send(errEnvelope(ErrorCode.VALIDATION_FAILED, parsed.kind === 'invalid' ? parsed.reason : 'expected {task_id}:pause, :resume, :reply or :complete', req.id));
+        reply.send(errEnvelope(ErrorCode.VALIDATION_FAILED, parsed.kind === 'invalid' ? parsed.reason : 'expected {task_id}:pause, :resume or :reply', req.id));
         return;
       }
       const text = req.body?.text;
@@ -171,9 +140,7 @@ export function registerContinuoRoutes(app: ContinuoRouteHost, core: Scope): voi
           ? await manager.pause(req.params.workspace_id, parsed.id)
           : parsed.action === 'resume'
             ? await manager.resume(req.params.workspace_id, parsed.id)
-            : parsed.action === 'complete'
-              ? await manager.complete(req.params.workspace_id, parsed.id)
-              : await manager.reply(req.params.workspace_id, parsed.id, text!);
+            : await manager.reply(req.params.workspace_id, parsed.id, text!);
         reply.send(okEnvelope(doc, req.id));
       } catch (error) {
         sendError(reply, req.id, error);
@@ -181,58 +148,6 @@ export function registerContinuoRoutes(app: ContinuoRouteHost, core: Scope): voi
     },
   );
   app.post(taskActionRoute.path, taskActionRoute.options, taskActionRoute.handler as Parameters<ContinuoRouteHost['post']>[2]);
-
-  const contextRoute = defineRoute(
-    {
-      method: 'POST',
-      path: '/workspaces/{workspace_id}/continuo/context/{entry_id}',
-      params: entryParamSchema,
-      body: contextPatchBodySchema,
-      success: { data: docSchema },
-      errors: CONTINUO_ERRORS,
-      description: 'Correct or deactivate a context entry; an edit supersedes the old entry instead of overwriting it',
-      tags: ['continuo'],
-      operationId: 'continuoPatchContext',
-    },
-    async (req, reply) => {
-      if (!flagGuard(req.id, reply)) return;
-      try {
-        const doc = await manager.updateContextEntry(req.params.workspace_id, req.params.entry_id, {
-          text: req.body.text,
-          status: req.body.status,
-          expectedRevision: req.body.expected_revision,
-        });
-        reply.send(okEnvelope(doc, req.id));
-      } catch (error) {
-        sendError(reply, req.id, error);
-      }
-    },
-  );
-  app.post(contextRoute.path, contextRoute.options, contextRoute.handler as Parameters<ContinuoRouteHost['post']>[2]);
-
-  const demoRoute = defineRoute(
-    {
-      method: 'POST',
-      path: '/continuo::demo',
-      body: z.object({}).optional(),
-      success: { data: docSchema },
-      errors: CONTINUO_ERRORS,
-      description: 'Create (once) a synthetic demo folder under the home directory and register it as a workspace',
-      tags: ['continuo'],
-      operationId: 'continuoDemoWorkspace',
-    },
-    async (req, reply) => {
-      if (!flagGuard(req.id, reply)) return;
-      try {
-        const { root } = await materializeDemoWorkspace();
-        const ws = await core.accessor.get(IWorkspaceService).createOrTouch(root, undefined);
-        reply.send(okEnvelope(await toWireWorkspace(core, ws), req.id));
-      } catch (error) {
-        sendError(reply, req.id, error);
-      }
-    },
-  );
-  app.post(demoRoute.path, demoRoute.options, demoRoute.handler as Parameters<ContinuoRouteHost['post']>[2]);
 
   const filesRoute = defineRoute(
     {
