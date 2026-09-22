@@ -27,15 +27,11 @@ export interface AgentPanelProps {
   onDecide: (a: ApprovalRequest, d: 'approved' | 'rejected', scope?: 'session') => Promise<void>;
   onAction: (task: ContinuoTask, action: 'pause' | 'resume' | 'complete') => void;
   onOpenFile: (path: string) => void;
-  onAbout: (bet: string) => void;
   onPatchContext: (entry: ContextEntry, body: { text?: string; status?: 'active' | 'inactive' }) => Promise<void>;
   onReunderstand: () => void;
   onStartStep: (prompt: string) => void;
   onPickWorkspace: (w: Workspace) => void;
 }
-
-export type BetKey = 'orderliness' | 'proactiveness' | 'clarity';
-export const BET_LABEL: Record<BetKey, string> = { orderliness: '有条理', proactiveness: '不乱打扰', clarity: '说清楚' };
 
 const isAwaitingReply = (t: ContinuoTask | null) => !!t && t.status === 'awaiting_user' && t.pendingInteraction === 'reply';
 
@@ -119,19 +115,19 @@ export function AgentPanel(p: AgentPanelProps) {
           )}
           {initRunning && p.doc && <InitStage startedAt={p.doc.init.startedAt} />}
           {p.selected && p.selected.kind === 'init' && p.doc?.understanding && (
-            <UnderstandingCard doc={p.doc} onContext={() => p.onSide('context')} onAbout={() => p.onAbout('clarity')} onReunderstand={p.onReunderstand} />
+            <UnderstandingCard doc={p.doc} onContext={() => p.onSide('context')} onReunderstand={p.onReunderstand} />
           )}
           {!hero && !initRunning && <Timeline items={p.selected?.kind === 'init' ? p.state.items.filter((it) => it.kind !== 'user') : p.state.items} emptyHint={p.selected?.kind === 'init' ? undefined : '这个会话还没有内容。'} />}
           {p.selected && p.doc && p.selected.kind === 'user' && (p.selected.status === 'completed' || p.selected.status === 'needs_review') && (
-            <ClosingCard task={p.selected} doc={p.doc} onOpenFile={p.onOpenFile} onAbout={() => p.onAbout('clarity')} />
+            <ClosingCard task={p.selected} doc={p.doc} onOpenFile={p.onOpenFile} />
           )}
           {p.selected?.report?.nextStep && p.selected.status !== 'running' && !p.doc?.tasks.some((t) => t.title === p.selected!.report!.nextStep!.prompt.slice(0, 120)) && (
-            <NextStepCard step={p.selected.report.nextStep} busy={p.sending} onStart={() => p.onStartStep(p.selected!.report!.nextStep!.prompt)} onAbout={() => p.onAbout('proactiveness')} />
+            <NextStepCard step={p.selected.report.nextStep} busy={p.sending} onStart={() => p.onStartStep(p.selected!.report!.nextStep!.prompt)} />
           )}
-          {p.questions.map((q) => <div key={q.question_id} className="space-y-2"><BetChip bet="proactiveness" note="需要你决定时才打扰" onClick={() => p.onAbout('proactiveness')} /><QuestionCard q={q} onAnswer={(answers, note) => p.onAnswer(q, answers, note)} /></div>)}
-          {p.approvals.map((a) => <div key={a.approval_id} className="space-y-2"><BetChip bet="proactiveness" note="动你的文件前先问你" onClick={() => p.onAbout('proactiveness')} /><ApprovalCard a={a} root={p.doc?.root} onDecide={(d, scope) => p.onDecide(a, d, scope)} /></div>)}
+          {p.questions.map((q) => <QuestionCard key={q.question_id} q={q} onAnswer={(answers, note) => p.onAnswer(q, answers, note)} />)}
+          {p.approvals.map((a) => <ApprovalCard key={a.approval_id} a={a} root={p.doc?.root} onDecide={(d, scope) => p.onDecide(a, d, scope)} />)}
           {isAwaitingReply(p.selected) && p.selected?.lastReply && (
-            <div className="banner banner-warn"><BetChip bet="proactiveness" note="它在等你回复，不会假装完成" onClick={() => p.onAbout('proactiveness')} />在下面回复它，它会接着干。</div>
+            <div className="banner banner-warn">在下面回复它，它会接着干。</div>
           )}
           <div ref={bottomRef} />
         </div>
@@ -141,17 +137,12 @@ export function AgentPanel(p: AgentPanelProps) {
   );
 }
 
-export function BetChip({ bet, note, onClick }: { bet: BetKey; note?: string; onClick: () => void }) {
-  return <button className="bet-chip chrome" onClick={onClick} title="这背后的想法">{BET_LABEL[bet]}{note ? <span className="t3"> · {note}</span> : null}</button>;
-}
-
-function UnderstandingCard({ doc, onContext, onAbout, onReunderstand }: { doc: ContinuoDoc; onContext: () => void; onAbout: () => void; onReunderstand: () => void }) {
+function UnderstandingCard({ doc, onContext, onReunderstand }: { doc: ContinuoDoc; onContext: () => void; onReunderstand: () => void }) {
   const active = doc.context.filter((e) => e.status === 'active').length;
   const candidates = doc.context.filter((e) => e.status === 'candidate').length;
   return (
     <div className="understand fade-in space-y-3">
       <div>
-        <BetChip bet="clarity" note="每条理解都有来源，确认了才会用" onClick={onAbout} />
         <div className="font-medium" style={{ margin: '6px 0' }}>我对这个文件夹的理解</div>
         <div className="sm" style={{ lineHeight: 1.65 }}>{doc.understanding!.text}</div>
       </div>
@@ -165,7 +156,7 @@ function UnderstandingCard({ doc, onContext, onAbout, onReunderstand }: { doc: C
   );
 }
 
-function ClosingCard({ task, doc, onOpenFile, onAbout }: { task: ContinuoTask; doc: ContinuoDoc; onOpenFile: (path: string) => void; onAbout: () => void }) {
+function ClosingCard({ task, doc, onOpenFile }: { task: ContinuoTask; doc: ContinuoDoc; onOpenFile: (path: string) => void }) {
   const deliverables = task.report?.deliverables ?? [];
   const nextStep = task.report?.nextStep;
   const unresolved = (task.report?.unresolved ?? []).filter((item) => nextStep === undefined || !coveredBy(item, nextStep));
@@ -174,7 +165,6 @@ function ClosingCard({ task, doc, onOpenFile, onAbout }: { task: ContinuoTask; d
   const done = task.status === 'completed';
   return (
     <div className="space-y-2">
-      <BetChip bet="clarity" note="做没做完，看文件说话" onClick={onAbout} />
       <div className="deliverable fade-in">
         <div className="deliverable-head">
           {done ? <Check size={14} style={{ color: 'var(--ok)' }} /> : <CircleAlert size={14} style={{ color: 'var(--warn)' }} />}
@@ -247,10 +237,9 @@ function coveredBy(item: string, step: { title: string; reason: string }): boole
   return text.includes(key) || step.reason.replaceAll(/[\s，。、]/g, '').includes(text);
 }
 
-function NextStepCard({ step, busy, onStart, onAbout }: { step: { title: string; reason: string; prompt: string }; busy: boolean; onStart: () => void; onAbout: () => void }) {
+function NextStepCard({ step, busy, onStart }: { step: { title: string; reason: string; prompt: string }; busy: boolean; onStart: () => void }) {
   return (
     <div className="space-y-2">
-      <BetChip bet="proactiveness" note="下一步由你决定要不要开始" onClick={onAbout} />
       <div className="next-step fade-in">
         <div className="next-step-head"><Sparkles size={15} />接下来，也许值得做这一步</div>
         <div className="next-step-title">{step.title}</div>

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ChevronRight, CircleHelp, Folder, FolderOpen, HelpCircle, PanelLeft, Plus, Search, SquarePen } from 'lucide-react';
+import { ChevronRight, CircleHelp, Folder, FolderOpen, PanelLeft, Plus, Search, SquarePen } from 'lucide-react';
 import { continuo, DEFAULT_MODEL, type ContinuoDoc, type ContinuoTask, type Workspace } from '#/lib/api';
 import { FolderMenu } from './FolderMenu';
 
@@ -7,10 +7,10 @@ const TASK_DOT: Record<ContinuoTask['status'], string> = {
   queued: '', running: 'running', verifying: 'running', awaiting_user: 'waiting', needs_review: 'waiting', completed: '', paused: '', interrupted: 'failed', failed: 'failed',
 };
 
-export function Sidebar({ workspace, doc, workspaces, collapsed, selectedTaskId, onToggle, onSelectTask, onPickWorkspace, onNewTask, onSearch, onAbout, onGuide }: {
+export function Sidebar({ workspace, doc, workspaces, collapsed, selectedTaskId, onToggle, onSelectTask, onPickWorkspace, onNewTask, onSearch, onGuide }: {
   workspace: Workspace | null; doc: ContinuoDoc | null; workspaces: Workspace[]; collapsed: boolean; selectedTaskId: string | null;
   onToggle: () => void; onSelectTask: (task: ContinuoTask) => void; onPickWorkspace: (w: Workspace) => void;
-  onNewTask: () => void; onSearch: () => void; onAbout: () => void; onGuide: () => void;
+  onNewTask: () => void; onSearch: () => void; onGuide: () => void;
 }) {
   const [adding, setAdding] = useState<DOMRect | null>(null);
   const [folded, setFolded] = useState<Record<string, boolean>>(() => readFolded());
@@ -63,7 +63,6 @@ export function Sidebar({ workspace, doc, workspaces, collapsed, selectedTaskId,
           <div className="truncate sm font-medium">Kimi 账号</div>
           <div className="t3 xs truncate">基于 Kimi Code · {DEFAULT_MODEL.split('/').pop()}</div>
         </div>
-        <button className="btn btn-icon" title="四个判断" onClick={onAbout}><HelpCircle size={18} /></button>
       </div>
     </aside>
   );
