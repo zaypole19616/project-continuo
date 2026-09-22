@@ -89,7 +89,6 @@ export const continuo = {
   get: (workspaceId: string) => api.get<ContinuoDoc>(`/workspaces/${workspaceId}/continuo`),
   createTask: (workspaceId: string, text: string, clientRequestId: string) => api.post<{ task: ContinuoTask; doc: ContinuoDoc }>(`/workspaces/${workspaceId}/continuo/tasks`, { text, client_request_id: clientRequestId }),
   taskAction: (workspaceId: string, taskId: string, action: 'pause' | 'resume' | 'reply', body: { text?: string } = {}) => api.post<ContinuoDoc>(`/workspaces/${workspaceId}/continuo/tasks/${taskId}:${action}`, body),
-  workLog: (workspaceId: string) => api.get<{ markdown: string }>(`/workspaces/${workspaceId}/continuo/work-log`),
 };
 
 export interface FileEntry { name: string; path: string; kind: 'file' | 'dir'; size: number; modifiedAt: string; producedBy?: string; isGuide: boolean; childCount?: number }

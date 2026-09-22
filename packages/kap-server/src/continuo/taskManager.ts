@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, readdir, readFile, rename, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, rename, stat, writeFile } from 'node:fs/promises';
 import { isAbsolute, relative, resolve } from 'node:path';
 
 import {
@@ -46,7 +46,6 @@ interface Attachment {
 
 const INIT_STEP_BUDGET = 8;
 const WORK_LOG_DIR = 'work-log';
-const MAX_WORK_LOG_FILES = 60;
 
 const TASK_STATUS_LABEL: Record<TaskStatus, string> = {
   queued: '排队中',
@@ -219,25 +218,6 @@ export class ContinuoTaskManager {
     this.attach(workspaceId, taskId, session, agent);
     const promptId = this.submitPrompt(agent, taskId, text);
     return this.patchTask(workspaceId, taskId, (current) => ({ ...current, status: 'running', pendingInteraction: 'none', phase: undefined, trigger: 'reply' as TaskTrigger, promptIds: [...current.promptIds, promptId], supplements: [...(current.supplements ?? []), text], endedAt: undefined, verification: undefined }));
-  }
-
-  async workLog(workspaceId: string): Promise<string> {
-    const doc = await this.requireDoc(workspaceId);
-    const dir = resolve(doc.root, WORK_LOG_DIR);
-    let names: string[];
-    try {
-      names = (await readdir(dir)).filter((name) => name.endsWith('.md'));
-    } catch {
-      return '还没有工作记录。任务做完后，这里会列出项目里 work-log/ 下的日志。';
-    }
-    if (names.length === 0) return '还没有工作记录。任务做完后，这里会列出项目里 work-log/ 下的日志。';
-    const dated = await Promise.all(names.map(async (name) => {
-      const info = await stat(resolve(dir, name)).catch(() => undefined);
-      return { name, at: info?.mtimeMs ?? 0 };
-    }));
-    const ordered = dated.toSorted((a, b) => b.at - a.at).slice(0, MAX_WORK_LOG_FILES);
-    const parts = await Promise.all(ordered.map((item) => readFile(resolve(dir, item.name), 'utf8').catch(() => '')));
-    return parts.filter((part) => part.trim().length > 0).join('\n\n---\n\n');
   }
 
   private reconcileOnOpen(task: ContinuoTask): ContinuoTask {

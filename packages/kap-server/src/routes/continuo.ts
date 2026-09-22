@@ -12,7 +12,6 @@ const workspaceParamSchema = z.object({ workspace_id: z.string().min(1) });
 const openBodySchema = z.object({ client_request_id: z.string().min(1).optional() });
 const createTaskBodySchema = z.object({ text: z.string().min(1).max(8000), client_request_id: z.string().min(1).optional() });
 const docSchema = z.record(z.string(), z.unknown());
-const workLogSchema = z.object({ markdown: z.string() });
 
 interface ContinuoRouteHost {
   get(path: string, options: { preHandler: unknown[]; schema?: Record<string, unknown> } | undefined, handler: (req: { id: string; params: unknown; query?: unknown }, reply: { send(payload: unknown): unknown }) => Promise<void> | void): unknown;
@@ -199,25 +198,4 @@ export function registerContinuoRoutes(app: ContinuoRouteHost, core: Scope): voi
   );
   app.get(fileRoute.path, fileRoute.options, fileRoute.handler as Parameters<ContinuoRouteHost['get']>[2]);
 
-  const workLogRoute = defineRoute(
-    {
-      method: 'GET',
-      path: '/workspaces/{workspace_id}/continuo/work-log',
-      params: workspaceParamSchema,
-      success: { data: workLogSchema },
-      errors: CONTINUO_ERRORS,
-      description: 'Human-readable work log rendered from the same state the board shows',
-      tags: ['continuo'],
-      operationId: 'continuoWorkLog',
-    },
-    async (req, reply) => {
-      if (!flagGuard(req.id, reply)) return;
-      try {
-        reply.send(okEnvelope({ markdown: await manager.workLog(req.params.workspace_id) }, req.id));
-      } catch (error) {
-        sendError(reply, req.id, error);
-      }
-    },
-  );
-  app.get(workLogRoute.path, workLogRoute.options, workLogRoute.handler as Parameters<ContinuoRouteHost['get']>[2]);
 }
