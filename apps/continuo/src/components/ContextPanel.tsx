@@ -8,10 +8,12 @@ const ORIGIN_LABEL: Record<ContextEntry['origin'], string> = { user: '你确认�
 type Patch = { text?: string; status?: 'active' | 'inactive' };
 
 export function ContextPanel({ doc, onPatch, onOpenFile }: { doc: ContinuoDoc; onPatch: (entry: ContextEntry, body: Patch) => Promise<void>; onOpenFile: (path: string) => void }) {
-  const active = doc.context.filter((e) => e.status === 'active');
-  const candidates = doc.context.filter((e) => e.status === 'candidate');
-  const stale = doc.context.filter((e) => e.status === 'stale');
-  const retired = doc.context.filter((e) => e.status === 'superseded' || e.status === 'inactive');
+  const kept = doc.context.filter((e) => e.kind !== 'progress');
+  const active = kept.filter((e) => e.status === 'active');
+  const candidates = kept.filter((e) => e.status === 'candidate');
+  const stale = kept.filter((e) => e.status === 'stale');
+  const retired = kept.filter((e) => e.status === 'superseded' || e.status === 'inactive');
+  const progress = doc.context.filter((e) => e.kind === 'progress' && e.status === 'active');
   return (
     <div className="space-y-5">
       <section className="space-y-2">
@@ -42,6 +44,12 @@ export function ContextPanel({ doc, onPatch, onOpenFile }: { doc: ContinuoDoc; o
         {active.map((e) => <EntryCard key={e.id} e={e} mode="active" onPatch={onPatch} onOpenFile={onOpenFile} />)}
         {active.length === 0 && <div className="text-3 fs-meta">还没记住任何事。</div>}
       </section>
+      {progress.length > 0 && (
+        <details className="text-3 fs-meta">
+          <summary className="chrome" style={{ cursor: 'pointer' }}>它自己记的进度 · {progress.length}</summary>
+          <div className="space-y-1 mt-2">{progress.map((e) => <div key={e.id} className="px-1">{e.text}</div>)}</div>
+        </details>
+      )}
       {retired.length > 0 && (
         <details className="text-3 fs-meta">
           <summary className="chrome" style={{ cursor: 'pointer' }}>不再用的 · {retired.length}</summary>
@@ -78,7 +86,7 @@ function EntryCard({ e, mode, onPatch, onOpenFile }: { e: ContextEntry; mode: 'a
       <div className="entry-meta chrome">
         <span className="tag tag-neutral">{KIND_LABEL[e.kind]}</span>
         <span className="flex items-center gap-1"><OriginIcon size={12} />{ORIGIN_LABEL[e.origin]}</span>
-        {e.scope.type === 'task' && <span>仅本任务</span>}
+        <span className="tag tag-neutral">{e.scope.type === 'task' ? '仅本会话' : '整个文件夹'}</span>
       </div>
       {editing
         ? <textarea className="w-full" rows={3} value={text} onChange={(ev) => setText(ev.target.value)} />
