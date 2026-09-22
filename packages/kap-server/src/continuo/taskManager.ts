@@ -324,7 +324,7 @@ export class ContinuoTaskManager {
     const prompt = [
       'A user just opened this folder in Continuo. Understand how it is organized and record your understanding with the WorkspaceContext tool, following your instructions.',
       'Write the understanding and every entry in the language the workspace documents themselves use (for example Chinese when the guide file is in Chinese).',
-      `Budget: read at most 10 files, prefer guide files, stop after about ${INIT_STEP_BUDGET} steps, and say clearly which parts you did not read.`,
+      `Budget: read at most 8 files, prefer guide files, stop after about ${INIT_STEP_BUDGET} steps or as soon as the purpose, key materials and conventions are clear, and say clearly which parts you did not read.`,
       '',
       renderScanForPrompt(scan, doc.root),
     ].join('\n');

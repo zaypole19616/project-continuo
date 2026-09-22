@@ -86,7 +86,7 @@ export function AgentPanel(p: AgentPanelProps) {
           {initRunning && p.doc && <InitStage startedAt={p.doc.init.startedAt} />}
           {showEmpty && p.doc && (
             <div className="empty-hero fade-in">
-              <h2>把工作交给 Continuo</h2>
+              <h2>{p.doc.tasks.some((t) => t.kind === 'user') ? '这次，想做什么？' : '准备好了，开始吧。'}</h2>
               <p className="t2" style={{ margin: '0 0 6px' }}>{memorySummary(p.doc)}</p>
               <p className="t3 sm" style={{ margin: '0 0 22px' }}>下面三张卡各演示一件事，点一下就开始。<button className="link" onClick={() => p.onSide('context')}>看看它记住了什么</button></p>
               <div className="demo-grid">
@@ -120,20 +120,20 @@ export function AgentPanel(p: AgentPanelProps) {
           {p.activeUserTask ? (
             <div className="composer" style={{ padding: '12px 14px 12px 18px', display: 'flex', alignItems: 'center', gap: 12 }}>
               <Loader2 size={16} className="spin" style={{ color: 'var(--accent)' }} />
-              <span className="t2 flex-1 sm">{p.activeUserTask.status === 'awaiting_user' ? (p.activeUserTask.pendingInteraction === 'approval' ? '在等你允许上面的操作' : '在等你回答上面的问题') : `正在执行：${p.activeUserTask.phase ?? p.activeUserTask.title}`}</span>
+              <span className="t2 flex-1 sm">{p.activeUserTask.status === 'awaiting_user' ? (p.activeUserTask.pendingInteraction === 'approval' ? '要动你的文件，等你点允许' : '有一个决定需要你') : `正在做：${p.activeUserTask.phase ?? p.activeUserTask.title}`}</span>
               <button className="btn btn-sm" onClick={() => p.onAction(p.activeUserTask!, 'pause')}><Square size={12} />停止</button>
             </div>
           ) : (
             <>
               {p.continueTarget && (p.continueTarget.status === 'paused' || p.continueTarget.status === 'interrupted' || p.continueTarget.status === 'failed' || p.continueTarget.status === 'needs_review') && (
                 <div className="state-bar chrome">
-                  <span className="t2 sm flex-1">{p.continueTarget.status === 'paused' ? '任务已暂停' : p.continueTarget.status === 'interrupted' ? '任务被中断' : p.continueTarget.status === 'failed' ? '上次执行失败' : '还差一点：有没做到的事'}</span>
+                  <span className="t2 sm flex-1">{p.continueTarget.status === 'paused' ? '已暂停，工作留在这里' : p.continueTarget.status === 'interrupted' ? '被打断了，可以接着做' : p.continueTarget.status === 'failed' ? '这次没做完，可以再试' : '还差一点，还没算完成'}</span>
                   {p.continueTarget.status === 'needs_review' && <button className="btn btn-sm" onClick={() => p.onAction(p.continueTarget!, 'complete')}><Check size={12} />标记完成</button>}
                   <button className="btn btn-sm btn-primary" onClick={() => p.onAction(p.continueTarget!, 'resume')}>{p.continueTarget.status === 'failed' ? <><RotateCcw size={12} />重试</> : <><Play size={12} />继续</>}</button>
                 </div>
               )}
               <div className="composer">
-                <textarea ref={p.composerRef} rows={2} placeholder={awaitingReply ? '回复它…' : continuing ? '接着这个任务说…' : '交代一个任务…'} value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); p.onSend(); setDraft(''); } }} />
+                <textarea ref={p.composerRef} rows={2} placeholder={awaitingReply ? '回复它…' : continuing ? '有新的要求？直接说…' : '这次想完成什么？'} value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); p.onSend(); setDraft(''); } }} />
                 <div className="composer-footer chrome">
                   <span className="model-chip">✳ {modelName}</span>
                   <span className="ws-chip"><FolderOpen size={13} />{p.workspaceName}</span>
@@ -144,7 +144,7 @@ export function AgentPanel(p: AgentPanelProps) {
             </>
           )}
           <div className="chat-status chrome">
-            <span className="t3 xs">{p.connection === 'connecting' ? '连接中…' : continuing ? '会在这个任务里接着干；要另起一个，点左上角「新任务」' : ''}</span>
+            <span className="t3 xs">{p.connection === 'connecting' ? '连接中…' : continuing ? '会在这个任务里接着干；要另起一个，点左上角「新任务」' : 'Enter 发送 · Shift + Enter 换行'}</span>
           </div>
         </div>
       </div>
@@ -257,7 +257,7 @@ function InitStage({ startedAt }: { startedAt?: string }) {
     <div className="init-stage fade-in">
       <span className="init-orb"><Loader2 size={22} className="spin" /></span>
       <div className="init-title" key={text}>{text}</div>
-      <div className="t3 sm">它只读不改。好了会告诉你它了解到了什么，等你确认。</div>
+      <div className="t3 sm">它只读不改。有想做的事，直接在下面告诉它，不必等它读完。</div>
     </div>
   );
 }

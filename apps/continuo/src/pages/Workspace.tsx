@@ -172,14 +172,14 @@ export function WorkspaceView({ workspace, onSwitch, onClose, onAbout, onReplayI
   if (!workspace) {
     return (
       <div className={`shell side-collapsed ${navCollapsed ? 'nav-collapsed' : ''}`}>
-        <Sidebar workspace={null} doc={null} collapsed={navCollapsed || narrow} selectedTaskId={null} onToggle={toggleNav} onSelectTask={() => undefined} onSwitchWorkspace={onSwitch} onAddWorkspace={onClose} onNewTask={() => undefined} onSearch={() => undefined} onAbout={() => onAbout()} />
-        <StartPanel onOpen={onSwitch} onReplayIntro={onReplayIntro} />
+        <Sidebar workspace={null} doc={null} collapsed={navCollapsed || narrow} selectedTaskId={null} onToggle={toggleNav} onSelectTask={() => undefined} onSwitchWorkspace={onSwitch} onAddWorkspace={onClose} onNewTask={() => undefined} onSearch={() => undefined} onAbout={() => onAbout()} onGuide={onReplayIntro} />
+        <StartPanel onOpen={onSwitch} />
       </div>
     );
   }
   return (
     <div className={`shell ${navCollapsed ? 'nav-collapsed' : ''} ${sideMode === null ? 'side-collapsed' : ''}`}>
-      <Sidebar workspace={workspace} doc={doc} collapsed={navCollapsed || narrow} selectedTaskId={selectedId} onToggle={toggleNav} onSelectTask={selectTask} onSwitchWorkspace={onSwitch} onAddWorkspace={onClose} onNewTask={focusComposer} onSearch={focusSearch} onAbout={() => onAbout()} />
+      <Sidebar workspace={workspace} doc={doc} collapsed={navCollapsed || narrow} selectedTaskId={selectedId} onToggle={toggleNav} onSelectTask={selectTask} onSwitchWorkspace={onSwitch} onAddWorkspace={onClose} onNewTask={focusComposer} onSearch={focusSearch} onAbout={() => onAbout()} onGuide={onReplayIntro} />
       <AgentPanel
         workspaceName={workspace.name} doc={doc} sideMode={sideMode} onSide={setSide}
         selected={selected} state={state} questions={questions} approvals={approvals} connection={connection} error={error}
