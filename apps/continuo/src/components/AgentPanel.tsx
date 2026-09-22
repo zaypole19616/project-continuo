@@ -29,7 +29,6 @@ export interface AgentPanelProps {
   onAction: (task: ContinuoTask, action: 'pause' | 'resume' | 'complete') => void;
   onOpenFile: (path: string) => void;
   onPatchContext: (entry: ContextEntry, body: { text?: string; status?: 'active' | 'inactive' }) => Promise<void>;
-  onReunderstand: () => void;
   onStartStep: (prompt: string) => void;
   onPickWorkspace: (w: Workspace) => void;
 }
@@ -48,8 +47,7 @@ export function AgentPanel(p: AgentPanelProps) {
   const awaitingReply = isAwaitingReply(p.continueTarget);
   const title = p.selected ? (p.selected.kind === 'init' ? '了解这个文件夹' : p.selected.title) : '新会话';
   const modelName = DEFAULT_MODEL.split('/').pop();
-  const initRunning = p.doc?.init.status === 'running';
-  const hero = !p.selected && !initRunning;
+  const hero = p.selected === null;
   const lastMode = useRef<SideMode>('files');
   useEffect(() => { if (p.sideMode !== null) lastMode.current = p.sideMode; }, [p.sideMode]);
   const send = () => { p.onSend(); setDraft(''); };
@@ -114,15 +112,13 @@ export function AgentPanel(p: AgentPanelProps) {
               <div className="wordmark">Contin<i>uo</i></div>
               {p.workspace === null
                 ? <p className="t2 hero-brief">选一个文件夹交给它：先了解这个文件夹，再接你交代的任务，做完的东西放回文件夹。</p>
-                : p.doc && <p className="t3 sm hero-brief">{memorySummary(p.doc)}<button className="link" onClick={() => p.onSide('context')}>{p.doc.context.some((e) => e.status === 'candidate') ? '去确认' : '查看'}</button></p>}
+                : p.doc && (p.doc.init.status === 'running'
+                    ? <p className="t3 sm hero-brief">它正在了解这个文件夹，进度在右边；有想做的事可以直接说。</p>
+                    : <p className="t3 sm hero-brief">{memorySummary(p.doc)}<button className="link" onClick={() => p.onSide('context')}>{p.doc.context.some((e) => e.status === 'candidate') ? '去确认' : '查看'}</button></p>)}
               <div className="hero-composer">{composer}</div>
             </div>
           )}
-          {initRunning && p.doc && <InitStage startedAt={p.doc.init.startedAt} />}
-          {p.selected && p.selected.kind === 'init' && p.doc?.understanding && (
-            <UnderstandingCard doc={p.doc} onContext={() => p.onSide('context')} onReunderstand={p.onReunderstand} />
-          )}
-          {!hero && !initRunning && <Timeline items={p.selected?.kind === 'init' ? p.state.items.filter((it) => it.kind !== 'user') : p.state.items} emptyHint={p.selected?.kind === 'init' ? undefined : '这个会话还没有内容。'} />}
+          {!hero && <Timeline items={p.state.items} emptyHint="这个会话还没有内容。" />}
           {p.selected && p.doc && p.selected.kind === 'user' && (p.selected.status === 'completed' || p.selected.status === 'needs_review') && (
             <ClosingCard task={p.selected} doc={p.doc} onOpenFile={p.onOpenFile} />
           )}
@@ -139,25 +135,6 @@ export function AgentPanel(p: AgentPanelProps) {
       </div>
       {!hero && <div className="chat-footer"><div className="chat-col">{composer}</div></div>}
     </section>
-  );
-}
-
-function UnderstandingCard({ doc, onContext, onReunderstand }: { doc: ContinuoDoc; onContext: () => void; onReunderstand: () => void }) {
-  const active = doc.context.filter((e) => e.status === 'active').length;
-  const candidates = doc.context.filter((e) => e.status === 'candidate').length;
-  return (
-    <div className="understand fade-in space-y-3">
-      <div>
-        <div className="font-medium" style={{ margin: '6px 0' }}>我对这个文件夹的理解</div>
-        <div className="sm" style={{ lineHeight: 1.65 }}>{doc.understanding!.text}</div>
-      </div>
-      <div className="flex items-center gap-2 flex-wrap">
-        <span className="sm t2">记住了 {active} 件事{candidates > 0 ? `，还有 ${candidates} 条推断等你确认` : ''}</span>
-        <span className="flex-1" />
-        <Button variant="ghost" size="sm" title="再读一遍文件夹，重新形成理解（约一分钟）" onClick={onReunderstand}><RotateCcw size={12} />重新了解</Button>
-        <Button size="sm" onClick={onContext}>{candidates > 0 ? '去确认' : '查看或修改'}</Button>
-      </div>
-    </div>
   );
 }
 
@@ -208,22 +185,6 @@ function ClosingCard({ task, doc, onOpenFile }: { task: ContinuoTask; doc: Conti
           {done ? '下次打开这个文件夹，它记住的事都还在，不用再交代一遍。' : '补完上面的事再标记完成；记住的事已经保存，不会丢。'}
         </div>
       </div>
-    </div>
-  );
-}
-
-const INIT_STAGES: Array<[number, string]> = [[0, '正在了解你现有的工作…'], [12, '正在整理项目的背景和约定…'], [30, '正在分析材料…'], [55, '快好了，请稍候…']];
-
-function InitStage({ startedAt }: { startedAt?: string }) {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => { const t = window.setInterval(() => setNow(Date.now()), 1000); return () => window.clearInterval(t); }, []);
-  const elapsed = startedAt ? (now - new Date(startedAt).getTime()) / 1000 : 0;
-  const text = INIT_STAGES.findLast(([at]) => elapsed >= at)![1];
-  return (
-    <div className="init-stage fade-in">
-      <span className="init-orb"><Loader2 size={22} className="spin" /></span>
-      <div className="init-title" key={text}>{text}</div>
-      <div className="t3 sm">它只读不改。有想做的事，直接在下面告诉它，不必等它读完。</div>
     </div>
   );
 }

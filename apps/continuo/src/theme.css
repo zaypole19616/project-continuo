@@ -405,9 +405,7 @@ button.link:hover { text-decoration: underline; }
 .msg-assistant.md p:last-child { margin-bottom: 0; }
 
 
-.init-stage { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 120px 20px 40px; text-align: center; }
-.init-orb { width: 56px; height: 56px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); display: inline-flex; align-items: center; justify-content: center; }
-.init-title { font-size: var(--fs-h2); font-weight: 600; letter-spacing: -0.01em; animation: fade-in var(--motion) ease-out; }
+.init-status { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid var(--accent-line); border-radius: 12px; background: var(--accent-soft); }
 
 .onboard-icon { width: 60px; height: 60px; border-radius: 18px; background: var(--accent-soft); color: var(--accent); display: inline-flex; align-items: center; justify-content: center; margin-bottom: 6px; }
 .onboard-kicker { font-size: var(--fs-xs); font-weight: 700; color: var(--accent); letter-spacing: 0.06em; }

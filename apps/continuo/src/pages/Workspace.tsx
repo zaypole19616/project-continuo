@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { continuo, kimi, readRecent, type ApprovalRequest, type ContextEntry, type ContinuoDoc, type ContinuoTask, type QuestionRequest, type Workspace } from '#/lib/api';
 import { SessionStream } from '#/lib/ws';
-import { applyEvent, emptyTimeline, fromMessages, type TimelineState } from '#/lib/timeline';
+import { applyEvent, emptyTimeline, fromMessages, withUserMessage, type TimelineState } from '#/lib/timeline';
 import { Sidebar } from '#/components/Sidebar';
 import type { NavTarget } from '#/components/FileBrowser';
 import { AgentPanel } from '#/components/AgentPanel';
@@ -15,7 +15,7 @@ const newRequestId = () => `req_${Date.now().toString(36)}_${Math.random().toStr
 
 function pickDefaultTask(doc: ContinuoDoc): ContinuoTask | null {
   const users = doc.tasks.filter((t) => t.kind === 'user');
-  return users.find(isActive) ?? null;
+  return users.findLast(isActive) ?? null;
 }
 
 function useMediaQuery(query: string): boolean {
@@ -51,6 +51,7 @@ export function WorkspaceView({ workspace, onSwitch, onReplayIntro }: { workspac
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const searchRef = useRef<HTMLInputElement | null>(null);
   const userPicked = useRef(false);
+  const pendingUser = useRef<{ sessionId: string; text: string } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -115,7 +116,11 @@ export function WorkspaceView({ workspace, onSwitch, onReplayIntro }: { workspac
       try {
         const snap = await kimi.snapshot(sessionId);
         if (cancelled) return;
-        setState((prev) => ({ ...fromMessages(prev, snap.messages.items), busy: snap.session.busy, pendingInteraction: snap.session.pending_interaction ?? 'none' }));
+        setState((prev) => {
+          const next: TimelineState = { ...fromMessages(prev, snap.messages.items), busy: snap.session.busy, pendingInteraction: snap.session.pending_interaction ?? 'none' };
+          const pending = pendingUser.current;
+          return pending !== null && pending.sessionId === sessionId ? withUserMessage(next, `local_${sessionId}`, pending.text) : next;
+        });
         setQuestions(snap.pending_questions); setApprovals(snap.pending_approvals);
         const stream = new SessionStream(sessionId);
         streamRef.current = stream;
@@ -150,11 +155,12 @@ export function WorkspaceView({ workspace, onSwitch, onReplayIntro }: { workspac
       if (continueTarget) {
         const d = await continuo.taskAction(workspace.id, continueTarget.taskId, 'reply', { text });
         if (composerRef.current) composerRef.current.value = '';
-        setDoc(d); userPicked.current = false; setSelectedId(continueTarget.taskId);
+        setDoc(d); userPicked.current = true; setSelectedId(continueTarget.taskId);
       } else {
         const r = await continuo.createTask(workspace.id, text, newRequestId());
         if (composerRef.current) composerRef.current.value = '';
-        setDoc(r.doc); userPicked.current = false; setSelectedId(r.task.taskId);
+        setDoc(r.doc); userPicked.current = true; setSelectedId(r.task.taskId);
+        pendingUser.current = { sessionId: r.task.sessionId, text };
       }
     } catch (error) { setError((error as Error).message); } finally { setSending(false); }
   };
@@ -162,13 +168,13 @@ export function WorkspaceView({ workspace, onSwitch, onReplayIntro }: { workspac
   const startStep = async (text: string) => {
     if (!workspace || sending) return;
     setSending(true); setError(null);
-    try { const r = await continuo.createTask(workspace.id, text, newRequestId()); setDoc(r.doc); userPicked.current = false; setSelectedId(r.task.taskId); } catch (error) { setError((error as Error).message); } finally { setSending(false); }
+    try { const r = await continuo.createTask(workspace.id, text, newRequestId()); setDoc(r.doc); userPicked.current = true; setSelectedId(r.task.taskId); pendingUser.current = { sessionId: r.task.sessionId, text }; } catch (error) { setError((error as Error).message); } finally { setSending(false); }
   };
 
   const action = async (task: ContinuoTask, a: 'pause' | 'resume' | 'complete') => {
     if (!workspace) return;
     setError(null);
-    try { const d = await continuo.taskAction(workspace.id, task.taskId, a); setDoc(d); userPicked.current = false; setSelectedId(task.taskId); } catch (error) { setError((error as Error).message); }
+    try { const d = await continuo.taskAction(workspace.id, task.taskId, a); setDoc(d); userPicked.current = true; setSelectedId(task.taskId); } catch (error) { setError((error as Error).message); }
   };
 
   const reunderstand = async () => {
@@ -200,10 +206,10 @@ export function WorkspaceView({ workspace, onSwitch, onReplayIntro }: { workspac
         onSend={() => { void send(); }}
         onAnswer={async (q, answers, note) => { if (!sessionId) return; await kimi.resolveQuestion(sessionId, q.question_id, answers, note); await refreshPending(sessionId); void refresh(); }}
         onDecide={async (a, d, scope) => { if (!sessionId) return; await kimi.resolveApproval(sessionId, a.approval_id, d, scope); await refreshPending(sessionId); void refresh(); }}
-        onAction={(t, a) => { void action(t, a); }} onOpenFile={openFile} onPatchContext={patchContext} onReunderstand={() => { void reunderstand(); }} onStartStep={(text) => { void startStep(text); }} onPickWorkspace={onSwitch}
+        onAction={(t, a) => { void action(t, a); }} onOpenFile={openFile} onPatchContext={patchContext} onStartStep={(text) => { void startStep(text); }} onPickWorkspace={onSwitch}
       />
       {sideMode !== null && workspace && (
-        <SidePanel mode={sideMode} onMode={setSide} workspaceId={workspace.id} root={workspace.root} doc={doc} target={target} onNavigate={setTarget} onSelectTask={selectTask} onPatchContext={patchContext} onError={setError} searchRef={searchRef} />
+        <SidePanel mode={sideMode} onMode={setSide} workspaceId={workspace.id} root={workspace.root} doc={doc} target={target} onNavigate={setTarget} onSelectTask={selectTask} onPatchContext={patchContext} onReunderstand={() => { void reunderstand(); }} onError={setError} searchRef={searchRef} />
       )}
     </div>
   );

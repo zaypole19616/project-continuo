@@ -42,6 +42,11 @@ function currentTurn(items: TimelineItem[], turnId: number): AssistantItem {
   return fresh;
 }
 
+export function withUserMessage(state: TimelineState, id: string, text: string): TimelineState {
+  if (state.items.some((item) => item.kind === 'user' && item.text === text)) return state;
+  return { ...state, items: [...state.items, { kind: 'user', id, text, at: Date.now() }] };
+}
+
 export function applyEvent(state: TimelineState, ev: WsEvent): TimelineState {
   const p = ev.payload;
   const type = ev.type;

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { InitStatus } from './InitStatus';
 import { BookOpen, FileText, UserCheck, Wand2 } from 'lucide-react';
 import type { ContextEntry, ContinuoDoc } from '#/lib/api';
 import { Button } from '#/components/ui/button';
@@ -8,7 +9,7 @@ const ORIGIN_LABEL: Record<ContextEntry['origin'], string> = { user: '你确认�
 
 type Patch = { text?: string; status?: 'active' | 'inactive' };
 
-export function ContextPanel({ doc, onPatch, onOpenFile }: { doc: ContinuoDoc; onPatch: (entry: ContextEntry, body: Patch) => Promise<void>; onOpenFile: (path: string) => void }) {
+export function ContextPanel({ doc, onPatch, onOpenFile, onReunderstand }: { doc: ContinuoDoc; onPatch: (entry: ContextEntry, body: Patch) => Promise<void>; onOpenFile: (path: string) => void; onReunderstand: () => void }) {
   const kept = doc.context.filter((e) => e.kind !== 'progress');
   const active = kept.filter((e) => e.status === 'active');
   const candidates = kept.filter((e) => e.status === 'candidate');
@@ -19,6 +20,7 @@ export function ContextPanel({ doc, onPatch, onOpenFile }: { doc: ContinuoDoc; o
     <div className="space-y-5">
       <section className="space-y-2">
         <div className="nav-section" style={{ padding: '0 2px' }}>它对这个文件夹的理解</div>
+        <InitStatus doc={doc} onReunderstand={onReunderstand} />
         {doc.understanding ? (
           <details className="entry understanding-details">
             <summary className="entry-text chrome" style={{ cursor: 'pointer' }}>{doc.understanding.text}</summary>
