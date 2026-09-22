@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { continuo, kimi, type ApprovalRequest, type ContextEntry, type ContinuoDoc, type ContinuoTask, type QuestionRequest, type Workspace } from '#/lib/api';
+import { continuo, kimi, readRecent, type ApprovalRequest, type ContextEntry, type ContinuoDoc, type ContinuoTask, type QuestionRequest, type Workspace } from '#/lib/api';
 import { SessionStream } from '#/lib/ws';
 import { applyEvent, emptyTimeline, fromMessages, type TimelineState } from '#/lib/timeline';
 import { Sidebar } from '#/components/Sidebar';
@@ -46,10 +46,29 @@ export function WorkspaceView({ workspace, onSwitch, onAbout, onReplayIntro }: {
   const [questions, setQuestions] = useState<QuestionRequest[]>([]);
   const [approvals, setApprovals] = useState<ApprovalRequest[]>([]);
   const [sending, setSending] = useState(false);
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const streamRef = useRef<SessionStream | null>(null);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const searchRef = useRef<HTMLInputElement | null>(null);
   const userPicked = useRef(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    const ids = readRecent();
+    kimi.workspaces().then((r) => {
+      if (cancelled) return;
+      const seen = new Set<string>();
+      const list: Workspace[] = [];
+      for (const id of ids) {
+        const found = r.items.find((w) => w.id === id);
+        if (found === undefined || seen.has(found.root)) continue;
+        seen.add(found.root);
+        list.push(found);
+      }
+      setWorkspaces(list.slice(0, 8));
+    }).catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [workspaceId]);
 
   const refresh = useCallback(async () => {
     if (!workspaceId) return null;
@@ -173,7 +192,7 @@ export function WorkspaceView({ workspace, onSwitch, onAbout, onReplayIntro }: {
 
   return (
     <div className={`shell ${navCollapsed ? 'nav-collapsed' : ''} ${sideMode === null || !workspace ? 'side-collapsed' : ''}`}>
-      <Sidebar workspace={workspace} doc={doc} collapsed={navCollapsed || narrow} selectedTaskId={selectedId} onToggle={toggleNav} onSelectTask={selectTask} onPickWorkspace={onSwitch} onNewTask={focusComposer} onSearch={focusSearch} onAbout={() => onAbout()} onGuide={onReplayIntro} />
+      <Sidebar workspace={workspace} doc={doc} workspaces={workspaces} collapsed={navCollapsed || narrow} selectedTaskId={selectedId} onToggle={toggleNav} onSelectTask={selectTask} onPickWorkspace={onSwitch} onNewTask={focusComposer} onSearch={focusSearch} onAbout={() => onAbout()} onGuide={onReplayIntro} />
       <AgentPanel
         workspace={workspace} doc={doc} sideMode={sideMode} onSide={setSide}
         selected={selected} state={state} questions={questions} approvals={approvals} connection={connection} error={error}
