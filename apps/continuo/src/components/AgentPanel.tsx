@@ -83,13 +83,7 @@ export function AgentPanel(p: AgentPanelProps) {
 
       <div className="pane-body chat-body">
         <div className="chat-col">
-          {initRunning && p.doc && (
-            <div className="understand fade-in">
-              <BetChip bet="clarity" onClick={() => p.onAbout('clarity')} />
-              <div className="flex items-center gap-2 font-medium"><Loader2 size={15} className="spin" style={{ color: 'var(--accent)' }} />正在了解这个文件夹，先理解再动手</div>
-              <div className="t2 sm" style={{ marginTop: 4 }}>{p.doc.scan ? `${p.doc.scan.counts.dirs} 个文件夹、${p.doc.scan.counts.files} 个文件${p.doc.scan.guideFiles.length > 0 ? `，先读 ${p.doc.scan.guideFiles.join('、')}` : ''}。` : ''}只读，不会改动任何文件。</div>
-            </div>
-          )}
+          {initRunning && p.doc && <InitStage startedAt={p.doc.init.startedAt} />}
           {showEmpty && p.doc && (
             <div className="empty-hero fade-in">
               <h2>把工作交给 Continuo</h2>
@@ -109,7 +103,7 @@ export function AgentPanel(p: AgentPanelProps) {
           {p.selected && p.selected.kind === 'init' && p.doc?.understanding && (
             <UnderstandingCard doc={p.doc} onContext={() => p.onSide('context')} onAbout={() => p.onAbout('clarity')} onPatch={p.onPatchContext} onReunderstand={p.onReunderstand} />
           )}
-          {!showEmpty && <Timeline items={p.selected?.kind === 'init' ? p.state.items.filter((it) => it.kind !== 'user') : p.state.items} emptyHint={p.selected ? (p.selected.kind === 'init' ? undefined : p.selected.sessionId === '' ? `这是演示夹自带的上次任务（${shortDate(p.selected.createdAt)}），对话没有随演示夹保存；下面是它当时的收尾。` : '这个任务还没有对话。') : undefined} />}
+          {!showEmpty && !initRunning && <Timeline items={p.selected?.kind === 'init' ? p.state.items.filter((it) => it.kind !== 'user') : p.state.items} emptyHint={p.selected ? (p.selected.kind === 'init' ? undefined : p.selected.sessionId === '' ? `这是演示夹自带的上次任务（${shortDate(p.selected.createdAt)}），对话没有随演示夹保存；下面是它当时的收尾。` : '这个任务还没有对话。') : undefined} />}
           {p.selected && p.doc && p.selected.kind === 'user' && (p.selected.status === 'completed' || p.selected.status === 'needs_review') && (
             <ClosingCard task={p.selected} doc={p.doc} onOpenFile={p.onOpenFile} onAbout={() => p.onAbout('clarity')} />
           )}
@@ -252,10 +246,26 @@ function ClosingCard({ task, doc, onOpenFile, onAbout }: { task: ContinuoTask; d
   );
 }
 
+const INIT_STAGES: Array<[number, string]> = [[0, '正在了解你现有的工作…'], [12, '正在整理项目的背景和约定…'], [30, '正在分析材料…'], [55, '快好了，请稍候…']];
+
+function InitStage({ startedAt }: { startedAt?: string }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => { const t = window.setInterval(() => setNow(Date.now()), 1000); return () => window.clearInterval(t); }, []);
+  const elapsed = startedAt ? (now - new Date(startedAt).getTime()) / 1000 : 0;
+  const text = INIT_STAGES.findLast(([at]) => elapsed >= at)![1];
+  return (
+    <div className="init-stage fade-in">
+      <span className="init-orb"><Loader2 size={22} className="spin" /></span>
+      <div className="init-title" key={text}>{text}</div>
+      <div className="t3 sm">它只读不改。好了会告诉你它了解到了什么，等你确认。</div>
+    </div>
+  );
+}
+
 function memorySummary(doc: ContinuoDoc): string {
   const remembered = doc.context.filter((e) => e.status === 'active').length;
   const saved = doc.tasks.filter((t) => t.kind === 'user' && t.reuse !== undefined && t.reuse.entries > 0 && (t.status === 'completed' || t.status === 'needs_review')).length;
-  const last = doc.tasks.filter((t) => t.kind === 'user' && (t.status === 'completed' || t.status === 'needs_review')).at(-1);
+  const last = doc.tasks.findLast((t) => t.kind === 'user' && (t.status === 'completed' || t.status === 'needs_review'));
   if (remembered === 0 && !last) return '它已经了解了这个文件夹。';
   const parts = [`它记住了 ${remembered} 件事`];
   if (saved > 0) parts.push(`已为 ${saved} 个任务省去重新交代`);

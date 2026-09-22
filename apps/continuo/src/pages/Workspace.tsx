@@ -6,6 +6,7 @@ import { Sidebar } from '#/components/Sidebar';
 import type { NavTarget } from '#/components/FileBrowser';
 import { AgentPanel } from '#/components/AgentPanel';
 import { SidePanel, type SideMode } from '#/components/SidePanel';
+import { StartPanel } from '#/components/StartPanel';
 
 const ACTIVE = new Set(['queued', 'running', 'awaiting_user', 'verifying']);
 const isActive = (t: ContinuoTask) => ACTIVE.has(t.status);
@@ -35,7 +36,8 @@ function useMediaQuery(query: string): boolean {
 const readPref = (key: string, fallback: boolean) => { try { const v = localStorage.getItem(key); return v === null ? fallback : v === '1'; } catch { return fallback; } };
 const writePref = (key: string, value: boolean) => { try { localStorage.setItem(key, value ? '1' : '0'); } catch {} };
 
-export function WorkspaceView({ workspace, onSwitch, onClose, onAbout }: { workspace: Workspace; onSwitch: (w: Workspace) => void; onClose: () => void; onAbout: (bet?: string) => void }) {
+export function WorkspaceView({ workspace, onSwitch, onClose, onAbout, onReplayIntro }: { workspace: Workspace | null; onSwitch: (w: Workspace) => void; onClose: () => void; onAbout: (bet?: string) => void; onReplayIntro: () => void }) {
+  const workspaceId = workspace?.id ?? null;
   const [doc, setDoc] = useState<ContinuoDoc | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [sideMode, setSideMode] = useState<SideMode | null>(() => { try { const v = localStorage.getItem('continuo.side'); return v === 'none' ? null : v === 'context' ? 'context' : 'files'; } catch { return 'files'; } });
@@ -54,17 +56,19 @@ export function WorkspaceView({ workspace, onSwitch, onClose, onAbout }: { works
   const userPicked = useRef(false);
 
   const refresh = useCallback(async () => {
-    try { const d = await continuo.get(workspace.id); setDoc(d); return d; } catch (error) { setError((error as Error).message); return null; }
-  }, [workspace.id]);
+    if (!workspaceId) return null;
+    try { const d = await continuo.get(workspaceId); setDoc(d); return d; } catch (error) { setError((error as Error).message); return null; }
+  }, [workspaceId]);
 
   useEffect(() => {
     let cancelled = false;
     setDoc(null); setSelectedId(null); userPicked.current = false; setTarget({ kind: 'folder', path: '' }); setError(null);
+    if (!workspaceId) return;
     void (async () => {
-      try { const d = await continuo.open(workspace.id, newRequestId()); if (!cancelled) setDoc(d); } catch (error) { if (!cancelled) setError((error as Error).message); }
+      try { const d = await continuo.open(workspaceId, newRequestId()); if (!cancelled) setDoc(d); } catch (error) { if (!cancelled) setError((error as Error).message); }
     })();
     return () => { cancelled = true; };
-  }, [workspace.id]);
+  }, [workspaceId]);
 
   useEffect(() => {
     if (!doc) return;
@@ -125,7 +129,7 @@ export function WorkspaceView({ workspace, onSwitch, onClose, onAbout }: { works
 
   const send = async () => {
     const text = (composerRef.current?.value ?? '').trim();
-    if (!text || sending) return;
+    if (!text || sending || !workspace) return;
     setSending(true); setError(null);
     try {
       if (continueTarget) {
@@ -141,16 +145,19 @@ export function WorkspaceView({ workspace, onSwitch, onClose, onAbout }: { works
   };
 
   const action = async (task: ContinuoTask, a: 'pause' | 'resume' | 'complete') => {
+    if (!workspace) return;
     setError(null);
     try { const d = await continuo.taskAction(workspace.id, task.taskId, a); setDoc(d); userPicked.current = false; setSelectedId(task.taskId); } catch (error) { setError((error as Error).message); }
   };
 
   const reunderstand = async () => {
+    if (!workspace) return;
     setError(null);
     try { const d = await continuo.reunderstand(workspace.id); setDoc(d); userPicked.current = false; setSelectedId(d.init.taskId ?? null); } catch (error) { setError((error as Error).message); }
   };
 
   const patchContext = async (entry: ContextEntry, body: { text?: string; status?: 'active' | 'inactive' }) => {
+    if (!workspace) return;
     setError(null);
     try { const d = await continuo.patchContext(workspace.id, entry.id, { ...body, expected_revision: entry.revision }); setDoc(d); } catch (error) { setError((error as Error).message); throw error; }
   };
@@ -162,6 +169,14 @@ export function WorkspaceView({ workspace, onSwitch, onClose, onAbout }: { works
   const focusComposer = () => { userPicked.current = true; setSelectedId(null); setTimeout(() => composerRef.current?.focus(), 50); };
   const focusSearch = () => { setSide('files'); setTimeout(() => searchRef.current?.focus(), 50); };
 
+  if (!workspace) {
+    return (
+      <div className={`shell side-collapsed ${navCollapsed ? 'nav-collapsed' : ''}`}>
+        <Sidebar workspace={null} doc={null} collapsed={navCollapsed || narrow} selectedTaskId={null} onToggle={toggleNav} onSelectTask={() => undefined} onSwitchWorkspace={onSwitch} onAddWorkspace={onClose} onNewTask={() => undefined} onSearch={() => undefined} onAbout={() => onAbout()} />
+        <StartPanel onOpen={onSwitch} onReplayIntro={onReplayIntro} />
+      </div>
+    );
+  }
   return (
     <div className={`shell ${navCollapsed ? 'nav-collapsed' : ''} ${sideMode === null ? 'side-collapsed' : ''}`}>
       <Sidebar workspace={workspace} doc={doc} collapsed={navCollapsed || narrow} selectedTaskId={selectedId} onToggle={toggleNav} onSelectTask={selectTask} onSwitchWorkspace={onSwitch} onAddWorkspace={onClose} onNewTask={focusComposer} onSearch={focusSearch} onAbout={() => onAbout()} />
