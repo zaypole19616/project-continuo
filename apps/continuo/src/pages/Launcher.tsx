@@ -45,7 +45,7 @@ export function Launcher({ onOpen, themePref, onTheme, onGuide }: { onOpen: (w: 
       <div className="launcher">
         <span className="launcher-mark" aria-hidden="true" />
         <h1>Continuo</h1>
-        <p className="ver">基于 Kimi Code · {DEFAULT_MODEL.split('/').pop()} · <button className="link launch-guide" onClick={onGuide}>使用引导</button></p>
+        <p className="ver">基于 Kimi Code · {DEFAULT_MODEL.split('/').pop()} · <button className="link launch-guide" onClick={onGuide}>功能介绍</button></p>
         {error !== null && <div className="banner banner-err launch-error">{error}</div>}
         <div className="launch-card">
           <div className="launch-pair">
