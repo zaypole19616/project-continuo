@@ -154,6 +154,26 @@ export interface TaskError {
   readonly at: string;
 }
 
+export type ContinuoPermissionMode = 'manual' | 'yolo' | 'auto';
+
+export interface TodoSchedule {
+  readonly cron: string;
+  readonly recurring: boolean;
+  readonly label: string;
+}
+
+export interface ContinuoTodo {
+  readonly todoId: string;
+  readonly text: string;
+  readonly title?: string;
+  readonly reason?: string;
+  readonly fromTaskId?: string;
+  readonly schedule?: TodoSchedule;
+  readonly nextAt?: string;
+  readonly lastRunAt?: string;
+  readonly createdAt: string;
+}
+
 export interface ContinuoTask {
   readonly taskId: string;
   readonly kind: TaskKind;
@@ -224,6 +244,8 @@ export interface ContinuoWorkspaceDoc {
   readonly tasks: readonly ContinuoTask[];
   readonly trajectories: readonly Trajectory[];
   readonly decisions: readonly Decision[];
+  readonly todos?: readonly ContinuoTodo[];
+  readonly permissionMode?: ContinuoPermissionMode;
 }
 
 export function currentTaskOf(doc: ContinuoWorkspaceDoc, sessionId: string): ContinuoTask | undefined {
@@ -248,5 +270,6 @@ export function newWorkspaceDoc(workspaceId: string, root: string): ContinuoWork
     tasks: [],
     trajectories: [],
     decisions: [],
+    todos: [],
   };
 }

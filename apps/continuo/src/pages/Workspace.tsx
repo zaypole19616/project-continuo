@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ChevronLeft, Moon, Sun } from 'lucide-react';
-import { continuo, isOffline, kimi, type ApprovalRequest, type ContinuoDoc, type ContinuoTask, type Decision, type QuestionRequest, type Trajectory, type TrajectoryPlan, type Workspace } from '#/lib/api';
+import { continuo, isOffline, kimi, type ApprovalRequest, type ContinuoDoc, type ContinuoTask, type ContinuoTodo, type PermissionMode, type TodoTiming, type Decision, type QuestionRequest, type Trajectory, type TrajectoryPlan, type Workspace } from '#/lib/api';
 import { currentLine, tasksOn } from '#/lib/trajectory';
 import { SessionStream } from '#/lib/ws';
 import { applyEvent, emptyTimeline, fromMessages, withUserMessage, type TimelineState } from '#/lib/timeline';
@@ -157,6 +157,9 @@ export function WorkspaceView({ workspace, onClose, themePref, onTheme }: { work
   const switchLine = (target: Trajectory) => { void run(() => continuo.activateLine(workspaceId, target.trajectoryId)); };
   const forkAfter = (task: ContinuoTask) => run(() => continuo.taskAction(workspaceId, task.taskId, 'fork'));
   const retryInit = () => { void run(() => continuo.open(workspaceId, newRequestId())); };
+  const addTodo = (text: string, timing: TodoTiming | undefined) => run(() => continuo.addTodo(workspaceId, text, timing));
+  const todoAction = (todo: ContinuoTodo, action: 'start' | 'delete') => run(() => continuo.todoAction(workspaceId, todo.todoId, action));
+  const setPermission = (mode: PermissionMode) => { void run(() => continuo.setPermission(workspaceId, mode)); };
 
   const dark = resolveTheme(themePref) === 'dark';
   const startDrag = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -208,7 +211,7 @@ export function WorkspaceView({ workspace, onClose, themePref, onTheme }: { work
           onDecide={async (a, d, scope) => { if (!sessionId) return; await kimi.resolveApproval(sessionId, a.approval_id, d, scope); await refreshPending(sessionId); void refresh(); }}
           onAction={(t, a) => { void action(t, a); }} onOpenFile={(path) => setTarget({ kind: 'file', path })}
           onStartStep={(text) => { if (!sending) void submit(text, null); }}
-          onChoose={choose} onExpand={expand} onAbandon={abandon} onSwitch={switchLine} onForkAfter={forkAfter} onRetryInit={retryInit}
+          onChoose={choose} onExpand={expand} onAbandon={abandon} onSwitch={switchLine} onForkAfter={forkAfter} onRetryInit={retryInit} onAddTodo={addTodo} onTodoAction={todoAction} onPermission={setPermission}
         />
       </div>
     </div>

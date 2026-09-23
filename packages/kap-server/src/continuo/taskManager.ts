@@ -19,8 +19,10 @@ import {
   PROMPT_CACHE_KEY_METADATA,
   WORK_LOG_DIR,
   buildTrajectoryExport,
+  afterRun,
   choiceOn,
   currentTrajectory,
+  dueTodo,
   getLiveSessionById,
   inheritedChoices,
   isExploring,
@@ -30,15 +32,19 @@ import {
   localDay,
   localTime,
   logSlug,
+  nextRunAt,
   openDecisionOf,
   planStatusOn,
   resumeSessionById,
   rootOfTask,
+  scheduleOf,
   taskCategory,
   taskName,
   tasksThrough,
   trajectoryOfSession,
+  type ContinuoPermissionMode,
   type ContinuoTask,
+  type ContinuoTodo,
   type ContinuoWorkspaceDoc,
   type Decision,
   type DeliverableFeedback,
@@ -50,6 +56,7 @@ import {
   type TaskRound,
   type TaskStatus,
   type TaskTrigger,
+  type TodoTiming,
   type Trajectory,
   type TrajectoryOrigin,
   type TrajectoryExport,
@@ -85,6 +92,7 @@ const INIT_STEP_BUDGET = 8;
 const FORK_RETRIES = 25;
 const FINAL_ANGLE = new Set<ExplorationAngle['status']>(['submitted', 'withdrawn', 'failed']);
 const COPY_MAX_BYTES = 300 * 1024 * 1024;
+const STALE_MS = 60_000;
 
 function canCopyProject(doc: ContinuoWorkspaceDoc): boolean {
   if (doc.scan === undefined || doc.scan.truncated) return false;
@@ -230,6 +238,58 @@ export class ContinuoTaskManager {
     return buildTrajectoryExport(doc, feedback, new Date().toISOString());
   }
 
+  async addTodo(workspaceId: string, text: string, timing: TodoTiming | undefined): Promise<ContinuoWorkspaceDoc> {
+    await this.requireDoc(workspaceId);
+    const now = Date.now();
+    const schedule = timing === undefined ? undefined : scheduleOf(timing);
+    if (timing !== undefined && schedule === undefined) throw new ContinuoError('invalid_state', '这个时间设置不对。');
+    if (timing?.kind === 'once' && Date.parse(timing.at) <= now) throw new ContinuoError('invalid_state', '这个时间已经过了。');
+    const todo: ContinuoTodo = { todoId: `todo_${randomUUID().slice(0, 8)}`, text: text.trim(), schedule, nextAt: schedule === undefined ? undefined : nextRunAt(schedule, now), createdAt: new Date(now).toISOString() };
+    return this.store.update(workspaceId, (current) => ({ ...current, todos: [...(current.todos ?? []), todo] }));
+  }
+
+  async removeTodo(workspaceId: string, todoId: string): Promise<ContinuoWorkspaceDoc> {
+    await this.requireDoc(workspaceId);
+    return this.store.update(workspaceId, (current) => ({ ...current, todos: (current.todos ?? []).filter((todo) => todo.todoId !== todoId) }));
+  }
+
+  async startTodo(workspaceId: string, todoId: string): Promise<ContinuoWorkspaceDoc> {
+    const doc = await this.requireDoc(workspaceId);
+    const todo = (doc.todos ?? []).find((candidate) => candidate.todoId === todoId);
+    if (todo === undefined) throw new ContinuoError('invalid_state', '这件待办找不到了。');
+    await this.createUserTask(workspaceId, todo.text);
+    return this.finishTodoRun(workspaceId, todo, Date.now());
+  }
+
+  async runDueTodos(): Promise<void> {
+    const now = Date.now();
+    for (const workspaceId of await this.store.workspaceIds()) {
+      const stored = await this.store.load(workspaceId).catch(() => undefined);
+      if (stored === undefined || dueTodo(stored, now) === undefined) continue;
+      const doc = await this.store.update(workspaceId, (current) => ({ ...current, tasks: current.tasks.map((task) => (now - Date.parse(task.updatedAt) > STALE_MS ? this.reconcileOnOpen(task) : task)) }));
+      const todo = dueTodo(doc, now);
+      if (todo === undefined || this.projectBusy(doc)) continue;
+      try {
+        await this.createUserTask(workspaceId, todo.text);
+        await this.finishTodoRun(workspaceId, todo, now);
+      } catch {
+        continue;
+      }
+    }
+  }
+
+  private projectBusy(doc: ContinuoWorkspaceDoc): boolean {
+    return (doc.init.status === 'running' && this.isLive(doc.init.taskId, doc)) || doc.tasks.some((task) => task.kind === 'user' && this.attachments.has(task.taskId) && (BUSY.has(task.status) || (task.status === 'awaiting_user' && (task.pendingInteraction === 'question' || task.pendingInteraction === 'approval'))));
+  }
+
+  private finishTodoRun(workspaceId: string, todo: ContinuoTodo, nowMs: number): Promise<ContinuoWorkspaceDoc> {
+    const next = afterRun(todo, nowMs);
+    return this.store.update(workspaceId, (current) => ({
+      ...current,
+      todos: (current.todos ?? []).flatMap((candidate) => (candidate.todoId !== todo.todoId ? [candidate] : next === undefined ? [] : [next])),
+    }));
+  }
+
   async createUserTask(workspaceId: string, text: string, clientRequestId?: string): Promise<{ doc: ContinuoWorkspaceDoc; task: ContinuoTask }> {
     const doc = await this.requireDoc(workspaceId);
     if (clientRequestId !== undefined) {
@@ -247,7 +307,7 @@ export class ContinuoTaskManager {
       : await resumeSessionById(this.core.accessor, line.sessionId);
     if (session === undefined) throw new ContinuoError('invalid_state', '这条轨迹的对话记录找不到了。');
     const agent = await ensureMainAgent(session);
-    await this.ensureModel(agent);
+    await this.prepareWorker(agent, workspaceId);
     const sessionId = session.accessor.get(ISessionContext).sessionId;
     const taskId = `task_${randomUUID().slice(0, 8)}`;
     const now = new Date().toISOString();
@@ -269,6 +329,7 @@ export class ContinuoTaskManager {
     await this.store.update(workspaceId, (current) => ({
       ...current,
       tasks: [...current.tasks, task],
+      todos: (current.todos ?? []).filter((todo) => todo.schedule !== undefined || todo.text !== text),
       trajectories: line === undefined
         ? [{ trajectoryId: `trj_${randomUUID().slice(0, 8)}`, label: '', sessionId, status: 'current', taskIds: [taskId], choices: [], turnCount: 0, createdAt: now }]
         : current.trajectories.map((candidate) => (candidate.trajectoryId === line.trajectoryId ? { ...candidate, taskIds: [...candidate.taskIds, taskId] } : candidate)),
@@ -311,7 +372,7 @@ export class ContinuoTaskManager {
     const session = await resumeSessionById(this.core.accessor, task.sessionId);
     if (session === undefined) throw new ContinuoError('invalid_state', '这件事的对话记录找不到了。');
     const agent = await ensureMainAgent(session);
-    await this.ensureModel(agent);
+    await this.prepareWorker(agent, workspaceId);
     this.attach(workspaceId, taskId, session, agent);
     const reason = task.status === 'needs_review'
       ? `上次核对时还差一点${(task.report?.unresolved ?? []).length > 0 ? `：${(task.report?.unresolved ?? []).join('；')}` : ''}。`
@@ -334,7 +395,7 @@ export class ContinuoTaskManager {
     const session = await resumeSessionById(this.core.accessor, task.sessionId);
     if (session === undefined) throw new ContinuoError('invalid_state', '这件事的对话记录找不到了。');
     const agent = await ensureMainAgent(session);
-    await this.ensureModel(agent);
+    await this.prepareWorker(agent, workspaceId);
     this.attach(workspaceId, taskId, session, agent);
     if (line !== undefined && open !== undefined) {
       const at = new Date().toISOString();
@@ -366,7 +427,7 @@ export class ContinuoTaskManager {
       const session = await resumeSessionById(this.core.accessor, task.sessionId);
       if (session === undefined) throw new ContinuoError('invalid_state', '这件事的对话记录找不到了。');
       const agent = await ensureMainAgent(session);
-      await this.ensureModel(agent);
+      await this.prepareWorker(agent, workspaceId);
       this.attach(workspaceId, task.taskId, session, agent);
       await this.store.update(workspaceId, (current) => ({
         ...current,
@@ -428,7 +489,7 @@ export class ContinuoTaskManager {
     const session = await resumeSessionById(this.core.accessor, task.sessionId);
     if (session === undefined) throw new ContinuoError('invalid_state', '这件事的对话记录找不到了。');
     const agent = await ensureMainAgent(session);
-    await this.ensureModel(agent);
+    await this.prepareWorker(agent, workspaceId);
     this.attach(workspaceId, task.taskId, session, agent);
     const promptId = await this.sendTurn(workspaceId, task.taskId, agent, '再给几个方案，只要和已有方案思路明显不同的。如果已经没有真正不同的方向，就告诉我为什么，以及需要我来定的那个问题。', '再来几个方案');
     return this.patchTask(workspaceId, task.taskId, (current) => ({ ...current, status: 'running', pendingInteraction: 'none', phase: undefined, promptIds: [...current.promptIds, promptId], endedAt: undefined }));
@@ -491,7 +552,7 @@ export class ContinuoTaskManager {
     const session = await resumeSessionById(this.core.accessor, meta.id);
     if (session === undefined) throw new ContinuoError('invalid_state', '复制出的对话没能打开');
     const agent = await ensureMainAgent(session);
-    await this.ensureModel(agent);
+    await this.prepareWorker(agent, workspaceId);
     const trajectoryId = `trj_${randomUUID().slice(0, 8)}`;
     const root = (await this.requireDoc(workspaceId)).root;
     const workDir = commit === undefined ? undefined : await createLineDir(root, commit, trajectoryId);
@@ -645,6 +706,20 @@ export class ContinuoTaskManager {
       meta: { promptId, origin: { kind: 'user' }, tracked: true },
     } as Parameters<IAgentLoopService['submit']>[0]);
     return promptId;
+  }
+
+  async setPermissionMode(workspaceId: string, mode: ContinuoPermissionMode): Promise<ContinuoWorkspaceDoc> {
+    const doc = await this.store.update(workspaceId, (current) => ({ ...current, permissionMode: mode }));
+    const line = currentTrajectory(doc);
+    const session = line === undefined ? undefined : getLiveSessionById(this.core.accessor, line.sessionId);
+    if (session !== undefined) (await ensureMainAgent(session)).accessor.get(IAgentLifecycleService).broadcastPermissionMode(mode);
+    return doc;
+  }
+
+  private async prepareWorker(agent: IAgentScopeHandle, workspaceId: string): Promise<void> {
+    await this.ensureModel(agent);
+    const mode = (await this.requireDoc(workspaceId)).permissionMode ?? 'manual';
+    agent.accessor.get(IAgentLifecycleService).broadcastPermissionMode(mode);
   }
 
   private async ensureModel(agent: IAgentScopeHandle): Promise<void> {
@@ -960,6 +1035,12 @@ export class ContinuoTaskManager {
       lastReply: lastReply === '' ? candidate.lastReply : lastReply,
       endedAt,
     }));
+    const nextStep = finalReport?.nextStep;
+    if (nextStep !== undefined) {
+      await this.store.update(workspaceId, (current) => ((current.todos ?? []).some((todo) => todo.fromTaskId === taskId || todo.text === nextStep.prompt)
+        ? current
+        : { ...current, todos: [...(current.todos ?? []), { todoId: `todo_${randomUUID().slice(0, 8)}`, text: nextStep.prompt, title: nextStep.title, reason: nextStep.reason, fromTaskId: taskId, createdAt: endedAt }] }));
+    }
   }
 
   private async recordRound(workspaceId: string, taskId: string, root: string, at: string): Promise<void> {

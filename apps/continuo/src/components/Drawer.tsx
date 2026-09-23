@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowRight, ArrowUp, Check, CircleAlert, Play, RotateCcw, Sparkles, Square } from 'lucide-react';
-import { DEFAULT_MODEL, type ApprovalRequest, type ContinuoDoc, type ContinuoTask, type Decision, type QuestionRequest, type Trajectory, type TrajectoryPlan, type Workspace } from '#/lib/api';
+import { DEFAULT_MODEL, type ApprovalRequest, type ContinuoDoc, type ContinuoTask, type ContinuoTodo, type Decision, type PermissionMode, type TodoTiming, type QuestionRequest, type Trajectory, type TrajectoryPlan, type Workspace } from '#/lib/api';
 import type { TimelineState } from '#/lib/timeline';
 import { decisionsOn, lineIsBusy, taskLabel, tasksOn, todoGroup, TODO_GROUPS } from '#/lib/trajectory';
 import { Timeline } from './Timeline';
 import { ApprovalCard, QuestionCard } from './InteractionCards';
 import { InitCard } from './InitCard';
+import { Backlog } from './Backlog';
+import { failureReason } from '#/lib/errors';
+import { PermissionPicker } from './PermissionPicker';
 import { ErrorCard } from './ErrorCard';
 import { DecisionCard } from './DecisionCard';
 import { TrajectoryTree } from './TrajectoryTree';
@@ -32,6 +35,9 @@ export interface DrawerProps {
   onAction: (task: ContinuoTask, action: 'pause' | 'resume') => void;
   onOpenFile: (path: string) => void;
   onRetryInit: () => void;
+  onAddTodo: (text: string, timing: TodoTiming | undefined) => Promise<boolean>;
+  onTodoAction: (todo: ContinuoTodo, action: 'start' | 'delete') => Promise<boolean>;
+  onPermission: (mode: PermissionMode) => void;
   onStartStep: (prompt: string) => void;
   onChoose: (decision: Decision, plan: TrajectoryPlan) => Promise<boolean>;
   onExpand: (decision: Decision) => Promise<boolean>;
@@ -55,7 +61,7 @@ function statusLabel(task: ContinuoTask): string {
     case 'awaiting_user': return task.pendingInteraction === 'choice' ? '等你选方案' : task.pendingInteraction === 'question' ? '等你回答' : task.pendingInteraction === 'approval' ? '等你批准' : '等你回复';
     case 'paused': return '已暂停';
     case 'interrupted': return '被打断了';
-    case 'failed': return `没做成${task.lastError ? ` · ${task.lastError}` : ''}`;
+    case 'failed': { const reason = failureReason(task); return `没做成${reason === undefined ? '' : ` · ${reason}`}`; }
     case 'needs_review': return '还差一点';
     default: return '';
   }
@@ -140,6 +146,7 @@ export function Drawer(p: DrawerProps) {
         />
         <div className="composer-footer chrome">
           <span className="model-chip">✳ {modelName}</span>
+          <PermissionPicker mode={p.doc?.permissionMode ?? 'manual'} disabled={!p.doc || p.sending} onChange={p.onPermission} />
           <span className="flex-1" />
           {running
             ? <button className="send" title="停止" onClick={stop}><Square size={13} fill="currentColor" /></button>
@@ -180,7 +187,7 @@ export function Drawer(p: DrawerProps) {
         </TabsContent>
         <TabsContent value="todo" className="drawer-body">
           {todos.length === 0
-            ? <div className="t3 sm">没有进行中的事项。</div>
+            ? <div className="t3 sm todo-empty">没有进行中的事项。</div>
             : TODO_GROUPS.map((group) => {
               const items = todos.filter((task) => todoGroup(task) === group.key).toReversed();
               if (items.length === 0) return null;
@@ -204,6 +211,14 @@ export function Drawer(p: DrawerProps) {
                 </section>
               );
             })}
+          {p.doc && (
+            <Backlog
+              doc={p.doc} busy={p.sending || p.activeUserTask !== null} lockReason={p.activeUserTask !== null ? '等手上的事做完或停下后再开始' : undefined}
+              onAdd={p.onAddTodo}
+              onStart={(todo) => { void p.onTodoAction(todo, 'start').then((ok) => { if (ok) setTab('chat'); }); }}
+              onDelete={(todo) => { void p.onTodoAction(todo, 'delete'); }}
+            />
+          )}
         </TabsContent>
         <AbandonDialog
           title={dropping === null ? '' : `方案 ${dropping.plan.planId} ${dropping.plan.title}`}

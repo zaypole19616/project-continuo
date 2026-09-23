@@ -12,6 +12,12 @@ const workspaceParamSchema = z.object({ workspace_id: z.string().min(1) });
 const openBodySchema = z.object({ client_request_id: z.string().min(1).optional() });
 const createTaskBodySchema = z.object({ text: z.string().min(1).max(8000), client_request_id: z.string().min(1).optional() });
 const docSchema = z.record(z.string(), z.unknown());
+const todoTimingSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('once'), at: z.string().min(1).max(64) }),
+  z.object({ kind: z.literal('daily'), time: z.string().min(3).max(5) }),
+  z.object({ kind: z.literal('weekly'), day: z.number().int().min(0).max(6), time: z.string().min(3).max(5) }),
+]);
+const TODO_TICK_MS = 30_000;
 
 interface ContinuoRouteHost {
   get(path: string, options: { preHandler: unknown[]; schema?: Record<string, unknown> } | undefined, handler: (req: { id: string; params: unknown; query?: unknown }, reply: { send(payload: unknown): unknown }) => Promise<void> | void): unknown;
@@ -26,6 +32,10 @@ const CONTINUO_ERRORS = {
 
 export function registerContinuoRoutes(app: ContinuoRouteHost, core: Scope): void {
   const manager = new ContinuoTaskManager(core);
+  const todoTimer = setInterval(() => {
+    if (core.accessor.get(IFlagService).enabled('continuo')) void manager.runDueTodos().catch(() => undefined);
+  }, TODO_TICK_MS);
+  todoTimer.unref();
   const flagGuard = (requestId: string, reply: { send(payload: unknown): unknown }): boolean => {
     if (core.accessor.get(IFlagService).enabled('continuo')) return true;
     reply.send(errEnvelope(ErrorCode.VALIDATION_FAILED, 'Continuo is disabled; start the server with KIMI_CODE_EXPERIMENTAL_CONTINUO=1', requestId));
@@ -187,6 +197,80 @@ export function registerContinuoRoutes(app: ContinuoRouteHost, core: Scope): voi
     },
   );
   app.post(decisionActionRoute.path, decisionActionRoute.options, decisionActionRoute.handler as Parameters<ContinuoRouteHost['post']>[2]);
+
+  const permissionRoute = defineRoute(
+    {
+      method: 'POST',
+      path: '/workspaces/{workspace_id}/continuo/permission',
+      params: workspaceParamSchema,
+      body: z.object({ mode: z.enum(['manual', 'yolo', 'auto']) }),
+      success: { data: docSchema },
+      errors: CONTINUO_ERRORS,
+      description: "Set the project's permission mode, one of Kimi Code's three: manual asks before anything but reads, yolo asks only for risky actions, questions and plans, auto never stops; it applies to the current line now and to every task after",
+      tags: ['continuo'],
+      operationId: 'continuoSetPermission',
+    },
+    async (req, reply) => {
+      if (!flagGuard(req.id, reply)) return;
+      try {
+        reply.send(okEnvelope(await manager.setPermissionMode(req.params.workspace_id, req.body.mode), req.id));
+      } catch (error) {
+        sendError(reply, req.id, error);
+      }
+    },
+  );
+  app.post(permissionRoute.path, permissionRoute.options, permissionRoute.handler as Parameters<ContinuoRouteHost['post']>[2]);
+
+  const addTodoRoute = defineRoute(
+    {
+      method: 'POST',
+      path: '/workspaces/{workspace_id}/continuo/todos',
+      params: workspaceParamSchema,
+      body: z.object({ text: z.string().min(1).max(8000), timing: todoTimingSchema.optional() }),
+      success: { data: docSchema },
+      errors: CONTINUO_ERRORS,
+      description: 'Add a backlog item, optionally on a schedule (once at a time, daily or weekly); scheduled items start as tasks on the current line when due',
+      tags: ['continuo'],
+      operationId: 'continuoAddTodo',
+    },
+    async (req, reply) => {
+      if (!flagGuard(req.id, reply)) return;
+      try {
+        reply.send(okEnvelope(await manager.addTodo(req.params.workspace_id, req.body.text, req.body.timing), req.id));
+      } catch (error) {
+        sendError(reply, req.id, error);
+      }
+    },
+  );
+  app.post(addTodoRoute.path, addTodoRoute.options, addTodoRoute.handler as Parameters<ContinuoRouteHost['post']>[2]);
+
+  const todoActionRoute = defineRoute(
+    {
+      method: 'POST',
+      path: '/workspaces/{workspace_id}/continuo/todos/{tail}',
+      params: z.object({ workspace_id: z.string().min(1), tail: z.string().min(1) }),
+      success: { data: docSchema },
+      errors: CONTINUO_ERRORS,
+      description: 'Backlog item actions: {todo_id}:start starts it now as a task on the current line (a recurring item keeps its schedule); {todo_id}:delete removes it',
+      tags: ['continuo'],
+      operationId: 'continuoTodoAction',
+    },
+    async (req, reply) => {
+      if (!flagGuard(req.id, reply)) return;
+      const parsed = parseActionSuffix({ tail: req.params.tail, allowedActions: ['start', 'delete'] as const, resourceLabel: 'todo' });
+      if (parsed.kind !== 'action') {
+        reply.send(errEnvelope(ErrorCode.VALIDATION_FAILED, parsed.kind === 'invalid' ? parsed.reason : 'expected {todo_id}:start or :delete', req.id));
+        return;
+      }
+      try {
+        const doc = parsed.action === 'start' ? await manager.startTodo(req.params.workspace_id, parsed.id) : await manager.removeTodo(req.params.workspace_id, parsed.id);
+        reply.send(okEnvelope(doc, req.id));
+      } catch (error) {
+        sendError(reply, req.id, error);
+      }
+    },
+  );
+  app.post(todoActionRoute.path, todoActionRoute.options, todoActionRoute.handler as Parameters<ContinuoRouteHost['post']>[2]);
 
   const trajectoryActionRoute = defineRoute(
     {

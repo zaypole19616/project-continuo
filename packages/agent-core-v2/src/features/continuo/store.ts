@@ -11,6 +11,7 @@ export interface IContinuoStore {
   readonly _serviceBrand: undefined;
   load(workspaceId: string): Promise<ContinuoWorkspaceDoc | undefined>;
   peek(workspaceId: string): ContinuoWorkspaceDoc | undefined;
+  workspaceIds(): Promise<readonly string[]>;
   ensure(workspaceId: string, root: string): Promise<ContinuoWorkspaceDoc>;
   update(workspaceId: string, mutate: DocMutator): Promise<ContinuoWorkspaceDoc>;
   onDidChange(listener: (doc: ContinuoWorkspaceDoc) => void): () => void;
@@ -27,6 +28,10 @@ export class ContinuoStoreService extends Service implements IContinuoStore {
 
   constructor(@IAtomicDocumentStore private readonly documents: IAtomicDocumentStore) {
     super();
+  }
+
+  workspaceIds(): Promise<readonly string[]> {
+    return this.documents.list(CONTINUO_STORE_SCOPE);
   }
 
   peek(workspaceId: string): ContinuoWorkspaceDoc | undefined {
