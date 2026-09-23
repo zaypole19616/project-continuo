@@ -146,7 +146,7 @@ function modelError(error: unknown): unknown {
 
 async function mainAgentOf(session: Parameters<typeof ensureMainAgent>[0]): Promise<Awaited<ReturnType<typeof ensureMainAgent>>> {
   try {
-    return await mainAgentOf(session);
+    return await ensureMainAgent(session);
   } catch (error) {
     throw modelError(error);
   }
