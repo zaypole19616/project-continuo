@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ContinuoDoc, ContinuoTask, Decision, Trajectory } from './api';
-import { buildTrunk, currentLine, isExploring, lineIsBusy, planState } from './trajectory';
+import { buildTrunk, currentLine, isExploring, lineIsBusy, planState, todoGroup } from './trajectory';
 import { errorTitle, spentLimit, untilText } from './errors';
 
 const NOW = '2026-09-23T04:00:00.000Z';
@@ -84,5 +84,17 @@ describe('failure wording', () => {
     expect(spentLimit({ kind: 'ok', quota: { usages: { limit5h: { usedRatio: 0.5 } } } })).toBeUndefined();
     expect(untilText('2026-09-23T06:58:06Z', Date.parse('2026-09-23T04:27:00Z'))).toBe('2 小时 31 分钟');
     expect(untilText('2026-09-23T04:30:00Z', Date.parse('2026-09-23T04:27:00Z'))).toBe('3 分钟');
+  });
+});
+
+describe('task tab groups', () => {
+  it('puts each unfinished task under doing, waiting or stopped', () => {
+    expect(todoGroup(task('a', { status: 'running' }))).toBe('doing');
+    expect(todoGroup(task('b', { status: 'verifying' }))).toBe('doing');
+    expect(todoGroup(task('c', { status: 'awaiting_user', pendingInteraction: 'approval' }))).toBe('waiting');
+    expect(todoGroup(task('d', { status: 'failed' }))).toBe('stopped');
+    expect(todoGroup(task('e', { status: 'needs_review' }))).toBe('stopped');
+    expect(todoGroup(task('f', { status: 'interrupted' }))).toBe('stopped');
+    expect(todoGroup(task('g'))).toBeUndefined();
   });
 });

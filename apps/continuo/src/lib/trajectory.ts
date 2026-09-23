@@ -50,6 +50,21 @@ export function lineIsBusy(doc: ContinuoDoc, line: Trajectory | undefined): bool
   return tasksOn(doc, line).some((task) => BUSY.has(task.status) || (task.status === 'awaiting_user' && (task.pendingInteraction === 'question' || task.pendingInteraction === 'approval')));
 }
 
+export type TodoGroup = 'doing' | 'waiting' | 'stopped';
+
+export const TODO_GROUPS: ReadonlyArray<{ key: TodoGroup; title: string }> = [
+  { key: 'doing', title: '正在做' },
+  { key: 'waiting', title: '等你' },
+  { key: 'stopped', title: '停下来' },
+];
+
+export function todoGroup(task: ContinuoTask): TodoGroup | undefined {
+  if (task.status === 'completed') return undefined;
+  if (BUSY.has(task.status)) return 'doing';
+  if (task.status === 'awaiting_user') return 'waiting';
+  return 'stopped';
+}
+
 export function taskLabel(task: ContinuoTask): string {
   if (task.kind === 'init') return '了解项目';
   if (task.name !== undefined && task.name.trim() !== '') return task.name.trim();

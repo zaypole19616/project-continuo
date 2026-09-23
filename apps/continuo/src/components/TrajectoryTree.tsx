@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { CornerDownRight, FileText, GitBranch, GitFork, Maximize2, Minus, Plus, Shuffle } from 'lucide-react';
+import { BookOpen, CornerDownRight, FileText, GitBranch, GitFork, Maximize2, Minus, Plus, RotateCcw, Shuffle } from 'lucide-react';
 import type { ContinuoDoc, ContinuoTask, Decision, Trajectory } from '#/lib/api';
-import { buildTrunk, choiceOn, isExploring, isOpen, lastTurnOf, localTime, planState, taskLabel, type LineStub } from '#/lib/trajectory';
+import { buildTrunk, choiceOn, isExploring, isOpen, lastTurnOf, localDay, localTime, planState, taskLabel, type LineStub } from '#/lib/trajectory';
 import { Button } from '#/components/ui/button';
 import { Hint, PlanList, type PlanActions } from './PlanList';
 
@@ -42,6 +42,7 @@ function dotClass(task: ContinuoTask): string {
 
 export interface TreeActions extends PlanActions {
   onForkAfter: (task: ContinuoTask) => void;
+  onRetryInit: () => void;
 }
 
 export function TrajectoryTree({ doc, line, locked, actions }: { doc: ContinuoDoc; line: Trajectory | undefined; locked: boolean; actions: TreeActions }) {
@@ -63,8 +64,7 @@ export function TrajectoryTree({ doc, line, locked, actions }: { doc: ContinuoDo
     return () => node.removeEventListener('wheel', onWheel);
   }, []);
 
-  if (line === undefined) return <div className="t3 sm tree-empty">还没有事项。</div>;
-  const trunk = buildTrunk(doc, line);
+  const trunk = line === undefined ? [] : buildTrunk(doc, line);
   const tier = tierOf(zoom);
   const toggle = (id: string) => {
     if (tier === 'detail') return;
@@ -100,10 +100,11 @@ export function TrajectoryTree({ doc, line, locked, actions }: { doc: ContinuoDo
       <div className="tree-strip"><span>{tasks} 个事项</span><span>·</span><span>{decisions} 个决策点</span><span>·</span><span>{lines} 条轨迹</span></div>
       <div ref={scroller} className="tree-scroll" onPointerDown={startDrag} onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={endDrag}>
         <div className={`trunk tier-${tier}`} style={{ zoom: Math.max(zoom, 0.8) }}>
+          <RootNode doc={doc} tier={tierFor('root')} collapsible={tier !== 'detail'} onToggle={() => toggle('root')} locked={locked} actions={actions} />
           {trunk.map((item) => {
             if (item.kind === 'day') return <div key={`day-${item.day}`} className="t-day">{item.day}</div>;
             if (item.kind === 'task') return <TaskNode key={item.task.taskId} task={item.task} stubs={item.stubs} tier={tierFor(item.task.taskId)} collapsible={tier !== 'detail'} onToggle={() => toggle(item.task.taskId)} locked={locked} doc={doc} actions={actions} />;
-            return <DecisionNode key={item.decision.decisionId} doc={doc} line={line} decision={item.decision} tier={tierFor(item.decision.decisionId)} collapsible={tier !== 'detail'} onToggle={() => toggle(item.decision.decisionId)} locked={locked} actions={actions} />;
+            return <DecisionNode key={item.decision.decisionId} doc={doc} line={line!} decision={item.decision} tier={tierFor(item.decision.decisionId)} collapsible={tier !== 'detail'} onToggle={() => toggle(item.decision.decisionId)} locked={locked} actions={actions} />;
           })}
         </div>
       </div>
@@ -155,6 +156,57 @@ function TaskNode({ doc, task, stubs, tier, collapsible, onToggle, locked, actio
           {tier !== 'compact' && <Hint title={locked ? '等这件事做完或停下后再切换' : undefined}><Button variant="ghost" size="sm" disabled={locked} onClick={() => actions.onSwitch(stub.line)}><Shuffle size={12} />切换</Button></Hint>}
         </div>
       ))}
+    </div>
+  );
+}
+
+const INIT_STATUS: Record<string, string> = { running: '正在了解', completed: '已了解', partial: '只看了一部分', failed: '没有完成', stopped: '被打断了' };
+
+function RootNode({ doc, tier, collapsible, onToggle, locked, actions }: { doc: ContinuoDoc; tier: Tier; collapsible: boolean; onToggle: () => void; locked: boolean; actions: TreeActions }) {
+  const init = doc.init;
+  const task = init.taskId === undefined ? undefined : doc.tasks.find((candidate) => candidate.taskId === init.taskId);
+  const status = INIT_STATUS[init.status] ?? (doc.understanding === undefined ? '还没了解' : '文件夹是空的');
+  const dot = init.status === 'running' ? 'is-running' : init.status === 'failed' || init.status === 'stopped' ? 'is-failed' : init.status === 'partial' ? 'is-partial' : doc.understanding === undefined ? 'is-root' : 'is-done';
+  const at = init.startedAt;
+  const sources = [...new Set([...(doc.understanding?.sourceRefs ?? []), ...doc.context.flatMap((entry) => entry.sourceRefs)])];
+  const retryable = init.status === 'failed' || init.status === 'stopped';
+  return (
+    <div className="t-item">
+      <span className={`t-dot ${dot}`} />
+      <div className={`t-card is-root ${tier === 'detail' ? 'is-detail' : ''}`}>
+        <div className={`t-head ${collapsible ? 'is-toggle' : ''}`} onClick={collapsible ? onToggle : undefined} title={collapsible ? (tier === 'detail' ? '收起' : '展开') : undefined}>
+          <BookOpen size={13} className="t-root-icon" />
+          <span className="t-name">了解这个文件夹</span>
+          {tier !== 'compact' && <span className="t-tag is-muted">{status}</span>}
+          {at !== undefined && <span className="t-time">{tier === 'compact' ? localTime(at) : `${localDay(at).slice(5)} ${localTime(at)}`}</span>}
+        </div>
+        {tier === 'mid' && <div className="t-sub">{doc.understanding?.text.split(/[。\n]/)[0] ?? status}</div>}
+        {tier === 'detail' && (
+          <div className="t-detail">
+            <section>
+              <div className="t-sec">读过</div>
+              <div className="t-line">{sources.length === 0 ? '没有读文件，只看了目录结构' : sources.join('、')}</div>
+            </section>
+            <section>
+              <div className="t-sec">理解</div>
+              <div className="t-line">{doc.understanding?.text ?? (retryable ? (task?.lastError ?? '没有完成') : '还没有结论')}</div>
+            </section>
+            {doc.context.length > 0 && (
+              <section>
+                <div className="t-sec">要点</div>
+                {doc.context.slice(0, 5).map((entry) => <div key={entry.id} className="t-line">· {entry.text}</div>)}
+                {doc.context.length > 5 && <div className="t-line t3">还有 {doc.context.length - 5} 条</div>}
+              </section>
+            )}
+          </div>
+        )}
+        {tier === 'detail' && (task?.logPath !== undefined || retryable) && (
+          <div className="t-actions">
+            {retryable && <Hint title={locked ? '等手上的事做完或停下后再重新了解' : undefined}><Button variant="outline" size="sm" disabled={locked} onClick={actions.onRetryInit}><RotateCcw size={12} />重新了解</Button></Hint>}
+            {task?.logPath !== undefined && <button className="link" onClick={() => actions.onOpenFile(task.logPath!)}><FileText size={12} />工作日志</button>}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

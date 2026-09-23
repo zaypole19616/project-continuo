@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ArrowRight, ArrowUp, Check, CircleAlert, Play, RotateCcw, Sparkles, Square } from 'lucide-react';
 import { DEFAULT_MODEL, type ApprovalRequest, type ContinuoDoc, type ContinuoTask, type Decision, type QuestionRequest, type Trajectory, type TrajectoryPlan, type Workspace } from '#/lib/api';
 import type { TimelineState } from '#/lib/timeline';
-import { decisionsOn, lineIsBusy, taskLabel, tasksOn } from '#/lib/trajectory';
+import { decisionsOn, lineIsBusy, taskLabel, tasksOn, todoGroup, TODO_GROUPS } from '#/lib/trajectory';
 import { Timeline } from './Timeline';
 import { ApprovalCard, QuestionCard } from './InteractionCards';
 import { InitCard } from './InitCard';
@@ -44,6 +44,7 @@ type Tab = 'chat' | 'todo' | 'tree';
 
 const RESUMABLE = new Set(['paused', 'interrupted', 'failed', 'needs_review']);
 const CONTINUABLE = new Set(['paused', 'interrupted', 'needs_review']);
+const GO_LABEL: Record<string, string> = { choice: '去选', question: '去回答', approval: '去批准', reply: '去回复' };
 const isFinished = (t: ContinuoTask) => t.status === 'completed' || t.status === 'needs_review';
 
 function statusLabel(task: ContinuoTask): string {
@@ -54,7 +55,7 @@ function statusLabel(task: ContinuoTask): string {
     case 'awaiting_user': return task.pendingInteraction === 'choice' ? '等你选方案' : task.pendingInteraction === 'question' ? '等你回答' : task.pendingInteraction === 'approval' ? '等你批准' : '等你回复';
     case 'paused': return '已暂停';
     case 'interrupted': return '被打断了';
-    case 'failed': return `没做完${task.lastError ? ` · ${task.lastError}` : ''}`;
+    case 'failed': return `没做成${task.lastError ? ` · ${task.lastError}` : ''}`;
     case 'needs_review': return '还差一点';
     default: return '';
   }
@@ -91,7 +92,7 @@ export function Drawer(p: DrawerProps) {
     onSwitch: p.onSwitch,
     onOpenFile: p.onOpenFile,
   };
-  const treeActions = { ...planActions, onForkAfter: (task: ContinuoTask) => { void p.onForkAfter(task).then((ok) => { if (ok) focusComposer(); }); } };
+  const treeActions = { ...planActions, onForkAfter: (task: ContinuoTask) => { void p.onForkAfter(task).then((ok) => { if (ok) focusComposer(); }); }, onRetryInit: p.onRetryInit };
 
   const extras: Array<{ at: number; node: React.ReactNode }> = [];
   for (const task of tasks.filter((t) => isFinished(t) && t.endedAt !== undefined)) {
@@ -180,20 +181,29 @@ export function Drawer(p: DrawerProps) {
         <TabsContent value="todo" className="drawer-body">
           {todos.length === 0
             ? <div className="t3 sm">没有进行中的事项。</div>
-            : todos.toReversed().map((task) => (
-              <div key={task.taskId} className="todo-row">
-                <span className={`status-dot ${statusDot(task)}`} />
-                <div className="min-w-0 flex-1">
-                  <div className="todo-title">{taskLabel(task)}</div>
-                  <div className="todo-meta">{statusLabel(task)}</div>
-                </div>
-                <div className="flex shrink-0 gap-1">
-                  {(task.status === 'running' || task.status === 'queued') && <Button variant="ghost" size="sm" onClick={() => p.onAction(task, 'pause')}><Square size={11} fill="currentColor" />停止</Button>}
-                  {task.status === 'awaiting_user' && <Button variant="ghost" size="sm" onClick={focusComposer}><ArrowRight size={12} />{task.pendingInteraction === 'choice' ? '去选' : '去回复'}</Button>}
-                  {RESUMABLE.has(task.status) && <Button variant="ghost" size="sm" onClick={() => p.onAction(task, 'resume')}>{task.status === 'failed' ? <><RotateCcw size={12} />重试</> : <><Play size={12} />继续</>}</Button>}
-                </div>
-              </div>
-            ))}
+            : TODO_GROUPS.map((group) => {
+              const items = todos.filter((task) => todoGroup(task) === group.key).toReversed();
+              if (items.length === 0) return null;
+              return (
+                <section key={group.key} className="todo-group">
+                  <div className="todo-group-head">{group.title}<span className="t3"> · {items.length}</span></div>
+                  {items.map((task) => (
+                    <div key={task.taskId} className="todo-row">
+                      <span className={`status-dot ${statusDot(task)}`} />
+                      <div className="min-w-0 flex-1">
+                        <div className="todo-title">{taskLabel(task)}</div>
+                        <div className="todo-meta">{statusLabel(task)}</div>
+                      </div>
+                      <div className="flex shrink-0 gap-1">
+                        {(task.status === 'running' || task.status === 'queued') && <Button variant="ghost" size="sm" onClick={() => p.onAction(task, 'pause')}><Square size={11} fill="currentColor" />停止</Button>}
+                        {task.status === 'awaiting_user' && <Button variant="ghost" size="sm" onClick={focusComposer}><ArrowRight size={12} />{GO_LABEL[task.pendingInteraction ?? 'reply'] ?? '去回复'}</Button>}
+                        {RESUMABLE.has(task.status) && <Button variant="ghost" size="sm" onClick={() => p.onAction(task, 'resume')}>{task.status === 'failed' ? <><RotateCcw size={12} />重试</> : <><Play size={12} />继续</>}</Button>}
+                      </div>
+                    </div>
+                  ))}
+                </section>
+              );
+            })}
         </TabsContent>
         <AbandonDialog
           title={dropping === null ? '' : `方案 ${dropping.plan.planId} ${dropping.plan.title}`}
