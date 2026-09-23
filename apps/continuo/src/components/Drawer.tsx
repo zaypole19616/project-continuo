@@ -97,7 +97,8 @@ export function Drawer(p: DrawerProps) {
   }
   if (p.doc !== null && p.line !== undefined) {
     for (const decision of decisionsOn(p.doc, p.line)) {
-      extras.push({ at: Date.parse(decision.createdAt), node: <DecisionCard key={decision.decisionId} doc={p.doc} line={p.line} decision={decision} locked={locked} actions={planActions} /> });
+      const at = decision.exploration === undefined ? Date.parse(decision.createdAt) : decision.exploration.endedAt === undefined ? Number.POSITIVE_INFINITY : Date.parse(decision.exploration.endedAt);
+      extras.push({ at, node: <DecisionCard key={decision.decisionId} doc={p.doc} line={p.line} decision={decision} locked={locked} actions={planActions} /> });
     }
   }
   const anchored = new Map<number, React.ReactNode[]>();
@@ -156,11 +157,11 @@ export function Drawer(p: DrawerProps) {
           {p.error && <div className="banner banner-err mb-2">{p.error}</div>}
           <div className="drawer-body">
             {reading && p.doc && <InitStatus doc={p.doc} />}
-            {p.state.items.length > 0 && <Timeline items={p.state.items} after={(_, i) => anchored.get(i)} />}
+            {p.state.items.length > 0 && <Timeline items={p.state.items} root={p.line?.workDir ?? p.doc?.root} after={(_, i) => anchored.get(i)} />}
             {trailing}
             {showNextStep && <NextStepCard step={nextStep} busy={p.sending} onStart={() => p.onStartStep(nextStep.prompt)} />}
             {p.questions.map((q) => <QuestionCard key={q.question_id} q={q} onAnswer={(answers, note) => p.onAnswer(q, answers, note)} />)}
-            {p.approvals.map((a) => <ApprovalCard key={a.approval_id} a={a} root={p.doc?.root} onDecide={(d, scope) => p.onDecide(a, d, scope)} />)}
+            {p.approvals.map((a) => <ApprovalCard key={a.approval_id} a={a} root={p.line?.workDir ?? p.doc?.root} onDecide={(d, scope) => p.onDecide(a, d, scope)} />)}
             <div ref={bottomRef} />
           </div>
           <div className="drawer-foot">{composer}</div>

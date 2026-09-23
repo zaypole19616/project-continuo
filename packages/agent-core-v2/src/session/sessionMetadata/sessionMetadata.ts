@@ -33,6 +33,13 @@ export interface SessionMeta {
 
 export type SessionMetaPatch = Partial<Omit<SessionMeta, 'id' | 'createdAt'>>;
 
+export const PROMPT_CACHE_KEY_METADATA = 'promptCacheKey';
+
+export function promptCacheKeyOf(meta: SessionMeta): string | undefined {
+  const key = meta.custom?.[PROMPT_CACHE_KEY_METADATA];
+  return typeof key === 'string' && key !== '' ? key : undefined;
+}
+
 export interface SessionMetadataChangedEvent {
   readonly changed: readonly (keyof SessionMeta)[];
 }

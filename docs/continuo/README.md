@@ -34,7 +34,9 @@ This repository is a fork of [MoonshotAI/kimi-code](https://github.com/MoonshotA
 
 **方向不明时：给方案，由你选。** 如果材料定不了怎么做、而不同做法会得出不同的产物（比如 Q4 目标按哪个口径定），Agent 不替你挑，也不只问一句，而是开一个**决策点**：若干个真正不同的方案，每个写清依据和风险，完整内容落成项目里的方案文件（`work-log/plan-日期-分类-任务名-方案A.md`），然后停下来。你在对话里的决策卡上点「走这条」，它就按那个方案接着做；觉得不够就点「再来几个」，新方案追加在后面，旧的不删；它判断已经没有真正不同的方向时，会说明为什么并把需要你定的那个问题抛回来。你也可以不选，直接在输入框里说你想怎么做。
 
-**换一条路，原来的不动。** 选完之后想试另一个方案，点那个方案的「走这条」：Harness 用 Kimi Code 的会话 fork 从**决策点之前**复制出一条新轨迹，新会话里没有上一个方案的执行过程，产物另起文件名，不覆盖原来的。想回到某件事之后重来，在轨迹树上点那个节点的「从这里继续」，同样是复制出一条新轨迹。原来的轨迹一个字都不改，随时能切回去；不要的方案可以「放弃」并写一句原因。对话框只显示当前这条轨迹，没有会话切换器；所有分叉都在「轨迹」里。
+**方案需要各自去查时：分头写。** 如果每个方案都得单独翻不同的材料、各算各的（比如按用户、竞品、成本三个角度分别定价），主 Agent 先列出两到四个角度和理由，Harness 把主会话在同一个点上各复制一份，每份只写一个方案。复制出来的会话前缀一字不差，差别只在最后一条消息，所以它们共用主会话已经缓存好的那一段。写方案的只能读材料，不能改文件、不能跑命令、不能打扰你；拿不准某件事时才去问写其他方案的那个，发现和别人的方案一样就撤回并注明和哪个重复。决策卡上能看到哪几个还在写，都写完了才能选；每个最多 8 步，超了就停下，记成没写完。
+
+**换一条路，原来的不动。** 选完之后想试另一个方案，点那个方案的「走这条」：Harness 用 Kimi Code 的会话 fork 从**决策点之前**复制出一条新轨迹，新会话里没有上一个方案的执行过程；同时把项目文件在决策点那一刻的样子复制成这条轨迹自己的目录（`.continuo/lines/<轨迹>/`），新方案之后的读写都在这份副本里，原来的文件一个字节都不动。想回到某件事之后重来，在轨迹树上点那个节点的「从这里继续」，同样是复制出一条新轨迹，文件取那件事刚做完时的样子。切换轨迹时，文件区显示的是那条轨迹自己的文件，工作日志也各记各的。不要的方案可以「放弃」并写一句原因。对话框只显示当前这条轨迹，没有会话切换器；所有分叉都在「轨迹」里。
 
 **纠正它。** 它理解错了，就在对话里说一句（"以后 H1 以 Northwind 开头"）。当前会话立刻照办，这句话也会进入这件事的工作日志；下次打开时它从日志里读到。没有需要你去确认的推断条目，也没有第二个地方要维护。
 
@@ -92,6 +94,10 @@ This repository is a fork of [MoonshotAI/kimi-code](https://github.com/MoonshotA
 | 按轮记录 + 工作日志落盘 | `recordRound` / `writeWorkLog` | 过程要留在项目里，而不是留在应用状态里：换台机器、换个人、换个 Agent 打开这个文件夹，`work-log/` 都还在 |
 | 并发打开合并 | `open()` 的 in-flight map | 前端严格模式会把 open 发两次，修之前跑出了两个初始化任务 |
 | 决策点与轨迹 | 引擎侧 `Trajectory` 工具（`propose` / `expand` / `list`）与 `trajectory.ts`；服务侧 `choosePlan` / `expandPlans` / `abandonPlan` / `activateTrajectory` / `forkAfterTask` | 方向的判断留给人，而且判断的那一刻被完整记下：条件、候选及依据、选了哪个、执行到哪、放弃了哪个以及为什么。轨迹只追加不覆盖，每条都能单独读、单独切回去 |
+| 分头写方案 | `Trajectory` 的 `explore`（主 Agent）与 `submit` / `ask` / `withdraw`（写方案的副本）；服务侧 `startExploration` / `finishExploration` | 需要各自调查的方案由各自的副本去写，彼此只在有疑问时对话，重复的合并；fork 时把项目根会话的缓存键带过去（会话元数据 `promptCacheKey`），副本命中同一段前缀缓存 |
+| 每条轨迹一个目录 | `kap-server/src/continuo/lines.ts`（快照 + `git worktree`）；引擎侧 `guard.ts` | 新方案不覆盖旧方案的产物，靠的是文件系统：分支轨迹在自己的副本目录里读写，越界的文件读写和不在本目录启动的命令在执行前被拒 |
+| 分支的上下文 | `contextBundle.ts` | 当前轨迹上做过的事每件一行（细节在它自己的工作日志里）；其他方案一句话说明它在别的轨迹上的去向，附方案文件地址，需要时再读 |
+| 轨迹导出 | `export.ts` + `GET /api/v1/workspaces/{id}/continuo/export` | 每条轨迹一份样本（上下文、逐轮输入输出、产物后来有没有被改、决策点上各方案的结局），外加由选择、切换、放弃得出的方案偏好对 |
 | Finder + 对话 + 事项 + 轨迹 | `apps/continuo/`（Vite + React，独立于官方 web UI） | 显性层只做三件事：需要你时才打断、打断带上下文、随时可看可接管 |
 
 ### 2.3 一条权限策略的取舍
@@ -108,11 +114,13 @@ This repository is a fork of [MoonshotAI/kimi-code](https://github.com/MoonshotA
 ## 3. 已知限制
 
 - 项目要点只在打开项目那次读出来；之后指引文件改了，要等你在对话里说一句，或者删掉项目状态重新打开。
-- 兜底只覆盖 Write/Edit：Shell 里的写入观测不到。
+- 交付核验的「观测到的写入」只覆盖 Write/Edit：Shell 里的写入观测不到。
 - 同一个项目同一时间只跑一件事。
 - 工作日志由 Harness 从任务状态生成，不是模型按 AGENTS.md 自己写的；STAR 的 A/R 在任务收尾时由 Harness 按实际发生的事补全，不等用户确认阶段完成。
-- 轨迹做了设计文档里的阶段一、二（决策点、方案文件、人选、再来几个、换方案、从这里继续、放弃）；方案目前由主 Agent 一轮写出，多 Agent 各走一条再汇合（阶段三）、分支上下文的压缩规则（阶段四）、轨迹导出为训练样本（阶段五）、代码任务的 worktree 隔离都没做，见 [轨迹设计文档](plan-2026-09-23-continuo-轨迹.md)。
-- 新方案不覆盖旧方案的产物，靠的是注入的约束（告诉 Agent 哪些文件属于其他方案、自己的文件加方案后缀）加上收尾核验（写到别的方案的产物上会被标成「还差一点」），不是文件系统层面的拦截。
+- 轨迹目录用 git 复制：项目本身是 git 仓库时，快照用临时索引生成、挂在 `refs/continuo/` 下，副本是 `git worktree`，不动你的分支、暂存区和提交；不是 git 仓库时，用 `.continuo/git` 里的私有仓库。被 `.gitignore` 忽略的文件（如 `node_modules`、`.env`）不会进副本；大文件会在磁盘上多存一份。机器上没有 git 或快照失败时，这条轨迹退回共用项目目录，此时拦截只保护其他轨迹上报过的产物。
+- 拦截发生在工具执行前：Read / Write / Edit / Grep / Glob 的路径必须在本轨迹目录内，Shell 命令必须从本轨迹目录启动。命令里用绝对路径故意写到目录外，拦不住；这不是沙箱。
+- 分头写方案：最多 4 个角度，每个最多 8 步；写方案的副本不能问你，只能问彼此。各副本的步数和 token 用量记在项目状态和导出里，界面上不显示。
+- 轨迹导出只有接口，没有界面入口。
 - 「再来几个」只在决策点还没选的时候可用；「放弃」只在选定之后出现在其他方案上。
 - 每一轮只记到 20 轮、每轮 20 个文件路径，超出截断。
 - 前端用 1.5 秒轮询取项目状态变化，没有把状态变更接进 WebSocket。
@@ -138,4 +146,4 @@ KIMI_PORT=58627 pnpm dev:continuo
 
 打开 `http://127.0.0.1:5180/#token=<上面的 token>`，新建一个项目，或打开自己的文件夹。
 
-代码位置：引擎侧 `packages/agent-core-v2/src/features/continuo/`，服务侧 `packages/kap-server/src/continuo/`（含只读文件接口 `files.ts`）与 `routes/continuo.ts`，前端 `apps/continuo/`（`pages/Launcher` 启动卡，`components/Finder` 文件窗口 + `components/Drawer` 对话抽屉），测试 `packages/agent-core-v2/test/features/continuo/`。
+代码位置：引擎侧 `packages/agent-core-v2/src/features/continuo/`，服务侧 `packages/kap-server/src/continuo/`（含只读文件接口 `files.ts`、轨迹目录 `lines.ts`）与 `routes/continuo.ts`（含导出接口 `GET /api/v1/workspaces/{id}/continuo/export`），前端 `apps/continuo/`（`pages/Launcher` 启动卡，`components/Finder` 文件窗口 + `components/Drawer` 对话抽屉），测试 `packages/agent-core-v2/test/features/continuo/`、`packages/kap-server/test/continuoLines.test.ts`、`apps/continuo/src/lib/trajectory.test.ts`。

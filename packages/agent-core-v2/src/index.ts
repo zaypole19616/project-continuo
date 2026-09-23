@@ -739,6 +739,7 @@ export * from '#/features/todo/tools/todo-list/todo-list';
 import '#/features/todo/todoFeature';
 export * from '#/features/continuo/types';
 export * from '#/features/continuo/trajectory';
+export * from '#/features/continuo/export';
 export * from '#/features/continuo/store';
 export * from '#/features/continuo/contextBundle';
 export * from '#/features/continuo/bridge';

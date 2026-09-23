@@ -1,4 +1,4 @@
-export const CONTINUO_SCHEMA_VERSION = 3;
+export const CONTINUO_SCHEMA_VERSION = 4;
 export const CONTINUO_STORE_SCOPE = 'continuo-workspace';
 
 export interface ContextEntry {
@@ -62,6 +62,36 @@ export interface TrajectoryPlan {
   readonly createdAt: string;
 }
 
+export type AngleStatus = 'queued' | 'running' | 'submitted' | 'withdrawn' | 'failed';
+
+export interface ExplorationAngle {
+  readonly key: string;
+  readonly title: string;
+  readonly angle: string;
+  readonly status: AngleStatus;
+  readonly sessionId?: string;
+  readonly planId?: string;
+  readonly note?: string;
+  readonly steps: number;
+  readonly usage?: TaskUsage;
+}
+
+export interface ExplorationMessage {
+  readonly from: string;
+  readonly to: string;
+  readonly text: string;
+  readonly at: string;
+}
+
+export interface Exploration {
+  readonly reason: string;
+  readonly angles: readonly ExplorationAngle[];
+  readonly messages: readonly ExplorationMessage[];
+  readonly maxSteps: number;
+  readonly startedAt: string;
+  readonly endedAt?: string;
+}
+
 export interface Decision {
   readonly decisionId: string;
   readonly taskId: string;
@@ -70,6 +100,8 @@ export interface Decision {
   readonly turnIndex: number;
   readonly plans: readonly TrajectoryPlan[];
   readonly exhausted?: { readonly reason: string; readonly ask: string; readonly at: string };
+  readonly exploration?: Exploration;
+  readonly snapshot?: string;
   readonly createdAt: string;
 }
 
@@ -100,6 +132,7 @@ export interface Trajectory {
   readonly choices: readonly TrajectoryChoice[];
   readonly turnCount: number;
   readonly origin?: TrajectoryOrigin;
+  readonly workDir?: string;
   readonly abandonReason?: string;
   readonly createdAt: string;
 }
@@ -134,6 +167,7 @@ export interface ContinuoTask {
   readonly rounds?: readonly TaskRound[];
   readonly logPath?: string;
   readonly branch?: { readonly decisionId: string; readonly planId: string; readonly label: string };
+  readonly snapshot?: string;
   readonly usage: TaskUsage;
   readonly lastError?: string;
   readonly createdAt: string;

@@ -1,7 +1,7 @@
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 
-import type { ContinuoWorkspaceDoc } from '@moonshot-ai/agent-core-v2';
+import { currentTrajectory, lineRoot, type ContinuoWorkspaceDoc } from '@moonshot-ai/agent-core-v2';
 
 import { ContinuoError } from './errors';
 
@@ -39,13 +39,20 @@ export interface ContinuoFileContent {
 export function resolveInsideRoot(root: string, relPath: string): string {
   const abs = resolve(root, relPath === '' ? '.' : relPath);
   const rel = relative(root, abs);
-  if (rel.startsWith('..') || isAbsolute(rel)) throw new ContinuoError('invalid_state', `path ${relPath} is outside the workspace`);
+  if (rel.startsWith('..') || isAbsolute(rel)) throw new ContinuoError('invalid_state', `${relPath} 不在这个项目里。`);
   return abs;
+}
+
+function viewRoot(doc: ContinuoWorkspaceDoc): string {
+  return lineRoot(doc, currentTrajectory(doc));
 }
 
 export function producedByIndex(doc: ContinuoWorkspaceDoc): Map<string, string> {
   const index = new Map<string, string>();
+  const line = currentTrajectory(doc);
+  const own = line === undefined ? undefined : new Set(line.taskIds);
   for (const task of doc.tasks) {
+    if (own !== undefined && task.kind === 'user' && !own.has(task.taskId)) continue;
     for (const item of task.report?.deliverables ?? []) {
       if (item.exists === false) continue;
       index.set(normalize(item.path), task.taskId);
@@ -59,15 +66,16 @@ function normalize(path: string): string {
 }
 
 export async function listFiles(doc: ContinuoWorkspaceDoc, relPath: string): Promise<ContinuoFileListing> {
-  const dir = resolveInsideRoot(doc.root, relPath);
-  const rel = normalize(relative(doc.root, dir));
+  const root = viewRoot(doc);
+  const dir = resolveInsideRoot(root, relPath);
+  const rel = normalize(relative(root, dir));
   const produced = producedByIndex(doc);
   const guideFiles = new Set((doc.scan?.guideFiles ?? []).map(normalize));
   let names: import('node:fs').Dirent[];
   try {
     names = await readdir(dir, { withFileTypes: true });
   } catch {
-    throw new ContinuoError('entry_not_found', `folder ${relPath} does not exist`);
+    throw new ContinuoError('entry_not_found', `找不到文件夹 ${relPath}。`);
   }
   const entries: ContinuoFileEntry[] = [];
   for (const dirent of names) {
@@ -85,16 +93,17 @@ export async function listFiles(doc: ContinuoWorkspaceDoc, relPath: string): Pro
     }
   }
   entries.sort((a, b) => (a.kind === b.kind ? a.name.localeCompare(b.name) : a.kind === 'dir' ? -1 : 1));
-  const parent = rel === '' ? null : normalize(relative(doc.root, resolve(dir, '..')));
+  const parent = rel === '' ? null : normalize(relative(root, resolve(dir, '..')));
   return { path: rel, parent, entries };
 }
 
 export async function readTextFile(doc: ContinuoWorkspaceDoc, relPath: string): Promise<ContinuoFileContent> {
-  const abs = resolveInsideRoot(doc.root, relPath);
+  const root = viewRoot(doc);
+  const abs = resolveInsideRoot(root, relPath);
   let info: Awaited<ReturnType<typeof stat>>;
-  try { info = await stat(abs); } catch { throw new ContinuoError('entry_not_found', `file ${relPath} does not exist`); }
-  if (!info.isFile()) throw new ContinuoError('invalid_state', `${relPath} is not a file`);
-  const rel = normalize(relative(doc.root, abs));
+  try { info = await stat(abs); } catch { throw new ContinuoError('entry_not_found', `找不到文件 ${relPath}。`); }
+  if (!info.isFile()) throw new ContinuoError('invalid_state', `${relPath} 不是文件。`);
+  const rel = normalize(relative(root, abs));
   const producedBy = producedByIndex(doc).get(rel);
   const base = { path: rel, size: info.size, modifiedAt: info.mtime.toISOString(), producedBy };
   if (!TEXT_EXTENSIONS.test(abs)) return { ...base, binary: true, truncated: false };

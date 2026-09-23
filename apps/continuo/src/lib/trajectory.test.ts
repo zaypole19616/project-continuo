@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ContinuoDoc, ContinuoTask, Decision, Trajectory } from './api';
-import { buildTrunk, currentLine, lineIsBusy, planState } from './trajectory';
+import { buildTrunk, currentLine, isExploring, lineIsBusy, planState } from './trajectory';
+import { friendlyError } from './timeline';
 
 const NOW = '2026-09-23T04:00:00.000Z';
 
@@ -53,5 +54,24 @@ describe('trajectory tree', () => {
     expect(currentLine(busy)?.trajectoryId).toBe('main');
     expect(lineIsBusy(busy, currentLine(busy))).toBe(true);
     expect(lineIsBusy(doc([{ ...main, status: 'current' }]), currentLine(doc([{ ...main, status: 'current' }])))).toBe(false);
+  });
+});
+
+describe('plans written in parallel', () => {
+  const exploring: Decision = { ...decision, plans: [plan('A')], exploration: { reason: 'r', angles: [{ key: 'A', title: 'a', angle: 'x', status: 'submitted', planId: 'A', steps: 2 }, { key: 'B', title: 'b', angle: 'y', status: 'running', steps: 1 }], maxSteps: 8, startedAt: NOW } };
+
+  it('keeps a decision open for writing until every author is done', () => {
+    expect(isExploring(exploring)).toBe(true);
+    expect(isExploring({ ...exploring, exploration: { ...exploring.exploration!, endedAt: NOW } })).toBe(false);
+    expect(isExploring(decision)).toBe(false);
+  });
+});
+
+describe('failure wording', () => {
+  it('names the common model failures in plain words and keeps the rest', () => {
+    expect(friendlyError("403 You've reached your 5-hour usage limit.")).toContain('额度用完');
+    expect(friendlyError('429 Too Many Requests')).toContain('忙不过来');
+    expect(friendlyError('fetch failed')).toContain('连不上');
+    expect(friendlyError('disk full')).toBe('disk full');
   });
 });

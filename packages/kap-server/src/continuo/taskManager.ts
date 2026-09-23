@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { mkdir, readdir, rename, stat, writeFile } from 'node:fs/promises';
-import { isAbsolute, relative, resolve } from 'node:path';
+import { basename, isAbsolute, relative, resolve } from 'node:path';
 
 import {
   CONTINUO_INIT_PROFILE,
@@ -16,18 +16,24 @@ import {
   ISessionContext,
   ISessionManager,
   IWorkspaceService,
+  PROMPT_CACHE_KEY_METADATA,
   WORK_LOG_DIR,
+  buildTrajectoryExport,
   choiceOn,
   currentTrajectory,
   getLiveSessionById,
   inheritedChoices,
+  isExploring,
   lastTurnOf,
+  lineById,
+  lineRoot,
   localDay,
   localTime,
   logSlug,
   openDecisionOf,
   planStatusOn,
   resumeSessionById,
+  rootOfTask,
   taskCategory,
   taskName,
   tasksThrough,
@@ -35,6 +41,8 @@ import {
   type ContinuoTask,
   type ContinuoWorkspaceDoc,
   type Decision,
+  type DeliverableFeedback,
+  type ExplorationAngle,
   type IAgentScopeHandle,
   type ISessionScopeHandle,
   type Scope,
@@ -43,12 +51,14 @@ import {
   type TaskTrigger,
   type Trajectory,
   type TrajectoryOrigin,
+  type TrajectoryExport,
   type TrajectoryPlan,
 } from '@moonshot-ai/agent-core-v2';
 import { ulid } from 'ulid';
 
 import { ensureMainAgent } from '../transport/mainAgent';
 import { ContinuoError } from './errors';
+import { createLineDir, linesSettled, snapshotDir } from './lines';
 import { renderScanForPrompt, scanWorkspace } from './scan';
 
 export { ContinuoError } from './errors';
@@ -63,7 +73,16 @@ interface Attachment {
   turnIndex?: number;
 }
 
+interface Explorer {
+  readonly dispose: () => void;
+  readonly agent: IAgentScopeHandle;
+  readonly decisionId: string;
+  readonly key: string;
+}
+
 const INIT_STEP_BUDGET = 8;
+const FORK_RETRIES = 25;
+const FINAL_ANGLE = new Set<ExplorationAngle['status']>(['submitted', 'withdrawn', 'failed']);
 const BUSY = new Set<TaskStatus>(['queued', 'running', 'verifying']);
 
 const TASK_STATUS_LABEL: Record<TaskStatus, string> = {
@@ -77,6 +96,32 @@ const TASK_STATUS_LABEL: Record<TaskStatus, string> = {
   failed: '没能完成',
   interrupted: '被打断',
 };
+
+function friendlyError(message: string): string {
+  if (/usage limit|quota/i.test(message)) return 'Kimi 的用量额度用完了，额度恢复后点「继续」';
+  if (/rate limit|429|overloaded|503/i.test(message)) return '模型服务暂时忙不过来，稍后点「继续」';
+  if (/401|unauthori[sz]ed|not logged in|login/i.test(message)) return 'Kimi 账号需要重新登录，登录后点「继续」';
+  if (/timeout|timed out|ECONNRESET|ENOTFOUND|fetch failed|network/i.test(message)) return '连不上模型服务，稍后点「继续」';
+  return message.slice(0, 160);
+}
+
+function phaseOf(tool: string, path: string | undefined): string {
+  const file = path === undefined ? '' : ` ${basename(path)}`;
+  switch (tool) {
+    case 'Read':
+    case 'ReadMediaFile': return `在读${file}`;
+    case 'Write':
+    case 'Edit': return `在写${file}`;
+    case 'Grep':
+    case 'Glob': return '在查找材料';
+    case 'Bash': return '在运行命令';
+    case 'WebSearch': return '在搜索网页';
+    case 'FetchURL': return '在看网页';
+    case 'Trajectory': return '在整理方案';
+    case 'ReportWorkspaceResult': return '在整理结果';
+    default: return '进行中';
+  }
+}
 
 function readPath(display: unknown): string | undefined {
   if (typeof display !== 'object' || display === null) return undefined;
@@ -95,6 +140,7 @@ function writtenPath(display: unknown): string | undefined {
 
 export class ContinuoTaskManager {
   private readonly attachments = new Map<string, Attachment>();
+  private readonly explorers = new Map<string, Explorer>();
   private readonly requests = new Map<string, string>();
   private readonly opening = new Map<string, Promise<ContinuoWorkspaceDoc>>();
 
@@ -116,7 +162,7 @@ export class ContinuoTaskManager {
 
   private async openOnce(workspaceId: string, clientRequestId?: string): Promise<ContinuoWorkspaceDoc> {
     const workspace = await this.core.accessor.get(IWorkspaceService).get(workspaceId);
-    if (workspace === undefined) throw new ContinuoError('workspace_not_found', `workspace ${workspaceId} does not exist`);
+    if (workspace === undefined) throw new ContinuoError('workspace_not_found', '这个项目找不到了。');
     if (clientRequestId !== undefined && this.requests.get(`open:${workspaceId}`) === clientRequestId) {
       const existing = await this.store.load(workspaceId);
       if (existing !== undefined) return existing;
@@ -129,6 +175,10 @@ export class ContinuoTaskManager {
       openCount: current.openCount + 1,
       tasks: current.tasks.map((task) => this.reconcileOnOpen(task)),
     }));
+    for (const decision of doc.decisions) {
+      if (isExploring(decision) && !this.attachments.has(decision.taskId)) await this.finishExploration(workspaceId, decision.decisionId, '被打断');
+    }
+    doc = await this.requireDoc(workspaceId);
     if (doc.init.status === 'pending' || doc.init.status === 'failed' || doc.init.status === 'stopped') {
       doc = await this.startInit(doc);
     } else if (doc.init.status === 'running' && !this.isLive(doc.init.taskId, doc)) {
@@ -141,6 +191,20 @@ export class ContinuoTaskManager {
     return this.store.load(workspaceId);
   }
 
+  async exportTrajectories(workspaceId: string): Promise<TrajectoryExport> {
+    const doc = await this.requireDoc(workspaceId);
+    const feedback = new Map<string, DeliverableFeedback>();
+    for (const task of doc.tasks) {
+      const root = rootOfTask(doc, task);
+      for (const item of task.report?.deliverables ?? []) {
+        const info = await stat(isAbsolute(item.path) ? item.path : resolve(root, item.path)).catch(() => undefined);
+        const endedAt = task.endedAt === undefined ? Number.POSITIVE_INFINITY : Date.parse(task.endedAt) + 1000;
+        feedback.set(`${task.taskId}:${item.path}`, { exists: info !== undefined, modifiedAfter: info !== undefined && info.mtimeMs > endedAt });
+      }
+    }
+    return buildTrajectoryExport(doc, feedback, new Date().toISOString());
+  }
+
   async createUserTask(workspaceId: string, text: string, clientRequestId?: string): Promise<{ doc: ContinuoWorkspaceDoc; task: ContinuoTask }> {
     const doc = await this.requireDoc(workspaceId);
     if (clientRequestId !== undefined) {
@@ -148,15 +212,15 @@ export class ContinuoTaskManager {
       const existing = known === undefined ? undefined : doc.tasks.find((task) => task.taskId === known);
       if (existing !== undefined) return { doc, task: existing };
     }
-    const running = doc.tasks.find((task) => task.kind === 'user' && (task.status === 'running' || (task.status === 'awaiting_user' && task.pendingInteraction !== 'reply') || task.status === 'verifying'));
+    const running = doc.tasks.find((task) => task.kind === 'user' && (BUSY.has(task.status) || (task.status === 'awaiting_user' && (task.pendingInteraction === 'question' || task.pendingInteraction === 'approval'))));
     if (running !== undefined) {
-      throw new ContinuoError('invalid_state', `task ${running.taskId} is still ${running.status}; one task runs at a time`);
+      throw new ContinuoError('invalid_state', `「${taskName(running)}」还没结束，等它做完或停下后再交代新的事。`);
     }
     const line = currentTrajectory(doc);
     const session = line === undefined
       ? await this.core.accessor.get(ISessionManager).create({ workspaceId, workDir: doc.root, mainAgentBinding: { profile: CONTINUO_WORKER_PROFILE } })
       : await resumeSessionById(this.core.accessor, line.sessionId);
-    if (session === undefined) throw new ContinuoError('invalid_state', `the session of the current line is gone`);
+    if (session === undefined) throw new ContinuoError('invalid_state', '这条轨迹的对话记录找不到了。');
     const agent = await ensureMainAgent(session);
     await this.ensureModel(agent);
     const sessionId = session.accessor.get(ISessionContext).sessionId;
@@ -195,6 +259,11 @@ export class ContinuoTaskManager {
     const task = this.requireTask(doc, taskId);
     if (task.status !== 'running' && task.status !== 'awaiting_user' && task.status !== 'queued') return doc;
     await this.patchTask(workspaceId, taskId, (current) => ({ ...current, pauseRequested: true }));
+    const exploring = doc.decisions.find((decision) => decision.taskId === taskId && isExploring(decision));
+    if (exploring !== undefined) {
+      await this.finishExploration(workspaceId, exploring.decisionId, '已停止');
+      return this.requireDoc(workspaceId);
+    }
     const session = await resumeSessionById(this.core.accessor, task.sessionId);
     if (session !== undefined) {
       const agent = await ensureMainAgent(session);
@@ -212,10 +281,10 @@ export class ContinuoTaskManager {
     const doc = await this.requireDoc(workspaceId);
     const task = this.requireTask(doc, taskId);
     if (task.status !== 'paused' && task.status !== 'interrupted' && task.status !== 'needs_review' && task.status !== 'failed') {
-      throw new ContinuoError('invalid_state', `task ${taskId} is ${task.status}; only paused, interrupted, failed or needs_review tasks resume`);
+      throw new ContinuoError('invalid_state', '这件事现在不能继续。');
     }
     const session = await resumeSessionById(this.core.accessor, task.sessionId);
-    if (session === undefined) throw new ContinuoError('invalid_state', `session ${task.sessionId} for task ${taskId} is gone`);
+    if (session === undefined) throw new ContinuoError('invalid_state', '这件事的对话记录找不到了。');
     const agent = await ensureMainAgent(session);
     await this.ensureModel(agent);
     this.attach(workspaceId, taskId, session, agent);
@@ -231,14 +300,14 @@ export class ContinuoTaskManager {
   async reply(workspaceId: string, taskId: string, text: string): Promise<ContinuoWorkspaceDoc> {
     const doc = await this.requireDoc(workspaceId);
     const task = this.requireTask(doc, taskId);
-    if (task.kind !== 'user') throw new ContinuoError('invalid_state', 'only user tasks accept replies');
+    if (task.kind !== 'user') throw new ContinuoError('invalid_state', '这件事不接受回复。');
     if (task.status === 'running' || task.status === 'verifying' || task.status === 'queued' || (task.status === 'awaiting_user' && task.pendingInteraction !== 'reply' && task.pendingInteraction !== 'choice')) {
-      throw new ContinuoError('invalid_state', `task ${taskId} is ${task.status}; answer its pending interaction or stop it first`);
+      throw new ContinuoError('invalid_state', '这件事正在等你回答或批准，先处理那张卡片。');
     }
     const line = trajectoryOfSession(doc, task.sessionId);
     const open = line === undefined || task.pendingInteraction !== 'choice' ? undefined : openDecisionOf(doc, line, taskId);
     const session = await resumeSessionById(this.core.accessor, task.sessionId);
-    if (session === undefined) throw new ContinuoError('invalid_state', `session ${task.sessionId} for task ${taskId} is gone`);
+    if (session === undefined) throw new ContinuoError('invalid_state', '这件事的对话记录找不到了。');
     const agent = await ensureMainAgent(session);
     await this.ensureModel(agent);
     this.attach(workspaceId, taskId, session, agent);
@@ -257,20 +326,20 @@ export class ContinuoTaskManager {
     const doc = await this.requireDoc(workspaceId);
     const decision = this.requireDecision(doc, decisionId);
     const plan = this.requirePlan(decision, planId);
-    if (plan.abandoned !== undefined) throw new ContinuoError('invalid_state', `plan ${planId} was abandoned`);
+    if (plan.abandoned !== undefined) throw new ContinuoError('invalid_state', '这个方案已经放弃了。');
     const line = this.requireCurrent(doc);
     this.assertIdle(doc, line);
     const status = planStatusOn(doc, line, decision, plan);
     if (status.kind === 'current') return doc;
     if (status.kind === 'elsewhere') return this.activateTrajectory(workspaceId, status.trajectory.trajectoryId);
     const home = doc.trajectories.find((candidate) => candidate.trajectoryId === decision.trajectoryId);
-    if (home === undefined) throw new ContinuoError('invalid_state', `the line of decision ${decisionId} is gone`);
+    if (home === undefined) throw new ContinuoError('invalid_state', '这个决策点所在的轨迹找不到了。');
     const at = new Date().toISOString();
     const roundPrompt = `选择方案${plan.planId}：${plan.title}`;
     if (home.trajectoryId === line.trajectoryId && choiceOn(home, decisionId) === undefined) {
       const task = this.requireTask(doc, decision.taskId);
       const session = await resumeSessionById(this.core.accessor, task.sessionId);
-      if (session === undefined) throw new ContinuoError('invalid_state', `session ${task.sessionId} is gone`);
+      if (session === undefined) throw new ContinuoError('invalid_state', '这件事的对话记录找不到了。');
       const agent = await ensureMainAgent(session);
       await this.ensureModel(agent);
       this.attach(workspaceId, task.taskId, session, agent);
@@ -285,11 +354,12 @@ export class ContinuoTaskManager {
     }
     const origin = this.requireTask(doc, decision.taskId);
     const label = `方案${plan.planId}`;
+    await linesSettled(doc.root);
     const forked = await this.forkLine(workspaceId, home, decision.turnIndex, label, {
       taskIds: tasksThrough(doc, home, (candidate) => candidate.taskId !== decision.taskId),
       choices: [...inheritedChoices(home, decision.turnIndex), { decisionId, planId, turnIndex: decision.turnIndex + 1, at }],
       origin: { fromTrajectoryId: home.trajectoryId, turnIndex: decision.turnIndex, decisionId, planId },
-    });
+    }, this.requireDecision(await this.requireDoc(workspaceId), decisionId).snapshot);
     const taskId = `task_${randomUUID().slice(0, 8)}`;
     const branchTask: ContinuoTask = {
       taskId,
@@ -326,12 +396,12 @@ export class ContinuoTaskManager {
     const line = this.requireCurrent(doc);
     this.assertIdle(doc, line);
     if (decision.trajectoryId !== line.trajectoryId || choiceOn(line, decisionId) !== undefined) {
-      throw new ContinuoError('invalid_state', 'more plans can only be added while this decision point is still open on the current line');
+      throw new ContinuoError('invalid_state', '只有还没选定的决策点才能再要方案。');
     }
-    if (decision.exhausted !== undefined) throw new ContinuoError('invalid_state', 'no meaningfully different plan is left for this decision point');
+    if (decision.exhausted !== undefined) throw new ContinuoError('invalid_state', '这个决策点已经没有明显不同的方案了。');
     const task = this.requireTask(doc, decision.taskId);
     const session = await resumeSessionById(this.core.accessor, task.sessionId);
-    if (session === undefined) throw new ContinuoError('invalid_state', `session ${task.sessionId} is gone`);
+    if (session === undefined) throw new ContinuoError('invalid_state', '这件事的对话记录找不到了。');
     const agent = await ensureMainAgent(session);
     await this.ensureModel(agent);
     this.attach(workspaceId, task.taskId, session, agent);
@@ -344,7 +414,7 @@ export class ContinuoTaskManager {
     const decision = this.requireDecision(doc, decisionId);
     const plan = this.requirePlan(decision, planId);
     const line = this.requireCurrent(doc);
-    if (choiceOn(line, decisionId)?.planId === planId) throw new ContinuoError('invalid_state', 'switch to another plan before abandoning the one this line follows');
+    if (choiceOn(line, decisionId)?.planId === planId) throw new ContinuoError('invalid_state', '先换到别的方案，再放弃这一个。');
     const at = new Date().toISOString();
     const note = reason === undefined || reason.trim() === '' ? undefined : reason.trim().slice(0, 300);
     await this.store.update(workspaceId, (current) => ({
@@ -360,8 +430,8 @@ export class ContinuoTaskManager {
   async activateTrajectory(workspaceId: string, trajectoryId: string): Promise<ContinuoWorkspaceDoc> {
     const doc = await this.requireDoc(workspaceId);
     const target = doc.trajectories.find((candidate) => candidate.trajectoryId === trajectoryId);
-    if (target === undefined) throw new ContinuoError('invalid_state', `line ${trajectoryId} does not exist`);
-    if (target.status === 'abandoned') throw new ContinuoError('invalid_state', 'this line was abandoned');
+    if (target === undefined) throw new ContinuoError('invalid_state', '这条轨迹找不到了。');
+    if (target.status === 'abandoned') throw new ContinuoError('invalid_state', '这条轨迹已经放弃了。');
     if (target.status === 'current') return doc;
     this.assertIdle(doc, this.requireCurrent(doc));
     return this.store.update(workspaceId, (current) => ({
@@ -375,25 +445,32 @@ export class ContinuoTaskManager {
     const line = this.requireCurrent(doc);
     this.assertIdle(doc, line);
     const task = this.requireTask(doc, taskId);
-    if (!line.taskIds.includes(taskId)) throw new ContinuoError('invalid_state', `task ${taskId} is not on the current line`);
+    if (!line.taskIds.includes(taskId)) throw new ContinuoError('invalid_state', '这件事不在当前轨迹上。');
     const turnIndex = lastTurnOf(task);
-    if (turnIndex === undefined) throw new ContinuoError('invalid_state', 'this task has no finished turn to continue from');
+    if (turnIndex === undefined) throw new ContinuoError('invalid_state', '这件事还没有完成的一轮，不能从这里接着做。');
     const kept = line.taskIds.slice(0, line.taskIds.indexOf(taskId) + 1);
+    await linesSettled(doc.root);
+    const latest = line.taskIds.at(-1) === taskId;
+    const commit = this.requireTask(await this.requireDoc(workspaceId), taskId).snapshot
+      ?? (latest ? await snapshotDir(doc.root, lineRoot(doc, line), `task/${taskId}`) : undefined);
     await this.forkLine(workspaceId, line, turnIndex, `从「${taskName(task)}」继续`, {
       taskIds: kept,
       choices: inheritedChoices(line, turnIndex),
       origin: { fromTrajectoryId: line.trajectoryId, turnIndex, afterTaskId: taskId },
-    });
+    }, commit);
     return this.requireDoc(workspaceId);
   }
 
-  private async forkLine(workspaceId: string, parent: Trajectory, turnIndex: number, label: string, shape: { taskIds: readonly string[]; choices: Trajectory['choices']; origin: TrajectoryOrigin }): Promise<{ trajectory: Trajectory; session: ISessionScopeHandle; agent: IAgentScopeHandle }> {
-    const meta = await this.core.accessor.get(ISessionManager).fork({ sourceSessionId: parent.sessionId, turnIndex, title: `Continuo · ${label}` });
+  private async forkLine(workspaceId: string, parent: Trajectory, turnIndex: number, label: string, shape: { taskIds: readonly string[]; choices: Trajectory['choices']; origin: TrajectoryOrigin }, commit: string | undefined): Promise<{ trajectory: Trajectory; session: ISessionScopeHandle; agent: IAgentScopeHandle }> {
+    const meta = await this.forkWhenIdle(await this.requireDoc(workspaceId), parent.sessionId, turnIndex, `Continuo · ${label}`);
     const session = await resumeSessionById(this.core.accessor, meta.id);
-    if (session === undefined) throw new ContinuoError('invalid_state', `forked session ${meta.id} could not be opened`);
+    if (session === undefined) throw new ContinuoError('invalid_state', '复制出的对话没能打开');
     const agent = await ensureMainAgent(session);
     await this.ensureModel(agent);
-    const trajectory: Trajectory = { trajectoryId: `trj_${randomUUID().slice(0, 8)}`, label, sessionId: meta.id, status: 'current', taskIds: shape.taskIds, choices: shape.choices, turnCount: turnIndex + 1, origin: shape.origin, createdAt: new Date().toISOString() };
+    const trajectoryId = `trj_${randomUUID().slice(0, 8)}`;
+    const root = (await this.requireDoc(workspaceId)).root;
+    const workDir = commit === undefined ? undefined : await createLineDir(root, commit, trajectoryId);
+    const trajectory: Trajectory = { trajectoryId, label, sessionId: meta.id, status: 'current', taskIds: shape.taskIds, choices: shape.choices, turnCount: turnIndex + 1, origin: shape.origin, workDir, createdAt: new Date().toISOString() };
     await this.store.update(workspaceId, (current) => ({
       ...current,
       trajectories: [...current.trajectories.map((candidate) => (candidate.status === 'current' ? { ...candidate, status: 'alternative' as const } : candidate)), trajectory],
@@ -401,56 +478,63 @@ export class ContinuoTaskManager {
     return { trajectory, session, agent };
   }
 
+  private async forkWhenIdle(doc: ContinuoWorkspaceDoc, sourceSessionId: string, turnIndex: number, title: string): Promise<{ id: string }> {
+    const cacheKey = doc.trajectories.find((line) => line.origin === undefined)?.sessionId ?? sourceSessionId;
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        return await this.core.accessor.get(ISessionManager).fork({ sourceSessionId, turnIndex, title, metadata: { [PROMPT_CACHE_KEY_METADATA]: cacheKey } });
+      } catch (error) {
+        if (attempt >= FORK_RETRIES || !String((error as Error).message).includes('cannot be forked')) throw error;
+        await new Promise((done) => { setTimeout(done, 200); });
+      }
+    }
+  }
+
   private assertIdle(doc: ContinuoWorkspaceDoc, line: Trajectory): void {
     const busy = doc.tasks.find((task) => line.taskIds.includes(task.taskId) && (BUSY.has(task.status) || (task.status === 'awaiting_user' && (task.pendingInteraction === 'question' || task.pendingInteraction === 'approval'))));
-    if (busy !== undefined) throw new ContinuoError('invalid_state', `task ${busy.taskId} is still ${busy.status}; wait for it or stop it first`);
+    if (busy !== undefined) throw new ContinuoError('invalid_state', `「${taskName(busy)}」还在进行，等它做完或停下后再操作。`);
   }
 
   private requireCurrent(doc: ContinuoWorkspaceDoc): Trajectory {
     const line = currentTrajectory(doc);
-    if (line === undefined) throw new ContinuoError('invalid_state', 'this project has no line yet');
+    if (line === undefined) throw new ContinuoError('invalid_state', '这个项目还没有轨迹。');
     return line;
   }
 
   private requireDecision(doc: ContinuoWorkspaceDoc, decisionId: string): Decision {
     const decision = doc.decisions.find((candidate) => candidate.decisionId === decisionId);
-    if (decision === undefined) throw new ContinuoError('invalid_state', `decision ${decisionId} does not exist`);
+    if (decision === undefined) throw new ContinuoError('invalid_state', '这个决策点找不到了。');
     return decision;
   }
 
   private requirePlan(decision: Decision, planId: string): TrajectoryPlan {
     const plan = decision.plans.find((candidate) => candidate.planId === planId);
-    if (plan === undefined) throw new ContinuoError('invalid_state', `plan ${planId} does not exist`);
+    if (plan === undefined) throw new ContinuoError('invalid_state', '这个方案找不到了。');
     return plan;
   }
 
-  private otherPlanDeliverables(doc: ContinuoWorkspaceDoc, task: ContinuoTask): Set<string> {
-    const decisionId = task.branch?.decisionId ?? doc.decisions.find((decision) => decision.taskId === task.taskId)?.decisionId;
-    if (decisionId === undefined) return new Set();
-    const home = doc.decisions.find((decision) => decision.decisionId === decisionId)?.taskId;
-    const siblings = doc.tasks.filter((candidate) => candidate.taskId !== task.taskId && (candidate.taskId === home || candidate.branch?.decisionId === decisionId));
-    return new Set(siblings.flatMap((candidate) => (candidate.report?.deliverables ?? []).filter((item) => item.exists !== false).map((item) => item.path)));
-  }
 
   private async writePlanFiles(workspaceId: string, taskId: string): Promise<void> {
     const doc = await this.requireDoc(workspaceId);
     const task = doc.tasks.find((candidate) => candidate.taskId === taskId);
     if (task === undefined) return;
-    const decisions = doc.decisions.filter((decision) => decision.taskId === taskId);
-    try {
-      await mkdir(resolve(doc.root, WORK_LOG_DIR), { recursive: true });
-      for (const decision of decisions) {
-        for (const plan of decision.plans) await writeFile(resolve(doc.root, plan.path), renderPlan(doc, task, decision, plan), 'utf8');
+    for (const decision of doc.decisions.filter((candidate) => candidate.taskId === taskId)) {
+      const holders = doc.trajectories.filter((line) => line.status !== 'abandoned' && (line.trajectoryId === decision.trajectoryId || line.taskIds.includes(taskId) || choiceOn(line, decision.decisionId) !== undefined));
+      for (const root of new Set(holders.map((line) => lineRoot(doc, line)))) {
+        try {
+          await mkdir(resolve(root, WORK_LOG_DIR), { recursive: true });
+          for (const plan of decision.plans) await writeFile(resolve(root, plan.path), renderPlan(doc, task, decision, plan), 'utf8');
+        } catch {
+          continue;
+        }
       }
-    } catch {
-      return;
     }
   }
 
   private reconcileOnOpen(task: ContinuoTask): ContinuoTask {
     const inFlight = task.status === 'running' || task.status === 'verifying' || task.status === 'queued' || (task.status === 'awaiting_user' && task.pendingInteraction !== 'reply' && task.pendingInteraction !== 'choice');
     if (inFlight && !this.attachments.has(task.taskId)) {
-      return { ...task, status: 'interrupted', lastError: 'server restarted while the task was active', updatedAt: new Date().toISOString(), endedAt: new Date().toISOString() };
+      return { ...task, status: 'interrupted', lastError: '服务重启时这件事还在进行', updatedAt: new Date().toISOString(), endedAt: new Date().toISOString() };
     }
     return task;
   }
@@ -594,14 +678,13 @@ export class ContinuoTaskManager {
       return;
     }
     if (type === 'tool.call.started') {
-      const description = typeof event['description'] === 'string' ? event['description'] : typeof event['name'] === 'string' ? event['name'] : 'tool';
       const attachment = this.attachments.get(taskId);
       const turnId = typeof event['turnId'] === 'number' ? event['turnId'] : undefined;
       const written = writtenPath(event['display']);
       if (written !== undefined) attachment?.writes.set(String(event['toolCallId']), { path: written, turnId });
       const read = readPath(event['display']);
       if (read !== undefined) attachment?.reads.add(read);
-      await this.patchTask(workspaceId, taskId, (current) => ({ ...current, phase: description }));
+      await this.patchTask(workspaceId, taskId, (current) => ({ ...current, phase: phaseOf(typeof event['name'] === 'string' ? event['name'] : '', read ?? written) }));
       return;
     }
     if (type === 'tool.result') {
@@ -619,13 +702,162 @@ export class ContinuoTaskManager {
     await this.settleTurn(workspaceId, taskId, reason, errorMessage);
     await this.writePlanFiles(workspaceId, taskId);
     await this.writeWorkLog(workspaceId, taskId);
+    const doc = await this.requireDoc(workspaceId);
+    const queued = doc.decisions.find((decision) => decision.taskId === taskId && isExploring(decision) && decision.exploration!.angles.every((angle) => angle.status === 'queued'));
+    if (queued !== undefined && this.requireTask(doc, taskId).status === 'running') {
+      await this.startExploration(workspaceId, queued.decisionId);
+      return;
+    }
+    if (queued !== undefined) await this.finishExploration(workspaceId, queued.decisionId, undefined);
+    await this.takeSnapshot(workspaceId, taskId);
+  }
+
+  private async startExploration(workspaceId: string, decisionId: string): Promise<void> {
+    const doc = await this.requireDoc(workspaceId);
+    const decision = this.requireDecision(doc, decisionId);
+    const home = lineById(doc, decision.trajectoryId);
+    if (home === undefined) {
+      await this.finishExploration(workspaceId, decisionId, '没能开始');
+      return;
+    }
+    for (const angle of decision.exploration!.angles) {
+      if (!isExploring(this.requireDecision(await this.requireDoc(workspaceId), decisionId))) return;
+      try {
+        const meta = await this.forkWhenIdle(doc, home.sessionId, decision.turnIndex, `Continuo · 方案 ${angle.key}`);
+        const session = await resumeSessionById(this.core.accessor, meta.id);
+        if (session === undefined) throw new Error('复制出的对话没能打开');
+        const agent = await ensureMainAgent(session);
+        await this.ensureModel(agent);
+        agent.accessor.get(IAgentLifecycleService).broadcastPermissionMode('auto');
+        await this.patchAngle(workspaceId, decisionId, angle.key, (current) => ({ ...current, status: 'running', sessionId: meta.id }));
+        if (!isExploring(this.requireDecision(await this.requireDoc(workspaceId), decisionId))) return;
+        this.attachExplorer(workspaceId, decisionId, angle.key, meta.id, agent);
+        agent.accessor.get(IAgentLoopService).submit({
+          message: { role: 'user', content: [{ type: 'text', text: `Write plan ${angle.key}: ${angle.title}. ${angle.angle}` }] },
+          meta: { promptId: `msg_${ulid()}`, origin: { kind: 'user' }, tracked: true },
+        } as Parameters<IAgentLoopService['submit']>[0]);
+      } catch (error) {
+        const note = `没能开始（${String((error as Error).message).slice(0, 120)}）`;
+        await this.patchAngle(workspaceId, decisionId, angle.key, (current) => ({ ...current, status: 'failed', note }));
+      }
+    }
+    await this.settleExploration(workspaceId, decisionId);
+  }
+
+  private attachExplorer(workspaceId: string, decisionId: string, key: string, sessionId: string, agent: IAgentScopeHandle): void {
+    const subscription = agent.accessor.get(IEventBus).subscribe((event) => { void this.onExplorerEvent(workspaceId, decisionId, key, sessionId, event as unknown as Record<string, unknown>); });
+    this.explorers.set(sessionId, { dispose: () => subscription.dispose(), agent, decisionId, key });
+  }
+
+  private async onExplorerEvent(workspaceId: string, decisionId: string, key: string, sessionId: string, event: Record<string, unknown>): Promise<void> {
+    const explorer = this.explorers.get(sessionId);
+    if (explorer === undefined) return;
+    if (event['type'] === 'turn.step.completed') {
+      const usage = (event['usage'] as { inputOther?: number; output?: number; inputCacheRead?: number; inputCacheCreation?: number } | undefined) ?? {};
+      let over = false;
+      await this.patchAngle(workspaceId, decisionId, key, (current, maxSteps) => {
+        const before = current.usage ?? EMPTY_USAGE;
+        const steps = current.steps + 1;
+        over = current.status === 'running' && steps >= maxSteps;
+        return {
+          ...current,
+          steps,
+          usage: {
+            steps: before.steps + 1,
+            inputTokens: before.inputTokens + (usage.inputOther ?? 0) + (usage.inputCacheCreation ?? 0),
+            cacheReadTokens: before.cacheReadTokens + (usage.inputCacheRead ?? 0),
+            outputTokens: before.outputTokens + (usage.output ?? 0),
+          },
+        };
+      });
+      if (over) explorer.agent.accessor.get(IAgentLoopService).cancel(undefined, 'step budget used up');
+      return;
+    }
+    if (event['type'] !== 'turn.ended') return;
+    explorer.dispose();
+    this.explorers.delete(sessionId);
+    const reason = String(event['reason']);
+    const error = (event['error'] as { message?: string } | undefined)?.message;
+    await this.patchAngle(workspaceId, decisionId, key, (current) => {
+      if (current.status !== 'running') return current;
+      const note = reason === 'cancelled' ? '步数用完了' : reason === 'failed' || reason === 'blocked' ? `出错了（${(error ?? reason).slice(0, 120)}）` : '中途结束了';
+      return { ...current, status: 'failed', note };
+    });
+    await this.settleExploration(workspaceId, decisionId);
+  }
+
+  private async settleExploration(workspaceId: string, decisionId: string): Promise<void> {
+    const decision = (await this.requireDoc(workspaceId)).decisions.find((candidate) => candidate.decisionId === decisionId);
+    if (decision === undefined || !isExploring(decision)) return;
+    if (decision.exploration!.angles.every((angle) => FINAL_ANGLE.has(angle.status))) await this.finishExploration(workspaceId, decisionId, undefined);
+  }
+
+  private async finishExploration(workspaceId: string, decisionId: string, stopped: string | undefined): Promise<void> {
+    for (const [sessionId, explorer] of this.explorers) {
+      if (explorer.decisionId !== decisionId) continue;
+      explorer.dispose();
+      this.explorers.delete(sessionId);
+      explorer.agent.accessor.get(IAgentLoopService).cancel(undefined, 'exploration stopped');
+    }
+    const endedAt = new Date().toISOString();
+    let decision: Decision | undefined;
+    await this.store.update(workspaceId, (current) => {
+      const target = current.decisions.find((candidate) => candidate.decisionId === decisionId);
+      if (target === undefined || !isExploring(target)) return current;
+      const angles = target.exploration!.angles.map((angle) => (FINAL_ANGLE.has(angle.status) ? angle : { ...angle, status: 'failed' as const, note: stopped ?? '中途结束了' }));
+      decision = { ...target, exploration: { ...target.exploration!, angles, endedAt } };
+      if (target.plans.length === 0) return { ...current, decisions: current.decisions.filter((candidate) => candidate.decisionId !== decisionId) };
+      return { ...current, decisions: current.decisions.map((candidate) => (candidate.decisionId === decisionId ? decision! : candidate)) };
+    });
+    if (decision === undefined) return;
+    const taskId = decision.taskId;
+    const count = decision.exploration!.angles.length;
+    const started = decision.exploration!.angles.some((angle) => angle.sessionId !== undefined);
+    if (decision.plans.length === 0 && !started) {
+      await this.writeWorkLog(workspaceId, taskId);
+      return;
+    }
+    if (decision.plans.length > 0) {
+      await this.patchTask(workspaceId, taskId, (current) => ({ ...current, status: 'awaiting_user', pendingInteraction: 'choice', phase: '等你选方案', pauseRequested: false, endedAt }));
+      await this.writePlanFiles(workspaceId, taskId);
+    } else {
+      const status: TaskStatus = stopped === '已停止' ? 'paused' : stopped === '被打断' ? 'interrupted' : 'failed';
+      await this.patchTask(workspaceId, taskId, (current) => ({ ...current, status, phase: undefined, pendingInteraction: 'none', lastError: `分头写的 ${count} 个方案都没能完成`, endedAt }));
+    }
+    await this.writeWorkLog(workspaceId, taskId);
+    await this.takeSnapshot(workspaceId, taskId);
+  }
+
+  private async patchAngle(workspaceId: string, decisionId: string, key: string, mutate: (angle: ExplorationAngle, maxSteps: number) => ExplorationAngle): Promise<void> {
+    await this.store.update(workspaceId, (current) => ({
+      ...current,
+      decisions: current.decisions.map((decision) => (decision.decisionId !== decisionId || !isExploring(decision)
+        ? decision
+        : { ...decision, exploration: { ...decision.exploration!, angles: decision.exploration!.angles.map((angle) => (angle.key === key ? mutate(angle, decision.exploration!.maxSteps) : angle)) } })),
+    }));
+  }
+
+  private async takeSnapshot(workspaceId: string, taskId: string): Promise<void> {
+    const doc = await this.requireDoc(workspaceId);
+    const task = this.requireTask(doc, taskId);
+    const line = trajectoryOfSession(doc, task.sessionId);
+    if (task.kind !== 'user' || line === undefined) return;
+    const open = openDecisionOf(doc, line, taskId);
+    if (open !== undefined && isExploring(open)) return;
+    const label = open === undefined ? `task/${taskId}` : `decision/${open.decisionId}`;
+    const commit = await snapshotDir(doc.root, lineRoot(doc, line), label);
+    if (commit === undefined) return;
+    await this.store.update(workspaceId, (current) => (open === undefined
+      ? { ...current, tasks: current.tasks.map((candidate) => (candidate.taskId === taskId ? { ...candidate, snapshot: commit } : candidate)) }
+      : { ...current, decisions: current.decisions.map((candidate) => (candidate.decisionId === open.decisionId ? { ...candidate, snapshot: commit } : candidate)) }));
   }
 
   private async settleTurn(workspaceId: string, taskId: string, reason: string, errorMessage: string | undefined): Promise<void> {
     const doc = await this.requireDoc(workspaceId);
     const task = this.requireTask(doc, taskId);
     const endedAt = new Date().toISOString();
-    if (task.kind === 'user') await this.recordRound(workspaceId, taskId, doc.root, endedAt);
+    const root = rootOfTask(doc, task);
+    if (task.kind === 'user') await this.recordRound(workspaceId, taskId, root, endedAt);
     if (reason === 'cancelled') {
       const status: TaskStatus = task.pauseRequested ? 'paused' : 'interrupted';
       await this.patchTask(workspaceId, taskId, (current) => ({ ...current, status, phase: undefined, pendingInteraction: 'none', endedAt }));
@@ -633,7 +865,7 @@ export class ContinuoTaskManager {
       return;
     }
     if (reason === 'failed' || reason === 'blocked') {
-      await this.patchTask(workspaceId, taskId, (current) => ({ ...current, status: 'failed', phase: undefined, pendingInteraction: 'none', lastError: errorMessage ?? reason, endedAt }));
+      await this.patchTask(workspaceId, taskId, (current) => ({ ...current, status: 'failed', phase: undefined, pendingInteraction: 'none', lastError: friendlyError(errorMessage ?? reason), endedAt }));
       if (task.kind === 'init') await this.store.update(workspaceId, (current) => ({ ...current, init: { ...current.init, status: 'failed', endedAt } }));
       return;
     }
@@ -647,9 +879,13 @@ export class ContinuoTaskManager {
     }
     const settled = await this.requireDoc(workspaceId);
     const line = trajectoryOfSession(settled, task.sessionId);
-    if (line !== undefined && openDecisionOf(settled, line, taskId) !== undefined) {
+    const open = line === undefined ? undefined : openDecisionOf(settled, line, taskId);
+    if (open !== undefined) {
       const reply = (this.attachments.get(taskId)?.reply ?? '').trim().slice(0, 4000);
-      await this.patchTask(workspaceId, taskId, (current) => ({ ...current, status: 'awaiting_user' as TaskStatus, pendingInteraction: 'choice' as const, phase: '等你选方案', lastReply: reply === '' ? current.lastReply : reply }));
+      const exploring = isExploring(open);
+      await this.patchTask(workspaceId, taskId, (current) => (exploring
+        ? { ...current, status: 'running' as TaskStatus, pendingInteraction: 'none' as const, phase: `正在分头写 ${open.exploration!.angles.length} 个方案`, lastReply: reply === '' ? current.lastReply : reply }
+        : { ...current, status: 'awaiting_user' as TaskStatus, pendingInteraction: 'choice' as const, phase: '等你选方案', lastReply: reply === '' ? current.lastReply : reply }));
       return;
     }
     await this.patchTask(workspaceId, taskId, (current) => ({ ...current, status: 'verifying', phase: '核验交付' }));
@@ -657,7 +893,7 @@ export class ContinuoTaskManager {
     const current = this.requireTask(fresh, taskId);
     const notes: string[] = [];
     const observedWrites = new Map<string, number | undefined>();
-    for (const item of this.attachments.get(taskId)?.writes.values() ?? []) observedWrites.set(this.relativeToRoot(fresh.root, item.path), item.turnId);
+    for (const item of this.attachments.get(taskId)?.writes.values() ?? []) observedWrites.set(this.relativeToRoot(root, item.path), item.turnId);
     const observed = [...observedWrites.keys()];
     let report = current.report;
     if (report === undefined && observed.length > 0) {
@@ -669,10 +905,10 @@ export class ContinuoTaskManager {
       return;
     } else {
       report = { ...report, deliverables: report.deliverables.map((item) => {
-        const rel = this.relativeToRoot(fresh.root, item.path);
+        const rel = this.relativeToRoot(root, item.path);
         return observedWrites.has(rel) ? { ...item, path: rel, turnId: observedWrites.get(rel) } : item;
       }) };
-      const reported = new Set(report.deliverables.map((item) => this.relativeToRoot(fresh.root, item.path)));
+      const reported = new Set(report.deliverables.map((item) => this.relativeToRoot(root, item.path)));
       const unreported = observed.filter((path) => !reported.has(path));
       if (unreported.length > 0) {
         report = { ...report, deliverables: [...report.deliverables, ...unreported.map((path) => ({ path, note: '写了但没上报', turnId: observedWrites.get(path) }))] };
@@ -681,14 +917,11 @@ export class ContinuoTaskManager {
     }
     let deliverables = report?.deliverables ?? [];
     if (report !== undefined) {
-      deliverables = await Promise.all(deliverables.map(async (item) => ({ ...item, exists: await this.exists(fresh.root, item.path) })));
+      deliverables = await Promise.all(deliverables.map(async (item) => ({ ...item, exists: await this.exists(root, item.path) })));
       for (const item of deliverables) if (item.exists === false) notes.push(`reported file missing: ${item.path}`);
       for (const item of report.unresolved) notes.push(`unresolved: ${item}`);
     }
-    const others = this.otherPlanDeliverables(fresh, current);
-    const overwritten = deliverables.filter((item) => others.has(item.path)).map((item) => item.path);
-    if (overwritten.length > 0) notes.push(`overwrote a file produced by another plan: ${overwritten.join(', ')}`);
-    const missing = deliverables.some((item) => item.exists === false) || overwritten.length > 0;
+    const missing = deliverables.some((item) => item.exists === false);
     const status: TaskStatus = missing || (report?.unresolved.length ?? 0) > 0 ? 'needs_review' : 'completed';
     const finalReport = report === undefined ? undefined : { ...report, deliverables };
     const lastReply = (this.attachments.get(taskId)?.reply ?? '').trim().slice(0, 4000);
@@ -723,14 +956,15 @@ export class ContinuoTaskManager {
     const doc = await this.requireDoc(workspaceId);
     const task = doc.tasks.find((candidate) => candidate.taskId === taskId);
     if (task === undefined) return;
-    const dir = resolve(doc.root, WORK_LOG_DIR);
+    const root = rootOfTask(doc, task);
+    const dir = resolve(root, WORK_LOG_DIR);
     try {
       await mkdir(dir, { recursive: true });
       const path = await this.logPathFor(dir, task);
       if (task.logPath !== undefined && task.logPath !== path) {
-        await rename(resolve(doc.root, task.logPath), resolve(doc.root, path)).catch(() => undefined);
+        await rename(resolve(root, task.logPath), resolve(root, path)).catch(() => undefined);
       }
-      await writeFile(resolve(doc.root, path), renderWorkLog(doc, task), 'utf8');
+      await writeFile(resolve(root, path), renderWorkLog(doc, task), 'utf8');
       if (task.logPath !== path) await this.patchTask(workspaceId, taskId, (current) => ({ ...current, logPath: path }));
     } catch {
       return;
@@ -778,13 +1012,13 @@ export class ContinuoTaskManager {
 
   private async requireDoc(workspaceId: string): Promise<ContinuoWorkspaceDoc> {
     const doc = await this.store.load(workspaceId);
-    if (doc === undefined) throw new ContinuoError('workspace_not_found', `workspace ${workspaceId} has not been opened in Continuo`);
+    if (doc === undefined) throw new ContinuoError('workspace_not_found', '这个项目还没有打开过。');
     return doc;
   }
 
   private requireTask(doc: ContinuoWorkspaceDoc, taskId: string): ContinuoTask {
     const task = doc.tasks.find((candidate) => candidate.taskId === taskId);
-    if (task === undefined) throw new ContinuoError('task_not_found', `task ${taskId} does not exist`);
+    if (task === undefined) throw new ContinuoError('task_not_found', '这件事找不到了。');
     return task;
   }
 }
@@ -920,7 +1154,7 @@ function renderSession(doc: ContinuoWorkspaceDoc, task: ContinuoTask): string[] 
   const lines = ['### Meta Data', '', '| 字段 | 值 |', '|------|-----|', `| 开始时间 | ${stamp(task.createdAt)} |`];
   if (task.endedAt !== undefined) lines.push(`| 结束时间 | ${stamp(task.endedAt)} |`);
   lines.push(`| 状态 | ${TASK_STATUS_LABEL[task.status]}${task.lastError === undefined ? '' : `（${task.lastError}）`} |`);
-  lines.push(`| 输入目录 | ${doc.root} |`);
+  lines.push(`| 输入目录 | ${rootOfTask(doc, task)} |`);
   lines.push(`| 输入文件 | ${sources.length === 0 ? '—' : sources.join(', ')} |`);
   const plans = decisionsOfTask(doc, task).flatMap(({ decision }) => decision.plans.map((plan) => ({ decision, plan })));
   const outputs = [...deliverables.map((item) => item.path), ...plans.map(({ plan }) => plan.path)];

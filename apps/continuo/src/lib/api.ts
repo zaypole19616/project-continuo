@@ -21,6 +21,12 @@ export class ApiError extends Error {
   constructor(public readonly code: number | string, message: string) { super(message); }
 }
 
+const OFFLINE = '连不上本地服务，正在重试…';
+
+export function isOffline(error: unknown): boolean {
+  return error instanceof ApiError && error.code === 'offline';
+}
+
 async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
   const token = readToken();
   const res = await fetch('/api/v1' + path, {
@@ -30,9 +36,9 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
       ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
     },
     body: body === undefined ? undefined : JSON.stringify(body),
-  });
+  }).catch(() => { throw new ApiError('offline', OFFLINE); });
   if (res.status === 401) throw new ApiError(401, '未授权：缺少或错误的服务 token');
-  const env = (await res.json()) as Envelope<T>;
+  const env = (await res.json().catch(() => { throw new ApiError('offline', OFFLINE); })) as Envelope<T>;
   if (env.code !== 0) throw new ApiError(env.code, env.msg || `请求失败 (${env.code})`);
   return env.data;
 }
@@ -81,9 +87,11 @@ export const kimi = {
 
 export interface TaskRound { at: string; prompt: string; reads: string[]; writes: string[]; reply: string; turnIndex?: number }
 export interface TrajectoryPlan { planId: string; title: string; basis: string; risk: string; prompt: string; detail?: string; path: string; abandoned?: { reason?: string; at: string }; createdAt: string }
-export interface Decision { decisionId: string; taskId: string; trajectoryId: string; question: string; turnIndex: number; plans: TrajectoryPlan[]; exhausted?: { reason: string; ask: string; at: string }; createdAt: string }
+export interface ExplorationAngle { key: string; title: string; angle: string; status: 'queued' | 'running' | 'submitted' | 'withdrawn' | 'failed'; planId?: string; note?: string; steps: number }
+export interface Exploration { reason: string; angles: ExplorationAngle[]; maxSteps: number; startedAt: string; endedAt?: string }
+export interface Decision { decisionId: string; taskId: string; trajectoryId: string; question: string; turnIndex: number; plans: TrajectoryPlan[]; exhausted?: { reason: string; ask: string; at: string }; exploration?: Exploration; createdAt: string }
 export interface TrajectoryChoice { decisionId: string; planId?: string; text?: string; turnIndex: number; at: string }
-export interface Trajectory { trajectoryId: string; label: string; sessionId: string; status: 'current' | 'alternative' | 'abandoned'; taskIds: string[]; choices: TrajectoryChoice[]; turnCount: number; origin?: { fromTrajectoryId: string; turnIndex: number; decisionId?: string; planId?: string; afterTaskId?: string }; abandonReason?: string; createdAt: string }
+export interface Trajectory { trajectoryId: string; label: string; sessionId: string; status: 'current' | 'alternative' | 'abandoned'; taskIds: string[]; choices: TrajectoryChoice[]; turnCount: number; origin?: { fromTrajectoryId: string; turnIndex: number; decisionId?: string; planId?: string; afterTaskId?: string }; abandonReason?: string; workDir?: string; createdAt: string }
 export type TaskStatus = 'queued' | 'running' | 'awaiting_user' | 'verifying' | 'completed' | 'needs_review' | 'paused' | 'failed' | 'interrupted';
 export interface ContinuoTask { taskId: string; kind: 'init' | 'user'; title: string; name?: string; category?: string; trigger: string; sessionId: string; promptIds: string[]; status: TaskStatus; phase?: string; pauseRequested: boolean; pendingInteraction?: 'question' | 'approval' | 'reply' | 'choice' | 'none'; lastReply?: string; report?: { summary: string; deliverables: Array<{ path: string; note?: string; exists?: boolean; turnId?: number }>; unresolved: string[]; nextStep?: { title: string; reason: string; prompt: string }; reportedAt: string }; verification?: string[]; supplements?: string[]; sources?: string[]; rounds?: TaskRound[]; logPath?: string; branch?: { decisionId: string; planId: string; label: string }; usage: { steps: number; inputTokens: number; cacheReadTokens: number; outputTokens: number }; lastError?: string; createdAt: string; updatedAt: string; endedAt?: string }
 export interface ContinuoDoc { workspaceId: string; root: string; revision: number; openCount: number; init: { status: 'pending' | 'running' | 'completed' | 'partial' | 'failed' | 'stopped'; taskId?: string; startedAt?: string; endedAt?: string }; scan?: { counts: { dirs: number; files: number; byExt: Record<string, number> }; guideFiles: string[]; truncated: boolean; unscanned: string[] }; understanding?: { text: string; sourceRefs: string[]; updatedAt: string }; context: Array<{ id: string; text: string; sourceRefs: string[] }>; tasks: ContinuoTask[]; trajectories: Trajectory[]; decisions: Decision[] }

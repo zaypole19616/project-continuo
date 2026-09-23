@@ -1,6 +1,14 @@
-import type { ContinuoTask, ContinuoWorkspaceDoc, Decision, Trajectory, TrajectoryChoice, TrajectoryPlan } from './types';
+import { join } from 'node:path';
+
+import { isWithinDirectory } from '#/tool/path-access';
+
+import type { ContinuoTask, ContinuoWorkspaceDoc, Decision, ExplorationAngle, Trajectory, TrajectoryChoice, TrajectoryPlan } from './types';
 
 export const WORK_LOG_DIR = 'work-log';
+export const CONTINUO_DIR = '.continuo';
+export const LINES_DIR = `${CONTINUO_DIR}/lines`;
+export const EXPLORE_MAX_ANGLES = 4;
+export const EXPLORE_MAX_STEPS = 8;
 
 export function currentTrajectory(doc: ContinuoWorkspaceDoc): Trajectory | undefined {
   return doc.trajectories.find((trajectory) => trajectory.status === 'current');
@@ -85,4 +93,95 @@ export function planStatusOn(doc: ContinuoWorkspaceDoc, trajectory: Trajectory, 
   if (plan.abandoned !== undefined) return { kind: 'abandoned' };
   const elsewhere = doc.trajectories.findLast((candidate) => candidate.trajectoryId !== trajectory.trajectoryId && candidate.status !== 'abandoned' && choiceOn(candidate, decision.decisionId)?.planId === plan.planId);
   return elsewhere === undefined ? { kind: 'open' } : { kind: 'elsewhere', trajectory: elsewhere };
+}
+
+export function lineById(doc: ContinuoWorkspaceDoc, trajectoryId: string): Trajectory | undefined {
+  return doc.trajectories.find((trajectory) => trajectory.trajectoryId === trajectoryId);
+}
+
+export function lineRoot(doc: ContinuoWorkspaceDoc, line: Trajectory | undefined): string {
+  return line?.workDir ?? doc.root;
+}
+
+export function rootOfTask(doc: ContinuoWorkspaceDoc, task: ContinuoTask): string {
+  return lineRoot(doc, trajectoryOfSession(doc, task.sessionId));
+}
+
+export function explorerOf(doc: ContinuoWorkspaceDoc, sessionId: string): { decision: Decision; angle: ExplorationAngle } | undefined {
+  for (const decision of doc.decisions) {
+    const angle = decision.exploration?.angles.find((candidate) => candidate.sessionId === sessionId);
+    if (angle !== undefined) return { decision, angle };
+  }
+  return undefined;
+}
+
+export function isExploring(decision: Decision): boolean {
+  return decision.exploration !== undefined && decision.exploration.endedAt === undefined;
+}
+
+export interface GuardedAccess {
+  readonly operation: string;
+  readonly path: string;
+}
+
+export function guardAccesses(doc: ContinuoWorkspaceDoc, sessionId: string, accesses: readonly GuardedAccess[]): string | undefined {
+  const explorer = explorerOf(doc, sessionId);
+  const line = explorer === undefined ? trajectoryOfSession(doc, sessionId) : lineById(doc, explorer.decision.trajectoryId);
+  if (line === undefined) return undefined;
+  const root = lineRoot(doc, line);
+  const hidden = join(doc.root, CONTINUO_DIR);
+  const isWrite = (access: GuardedAccess) => access.operation === 'write' || access.operation === 'readwrite';
+  if (explorer !== undefined && accesses.some(isWrite)) {
+    return 'As the author of one plan you only write the plan: submit it with Trajectory submit. Do not create or change project files.';
+  }
+  const blocked = accesses.filter((access) => {
+    const inLine = isWithinDirectory(access.path, root);
+    const inHidden = isWithinDirectory(access.path, hidden);
+    if (isWrite(access)) return !inLine || (root === doc.root && inHidden);
+    if (!isWithinDirectory(access.path, doc.root)) return false;
+    return root === doc.root ? inHidden : !inLine;
+  });
+  if (line.workDir === undefined) {
+    const own = new Set(line.taskIds);
+    const others = new Set(doc.tasks
+      .filter((task) => task.kind === 'user' && !own.has(task.taskId) && rootOfTask(doc, task) === doc.root)
+      .flatMap((task) => (task.report?.deliverables ?? []).map((item) => join(doc.root, item.path))));
+    for (const access of accesses) if (isWrite(access) && others.has(access.path) && !blocked.includes(access)) blocked.push(access);
+  }
+  if (blocked.length === 0) return undefined;
+  const paths = [...new Set(blocked.map((access) => access.path))].join(', ');
+  if (root === doc.root) return `Files under ${hidden} belong to other lines of this project and stay as they are. Denied: ${paths}.`;
+  return `This line works in its own directory: ${root}, a copy of the project made when it branched off. Nothing here is ever merged back into other lines, and this line can never change their files. Read and write only inside it, with absolute paths under it; if the user asked for a file elsewhere in the project, tell them plainly that this line cannot write there and where the file is in this line. Denied: ${paths}.`;
+}
+
+export function guardTool(doc: ContinuoWorkspaceDoc, sessionId: string, name: string, cwd: string | undefined): string | undefined {
+  if (explorerOf(doc, sessionId) !== undefined) {
+    if (name === 'AskUserQuestion') return 'As the author of one plan you do not ask the user. Ask another author with Trajectory ask, or write the assumption into your plan.';
+    if (name === 'Bash') return 'As the author of one plan you do not run shell commands. Read the materials with Read, Grep and Glob, then submit your plan with Trajectory submit.';
+    return undefined;
+  }
+  if (name !== 'Bash') return undefined;
+  const line = trajectoryOfSession(doc, sessionId);
+  if (line?.workDir === undefined) return undefined;
+  if (cwd !== undefined && isWithinDirectory(cwd, line.workDir)) return undefined;
+  return `This line works in its own directory: ${line.workDir}, and nothing in it is merged back into other lines. Run shell commands with cwd set to that directory (or a folder inside it), and keep every path they touch inside it.`;
+}
+
+export function doneOnLine(doc: ContinuoWorkspaceDoc, line: Trajectory, exceptTaskId: string | undefined): Array<{ name: string; deliverables: string[] }> {
+  return line.taskIds
+    .filter((taskId) => taskId !== exceptTaskId)
+    .map((taskId) => doc.tasks.find((task) => task.taskId === taskId))
+    .filter((task): task is ContinuoTask => task !== undefined && (task.status === 'completed' || task.status === 'needs_review'))
+    .map((task) => ({ name: taskName(task), deliverables: (task.report?.deliverables ?? []).filter((item) => item.exists !== false).map((item) => item.path) }));
+}
+
+export function otherLineNote(doc: ContinuoWorkspaceDoc, line: Trajectory, decision: Decision, plan: TrajectoryPlan): string {
+  const status = planStatusOn(doc, line, decision, plan);
+  if (status.kind === 'abandoned') return `abandoned${plan.abandoned?.reason === undefined ? '' : ` because ${plan.abandoned.reason}`}`;
+  if (status.kind !== 'elsewhere') return 'not taken';
+  const own = new Set(line.taskIds);
+  const tasks = status.trajectory.taskIds.filter((taskId) => !own.has(taskId)).map((taskId) => doc.tasks.find((task) => task.taskId === taskId)).filter((task): task is ContinuoTask => task !== undefined);
+  const rounds = tasks.reduce((total, task) => total + (task.rounds ?? []).length, 0);
+  const produced = [...new Set(tasks.flatMap((task) => (task.report?.deliverables ?? []).map((item) => item.path)))];
+  return `followed on another line: ${tasks.length} task${tasks.length === 1 ? '' : 's'}, ${rounds} round${rounds === 1 ? '' : 's'}${produced.length === 0 ? '' : `, produced ${produced.join(', ')}`}`;
 }

@@ -28,6 +28,7 @@ import { InMemoryStorageService } from '#/persistence/backends/memory/inMemorySt
 import { IAppendLogStore } from '#/persistence/interface/appendLogStore';
 import { IFileSystemStorageService } from '#/persistence/interface/storage';
 import { ISessionContext } from '#/session/sessionContext/sessionContext';
+import { ISessionMetadata, type SessionMeta } from '#/session/sessionMetadata/sessionMetadata';
 import { ISessionSkillCatalog } from '#/features/skill/session/skillCatalog';
 import { ISessionInstructionsProvider } from '#/session/sessionInstructions/instructionsProvider';
 import { ISessionToolPolicy } from '#/session/sessionToolPolicy/sessionToolPolicy';
@@ -183,6 +184,17 @@ let agentState: IAgentStateService;
 let svc: IAgentProfileService;
 let configValues: Record<string, unknown>;
 let modelCatalog: IModelCatalog;
+let sessionCustom: Record<string, unknown> | undefined;
+
+function createSessionMetadataStub(): ISessionMetadata {
+  const meta: SessionMeta = { id: 'session-test', createdAt: 0, updatedAt: 0, archived: false, custom: sessionCustom };
+  return {
+    _serviceBrand: undefined,
+    ready: Promise.resolve(),
+    onDidChangeMetadata: Event.None,
+    read: async () => meta,
+  } as unknown as ISessionMetadata;
+}
 
 function buildHost(key: string): {
   ix: TestInstantiationService;
@@ -203,6 +215,7 @@ function buildHost(key: string): {
   host.stub(IHostFileSystem, stubUnused());
   host.stub(IBootstrapService, stubUnused());
   host.stub(ISessionContext, createSessionContextStub());
+  host.stub(ISessionMetadata, createSessionMetadataStub());
   host.stub(ISessionWorkspaceContext, stubUnused());
   host.stub(ISessionAgentProfileCatalog, {
     _serviceBrand: undefined,
@@ -258,6 +271,7 @@ function buildHost(key: string): {
 beforeEach(() => {
   disposables = new DisposableStore();
   configValues = {};
+  sessionCustom = undefined;
   modelCatalog = createModelCatalogStub();
   const host = buildHost(KEY);
   ix = host.ix;
@@ -777,5 +791,16 @@ describe('AgentProfileService (wire-backed config.update)', () => {
     host.svc.update({ modelAlias: 'claude-sonnet', thinkingLevel: 'high' });
 
     expect(host.svc.resolveRequestParams().cacheKey).toBe('session-test');
+  });
+
+  it('keeps the prompt cache key a forked session carries in its metadata', async () => {
+    sessionCustom = { promptCacheKey: 'root-session' };
+    const host = buildHost('profile-prompt-cache-key-fork');
+    host.svc.configure({ emitStatusUpdated: () => undefined });
+    host.svc.update({ modelAlias: 'kimi-k2', thinkingLevel: 'high' });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(host.svc.resolveRequestParams().cacheKey).toBe('root-session');
   });
 });

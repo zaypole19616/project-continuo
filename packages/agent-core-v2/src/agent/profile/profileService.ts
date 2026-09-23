@@ -29,6 +29,7 @@ import type { LoopControl } from '#/agent/loop/configSection';
 import { IAgentRuntimeService } from '#/agent/runtimeBinding/agentRuntime';
 import { RuntimeWorkspaceView } from '#/runtime/runtimeWorkspaceView';
 import { ISessionContext } from '#/session/sessionContext/sessionContext';
+import { ISessionMetadata, promptCacheKeyOf } from '#/session/sessionMetadata/sessionMetadata';
 import type { ToolSource } from '#/tool/toolContract';
 import { ISessionWorkspaceContext } from '#/session/workspaceContext/workspaceContext';
 import { ISessionInstructionsProvider } from '#/session/sessionInstructions/instructionsProvider';
@@ -138,6 +139,7 @@ export class AgentProfileService extends Disposable implements IAgentProfileServ
 
   private frozenSkillListing: string | undefined;
   private frozenPluginSections: string | undefined;
+  private promptCacheKey: string | undefined;
 
   constructor(
     @IEventDispatcher private readonly dispatcher: IEventDispatcher,
@@ -162,8 +164,15 @@ export class AgentProfileService extends Disposable implements IAgentProfileServ
     @IPluginService private readonly plugins: IPluginService,
     @IAgentIdentity private readonly identity: IAgentIdentity,
     @IAgentAgentsMdReminderService private readonly agentsMdReminder: IAgentAgentsMdReminderService,
+    @ISessionMetadata private readonly sessionMetadata: ISessionMetadata,
   ) {
     super();
+    this.syncPromptCacheKey();
+    this._register(
+      this.sessionMetadata.onDidChangeMetadata(({ changed }) => {
+        if (changed.includes('custom')) this.syncPromptCacheKey();
+      }),
+    );
     this.states.contributeState(profileKey);
     this.states.contributeState(profileActiveToolsKey);
     this.states.contributeState(profileActiveToolNamesOverlayKey);
@@ -468,7 +477,7 @@ export class AgentProfileService extends Disposable implements IAgentProfileServ
       topP: overrides?.topP,
     };
     return {
-      cacheKey: this.sessionContext.sessionId,
+      cacheKey: this.promptCacheKey ?? this.sessionContext.sessionId,
       sampling:
         sampling.temperature === undefined && sampling.topP === undefined ? undefined : sampling,
       thinkingEffort: thinking.effective,
@@ -478,6 +487,15 @@ export class AgentProfileService extends Disposable implements IAgentProfileServ
         thinking.effective,
       ),
     };
+  }
+
+  private syncPromptCacheKey(): void {
+    void this.sessionMetadata.read().then(
+      (meta) => {
+        this.promptCacheKey = promptCacheKeyOf(meta);
+      },
+      () => undefined,
+    );
   }
 
   getModelCapabilities(): ModelCapability {

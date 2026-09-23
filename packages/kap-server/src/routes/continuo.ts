@@ -78,7 +78,7 @@ export function registerContinuoRoutes(app: ContinuoRouteHost, core: Scope): voi
       if (!flagGuard(req.id, reply)) return;
       const doc = await manager.snapshot(req.params.workspace_id);
       if (doc === undefined) {
-        reply.send(errEnvelope(ErrorCode.WORKSPACE_NOT_FOUND, `workspace ${req.params.workspace_id} has not been opened in Continuo`, req.id));
+        reply.send(errEnvelope(ErrorCode.WORKSPACE_NOT_FOUND, '这个项目还没有打开过。', req.id));
         return;
       }
       reply.send(okEnvelope(doc, req.id));
@@ -232,7 +232,7 @@ export function registerContinuoRoutes(app: ContinuoRouteHost, core: Scope): voi
       if (!flagGuard(req.id, reply)) return;
       try {
         const doc = await manager.snapshot(req.params.workspace_id);
-        if (doc === undefined) throw new ContinuoError('workspace_not_found', `workspace ${req.params.workspace_id} has not been opened in Continuo`);
+        if (doc === undefined) throw new ContinuoError('workspace_not_found', '这个项目还没有打开过。');
         reply.send(okEnvelope(await listFiles(doc, req.query.path ?? ''), req.id));
       } catch (error) {
         sendError(reply, req.id, error);
@@ -257,7 +257,7 @@ export function registerContinuoRoutes(app: ContinuoRouteHost, core: Scope): voi
       if (!flagGuard(req.id, reply)) return;
       try {
         const doc = await manager.snapshot(req.params.workspace_id);
-        if (doc === undefined) throw new ContinuoError('workspace_not_found', `workspace ${req.params.workspace_id} has not been opened in Continuo`);
+        if (doc === undefined) throw new ContinuoError('workspace_not_found', '这个项目还没有打开过。');
         reply.send(okEnvelope(await readTextFile(doc, req.query.path), req.id));
       } catch (error) {
         sendError(reply, req.id, error);
@@ -265,5 +265,27 @@ export function registerContinuoRoutes(app: ContinuoRouteHost, core: Scope): voi
     },
   );
   app.get(fileRoute.path, fileRoute.options, fileRoute.handler as Parameters<ContinuoRouteHost['get']>[2]);
+
+  const exportRoute = defineRoute(
+    {
+      method: 'GET',
+      path: '/workspaces/{workspace_id}/continuo/export',
+      params: workspaceParamSchema,
+      success: { data: docSchema },
+      errors: CONTINUO_ERRORS,
+      description: 'Export every line of the workspace as a trajectory sample, plus plan preference pairs from choices, switches and abandonments',
+      tags: ['continuo'],
+      operationId: 'continuoExport',
+    },
+    async (req, reply) => {
+      if (!flagGuard(req.id, reply)) return;
+      try {
+        reply.send(okEnvelope(await manager.exportTrajectories(req.params.workspace_id), req.id));
+      } catch (error) {
+        sendError(reply, req.id, error);
+      }
+    },
+  );
+  app.get(exportRoute.path, exportRoute.options, exportRoute.handler as Parameters<ContinuoRouteHost['get']>[2]);
 
 }
