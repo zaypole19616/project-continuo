@@ -156,6 +156,7 @@ export function WorkspaceView({ workspace, onClose, themePref, onTheme }: { work
   const abandon = (decision: Decision, plan: TrajectoryPlan, reason: string) => { void run(() => continuo.decisionAction(workspaceId, decision.decisionId, 'abandon', { plan_id: plan.planId, reason: reason.trim() === '' ? undefined : reason.trim() })); };
   const switchLine = (target: Trajectory) => { void run(() => continuo.activateLine(workspaceId, target.trajectoryId)); };
   const forkAfter = (task: ContinuoTask) => run(() => continuo.taskAction(workspaceId, task.taskId, 'fork'));
+  const retryInit = () => { void run(() => continuo.open(workspaceId, newRequestId())); };
 
   const dark = resolveTheme(themePref) === 'dark';
   const startDrag = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -207,7 +208,7 @@ export function WorkspaceView({ workspace, onClose, themePref, onTheme }: { work
           onDecide={async (a, d, scope) => { if (!sessionId) return; await kimi.resolveApproval(sessionId, a.approval_id, d, scope); await refreshPending(sessionId); void refresh(); }}
           onAction={(t, a) => { void action(t, a); }} onOpenFile={(path) => setTarget({ kind: 'file', path })}
           onStartStep={(text) => { if (!sending) void submit(text, null); }}
-          onChoose={choose} onExpand={expand} onAbandon={abandon} onSwitch={switchLine} onForkAfter={forkAfter}
+          onChoose={choose} onExpand={expand} onAbandon={abandon} onSwitch={switchLine} onForkAfter={forkAfter} onRetryInit={retryInit}
         />
       </div>
     </div>

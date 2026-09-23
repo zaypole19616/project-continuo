@@ -145,6 +145,15 @@ export interface TaskReport {
   readonly reportedAt: string;
 }
 
+export interface TaskError {
+  readonly code: string;
+  readonly message: string;
+  readonly status?: number;
+  readonly requestId?: string;
+  readonly traceId?: string;
+  readonly at: string;
+}
+
 export interface ContinuoTask {
   readonly taskId: string;
   readonly kind: TaskKind;
@@ -170,6 +179,7 @@ export interface ContinuoTask {
   readonly snapshot?: string;
   readonly usage: TaskUsage;
   readonly lastError?: string;
+  readonly error?: TaskError;
   readonly createdAt: string;
   readonly updatedAt: string;
   readonly endedAt?: string;

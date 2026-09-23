@@ -1,9 +1,7 @@
 import { Fragment, useState } from 'react';
 import { ChevronDown, ChevronRight, Check, CircleAlert, Loader2 } from 'lucide-react';
-import { friendlyError, type TimelineItem, type ToolCall } from '#/lib/timeline';
+import type { TimelineItem, ToolCall } from '#/lib/timeline';
 import { renderMarkdown } from '#/lib/markdown';
-
-const REASON_LABEL: Record<string, string> = { completed: '本轮完成', cancelled: '已停止', failed: '本轮失败', blocked: '被阻塞，需要处理' };
 
 const TOOL_LABEL: Record<string, string> = {
   Read: '读取', ReadMediaFile: '读取', Write: '写入', Edit: '修改', Grep: '搜索', Glob: '查找文件', Bash: '命令',
@@ -36,10 +34,10 @@ function AssistantTurn({ item, root }: { item: Extract<TimelineItem, { kind: 'as
       {item.tools.length > 0 && <ActivityTimeline tools={item.tools} root={root} />}
       {item.text && (item.ended ? <div className="msg-assistant md" style={{ whiteSpace: 'normal' }} dangerouslySetInnerHTML={{ __html: renderMarkdown(item.text) }} /> : <div className="msg-assistant">{item.text}</div>)}
       {item.ended && item.ended.reason === 'completed' && (item.text || item.tools.length > 0) && <div className="t3 xs">{clock(item.at)}</div>}
-      {item.ended && item.ended.reason !== 'completed' && (
-        <div className="fs-meta flex items-start gap-2" style={{ color: item.ended.reason === 'cancelled' ? 'var(--text-3)' : 'var(--err)' }}>
+      {item.ended?.reason === 'cancelled' && (
+        <div className="fs-meta flex items-start gap-2" style={{ color: 'var(--text-3)' }}>
           <CircleAlert size={14} style={{ marginTop: 2 }} />
-          <span>{REASON_LABEL[item.ended.reason] ?? `回合结束：${item.ended.reason}`}{item.ended.error ? ` · ${friendlyError(item.ended.error)}` : ''}</span>
+          <span>已停止</span>
         </div>
       )}
     </div>

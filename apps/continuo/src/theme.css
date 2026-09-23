@@ -378,6 +378,24 @@ button.link:hover { text-decoration: underline; }
 .next-step-head { display: flex; align-items: center; gap: 6px; font-size: var(--fs-xs); font-weight: 600; color: var(--accent); }
 .next-step-title { font-size: var(--fs-lg); font-weight: 600; }
 .init-status { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid var(--accent-line); border-radius: 12px; background: var(--accent-soft); }
+.init-card { border: 1px solid var(--line); border-radius: 12px; background: var(--surface); overflow: hidden; }
+.init-card-head { display: flex; align-items: center; gap: 8px; padding: 8px 12px; font-size: var(--fs-sm); background: var(--surface-sunken); }
+.init-card-body { padding: 10px 12px; font-size: var(--fs-sm); color: var(--text-2); line-height: 1.6; white-space: pre-wrap; }
+.init-card-foot { display: flex; align-items: center; gap: 8px; padding: 8px 12px; font-size: var(--fs-xs); border-top: 1px solid var(--line); }
+.init-card-foot .link { display: inline-flex; align-items: center; gap: 4px; }
+.err-card { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border: 1px solid color-mix(in srgb, var(--err) 35%, transparent); border-radius: 12px; background: var(--err-soft); }
+.err-head { display: flex; align-items: center; gap: 8px; color: var(--err); font-size: var(--fs-sm); }
+.err-kicker { color: var(--text-2); }
+.err-title { font-weight: 600; color: var(--text-1); }
+.err-limit { font-size: var(--fs-sm); color: var(--text-1); }
+.err-message { font-size: var(--fs-sm); color: var(--text-2); line-height: 1.55; word-break: break-word; user-select: text; }
+.err-message a { color: var(--accent); }
+.err-details summary { cursor: pointer; font-size: var(--fs-xs); color: var(--text-3); width: fit-content; }
+.err-details dl { display: grid; gap: 2px; margin: 6px 0 0; font-size: var(--fs-xs); }
+.err-details dl > div { display: flex; gap: 8px; }
+.err-details dt { color: var(--text-3); min-width: 72px; }
+.err-details dd { margin: 0; color: var(--text-2); font-family: var(--font-mono); word-break: break-all; }
+.err-actions { display: flex; justify-content: flex-end; }
 
 
 /* files */

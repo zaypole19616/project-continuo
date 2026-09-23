@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -64,6 +64,15 @@ describe('continuo line directories', () => {
     expect(git(root, 'branch', '--list')).toBe(`* ${git(root, 'branch', '--show-current')}`);
     expect(readFileSync(join(dir!, 'draft.md'), 'utf8')).toBe('untracked work\n');
     expect(git(root, 'rev-parse', 'refs/continuo/task/t1')).toBe(commit);
+  });
+
+  it('removes its own empty repository when the first snapshot fails', async () => {
+    const root = project();
+    writeFileSync(join(root, 'locked.md'), 'secret\n');
+    chmodSync(join(root, 'locked.md'), 0o000);
+    expect(await snapshotDir(root, root, 'task/t1')).toBeUndefined();
+    chmodSync(join(root, 'locked.md'), 0o644);
+    expect(existsSync(join(root, '.continuo', 'git'))).toBe(false);
   });
 
   it('reports no snapshot when the folder cannot be snapshotted', async () => {

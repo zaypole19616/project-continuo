@@ -2,6 +2,7 @@ import { createDecorator, type ServiceIdentifier } from '#/_base/di/instantiatio
 import { Service } from '#/_base/di/service';
 import { IAtomicDocumentStore } from '#/persistence/interface/atomicDocumentStore';
 
+import { migrateWorkspaceDoc } from './migrate';
 import { CONTINUO_SCHEMA_VERSION, CONTINUO_STORE_SCOPE, newWorkspaceDoc, type ContinuoWorkspaceDoc } from './types';
 
 export type DocMutator = (doc: ContinuoWorkspaceDoc) => ContinuoWorkspaceDoc;
@@ -35,10 +36,12 @@ export class ContinuoStoreService extends Service implements IContinuoStore {
   async load(workspaceId: string): Promise<ContinuoWorkspaceDoc | undefined> {
     const cached = this.cache.get(workspaceId);
     if (cached !== undefined) return cached;
-    const stored = await this.documents.get<ContinuoWorkspaceDoc>(CONTINUO_STORE_SCOPE, workspaceId);
-    if (stored === undefined || stored.schemaVersion !== CONTINUO_SCHEMA_VERSION) return undefined;
-    this.cache.set(workspaceId, stored);
-    return stored;
+    const stored = await this.documents.get<unknown>(CONTINUO_STORE_SCOPE, workspaceId);
+    const doc = migrateWorkspaceDoc(stored);
+    if (doc === undefined) return undefined;
+    if ((stored as { schemaVersion?: number }).schemaVersion !== CONTINUO_SCHEMA_VERSION) await this.documents.set(CONTINUO_STORE_SCOPE, workspaceId, doc);
+    this.cache.set(workspaceId, doc);
+    return doc;
   }
 
   async ensure(workspaceId: string, root: string): Promise<ContinuoWorkspaceDoc> {

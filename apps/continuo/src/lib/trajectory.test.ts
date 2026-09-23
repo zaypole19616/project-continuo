@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ContinuoDoc, ContinuoTask, Decision, Trajectory } from './api';
 import { buildTrunk, currentLine, isExploring, lineIsBusy, planState } from './trajectory';
-import { friendlyError } from './timeline';
+import { errorTitle, spentLimit, untilText } from './errors';
 
 const NOW = '2026-09-23T04:00:00.000Z';
 
@@ -68,10 +68,21 @@ describe('plans written in parallel', () => {
 });
 
 describe('failure wording', () => {
-  it('names the common model failures in plain words and keeps the rest', () => {
-    expect(friendlyError("403 You've reached your 5-hour usage limit.")).toContain('额度用完');
-    expect(friendlyError('429 Too Many Requests')).toContain('忙不过来');
-    expect(friendlyError('fetch failed')).toContain('连不上');
-    expect(friendlyError('disk full')).toBe('disk full');
+  const error = { code: 'provider.auth_error', message: "403 You've reached your 5-hour usage limit.", status: 403, at: NOW };
+
+  it('titles a failure the way Kimi Code does, and a spent plan as what it is', () => {
+    const plain = { ...error, message: '403 Forbidden' };
+    expect(errorTitle(plain)).toBe('模型认证失败');
+    expect(errorTitle({ ...plain, code: 'provider.rate_limit' })).toBe('模型请求被限流');
+    expect(errorTitle({ ...plain, code: 'something.else' })).toBe('模型请求失败');
+    expect(errorTitle(error)).toBe('已达到用量上限');
+  });
+
+  it('names the plan limit that is used up and when it resets', () => {
+    const usage = { kind: 'ok', quota: { usages: { limit5h: { usedRatio: 1, resetAt: '2026-09-23T06:58:06Z' }, monthTotal: { usedRatio: 0.24, resetAt: '2026-10-21T00:00:00Z' } } } };
+    expect(spentLimit(usage)).toEqual({ label: '5 小时限额', resetAt: '2026-09-23T06:58:06Z' });
+    expect(spentLimit({ kind: 'ok', quota: { usages: { limit5h: { usedRatio: 0.5 } } } })).toBeUndefined();
+    expect(untilText('2026-09-23T06:58:06Z', Date.parse('2026-09-23T04:27:00Z'))).toBe('2 小时 31 分钟');
+    expect(untilText('2026-09-23T04:30:00Z', Date.parse('2026-09-23T04:27:00Z'))).toBe('3 分钟');
   });
 });
