@@ -88,6 +88,13 @@ async function emptyDirs(root: string): Promise<string[]> {
   return found;
 }
 
+async function dropEmptyPrivateRepo(projectRoot: string): Promise<void> {
+  const gitDir = join(projectRoot, CONTINUO_DIR, 'git');
+  if (!existsSync(join(gitDir, 'HEAD'))) return;
+  const refs = await run('git', ['--git-dir', gitDir, 'for-each-ref', 'refs/continuo']).then(({ stdout }) => stdout.trim(), () => 'unknown');
+  if (refs === '') await rm(gitDir, { recursive: true, force: true });
+}
+
 export function snapshotDir(projectRoot: string, dir: string, label: string): Promise<string | undefined> {
   return serialized(projectRoot, async () => {
     try {
@@ -108,6 +115,7 @@ export function snapshotDir(projectRoot: string, dir: string, label: string): Pr
         await rm(index, { force: true });
       }
     } catch {
+      await dropEmptyPrivateRepo(projectRoot).catch(() => undefined);
       return undefined;
     }
   });

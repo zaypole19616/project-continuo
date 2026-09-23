@@ -4,6 +4,7 @@ import type { IDisposable } from '#/_base/di/lifecycle';
 import { compileContextBundle, CONTEXT_BUNDLE_MAX_CHARS } from '#/features/continuo/contextBundle';
 import { ContinuoStoreService } from '#/features/continuo/store';
 import { buildTrajectoryExport } from '#/features/continuo/export';
+import { migrateWorkspaceDoc } from '#/features/continuo/migrate';
 import { doneOnLine, guardAccesses, guardTool, inheritedChoices, otherLineNote, planPath, planStatusOn, tasksThrough } from '#/features/continuo/trajectory';
 import {
   CONTINUO_STORE_SCOPE,
@@ -230,13 +231,47 @@ describe('ContinuoStoreService', () => {
     expect(seen).toEqual([2]);
   });
 
-  it('ignores stored documents from another schema version', async () => {
+  it('upgrades a project saved by an earlier version instead of starting over', async () => {
     const documents = new MemoryDocumentStore();
-    await documents.set(CONTINUO_STORE_SCOPE, 'wd_old', { ...newWorkspaceDoc('wd_old', '/tmp/old'), schemaVersion: 3 });
+    const v3 = { ...newWorkspaceDoc('wd_old', '/tmp/old'), schemaVersion: 3, openCount: 4, tasks: [task({ taskId: 't1', sessionId: 's1' })], trajectories: [line({ trajectoryId: 'main', sessionId: 's1', taskIds: ['t1'] })] };
+    await documents.set(CONTINUO_STORE_SCOPE, 'wd_old', v3);
     const store = new ContinuoStoreService(documents);
-    expect(await store.load('wd_old')).toBeUndefined();
-    const fresh = await store.ensure('wd_old', '/tmp/old');
-    expect(fresh.schemaVersion).toBe(4);
+    const doc = await store.load('wd_old');
+    expect(doc).toMatchObject({ schemaVersion: 4, openCount: 4, tasks: [{ taskId: 't1' }], trajectories: [{ trajectoryId: 'main' }] });
+    expect(await documents.get(CONTINUO_STORE_SCOPE, 'wd_old')).toMatchObject({ schemaVersion: 4 });
+    expect((await store.ensure('wd_old', '/tmp/old')).openCount).toBe(4);
+  });
+
+  it('turns the one conversation of a v2 project into its first line', () => {
+    const v2 = { ...newWorkspaceDoc('wd_2', '/tmp/v2'), schemaVersion: 2, trajectories: undefined, decisions: undefined, tasks: [task({ taskId: 'init', kind: 'init', sessionId: 's_init' }), task({ taskId: 't1', sessionId: 's1', promptIds: ['p1', 'p2'] }), task({ taskId: 't2', sessionId: 's1', promptIds: ['p3'] })] };
+    const doc = migrateWorkspaceDoc(v2)!;
+    expect(doc.schemaVersion).toBe(4);
+    expect(doc.decisions).toEqual([]);
+    expect(doc.trajectories).toEqual([expect.objectContaining({ sessionId: 's1', status: 'current', taskIds: ['t1', 't2'], turnCount: 3 })]);
+  });
+
+  it('keeps only the active project-wide entries of a v1 ledger', () => {
+    const v1 = {
+      ...newWorkspaceDoc('wd_1', '/tmp/v1'), schemaVersion: 1, activity: [{ at: NOW, kind: 'system', text: 'x' }], init: { status: 'completed', fingerprint: 'abc' },
+      context: [
+        { id: 'c1', kind: 'convention', text: 'H1 starts with Northwind', scope: { type: 'workspace' }, sourceRefs: ['AGENTS.md'], origin: 'file', status: 'active', revision: 1, createdAt: NOW, updatedAt: NOW },
+        { id: 'c2', kind: 'convention', text: 'maybe', scope: { type: 'workspace' }, sourceRefs: [], origin: 'agent', status: 'candidate', revision: 1, createdAt: NOW, updatedAt: NOW },
+      ],
+      tasks: [task({ taskId: 't1', sessionId: 's1', trigger: 'reopen' as never })],
+    };
+    const doc = migrateWorkspaceDoc(v1)!;
+    expect(doc.context).toEqual([{ id: 'c1', text: 'H1 starts with Northwind', sourceRefs: ['AGENTS.md'], createdAt: NOW }]);
+    expect(doc.tasks[0]!.trigger).toBe('resume');
+    expect('activity' in doc).toBe(false);
+    expect(doc.init).toEqual({ status: 'completed' });
+    expect(doc.trajectories[0]!.taskIds).toEqual(['t1']);
+  });
+
+  it('refuses to open a project saved by a newer version rather than overwrite it', async () => {
+    const documents = new MemoryDocumentStore();
+    await documents.set(CONTINUO_STORE_SCOPE, 'wd_new', { ...newWorkspaceDoc('wd_new', '/tmp/new'), schemaVersion: 99 });
+    await expect(new ContinuoStoreService(documents).ensure('wd_new', '/tmp/new')).rejects.toThrow('更新版本');
+    expect(await documents.get(CONTINUO_STORE_SCOPE, 'wd_new')).toMatchObject({ schemaVersion: 99 });
   });
 });
 

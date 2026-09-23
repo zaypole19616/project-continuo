@@ -46,6 +46,7 @@ import {
   type IAgentScopeHandle,
   type ISessionScopeHandle,
   type Scope,
+  type TaskError,
   type TaskRound,
   type TaskStatus,
   type TaskTrigger,
@@ -83,6 +84,12 @@ interface Explorer {
 const INIT_STEP_BUDGET = 8;
 const FORK_RETRIES = 25;
 const FINAL_ANGLE = new Set<ExplorationAngle['status']>(['submitted', 'withdrawn', 'failed']);
+const COPY_MAX_BYTES = 300 * 1024 * 1024;
+
+function canCopyProject(doc: ContinuoWorkspaceDoc): boolean {
+  if (doc.scan === undefined || doc.scan.truncated) return false;
+  return doc.scan.entries.reduce((sum, entry) => sum + (entry.size ?? 0), 0) <= COPY_MAX_BYTES;
+}
 const BUSY = new Set<TaskStatus>(['queued', 'running', 'verifying']);
 
 const TASK_STATUS_LABEL: Record<TaskStatus, string> = {
@@ -97,11 +104,29 @@ const TASK_STATUS_LABEL: Record<TaskStatus, string> = {
   interrupted: '被打断',
 };
 
+interface TurnError {
+  readonly code?: string;
+  readonly message?: string;
+  readonly details?: { readonly statusCode?: unknown; readonly requestId?: unknown; readonly traceId?: unknown };
+}
+
+function taskErrorOf(error: TurnError | undefined, reason: string, at: string): TaskError {
+  const details = error?.details ?? {};
+  return {
+    code: error?.code ?? `turn.${reason}`,
+    message: (error?.message ?? reason).slice(0, 2000),
+    status: typeof details.statusCode === 'number' ? details.statusCode : undefined,
+    requestId: typeof details.requestId === 'string' ? details.requestId : undefined,
+    traceId: typeof details.traceId === 'string' ? details.traceId : undefined,
+    at,
+  };
+}
+
 function friendlyError(message: string): string {
-  if (/usage limit|quota/i.test(message)) return 'Kimi 的用量额度用完了，额度恢复后点「继续」';
-  if (/rate limit|429|overloaded|503/i.test(message)) return '模型服务暂时忙不过来，稍后点「继续」';
-  if (/401|unauthori[sz]ed|not logged in|login/i.test(message)) return 'Kimi 账号需要重新登录，登录后点「继续」';
-  if (/timeout|timed out|ECONNRESET|ENOTFOUND|fetch failed|network/i.test(message)) return '连不上模型服务，稍后点「继续」';
+  if (/usage limit|quota/i.test(message)) return 'Kimi 的用量额度用完了，额度恢复后重试';
+  if (/rate limit|429|overloaded|503/i.test(message)) return '模型服务暂时忙不过来，稍后重试';
+  if (/401|unauthori[sz]ed|not logged in|login/i.test(message)) return 'Kimi 账号需要重新登录，登录后重试';
+  if (/timeout|timed out|ECONNRESET|ENOTFOUND|fetch failed|network/i.test(message)) return '连不上模型服务，稍后重试';
   return message.slice(0, 160);
 }
 
@@ -294,7 +319,7 @@ export class ContinuoTaskManager {
         ? `上次没做完${task.lastError === undefined ? '' : `（${task.lastError.slice(0, 120)}）`}。`
         : '上次停在了半路。';
     const promptId = await this.sendTurn(workspaceId, taskId, agent, `继续「${taskName(task)}」。${reason}先看看项目里已经有什么，别重做做完的部分，把剩下的做完。`, '继续这件事');
-    return this.patchTask(workspaceId, taskId, (current) => ({ ...current, status: 'running', pauseRequested: false, trigger: 'resume' as TaskTrigger, promptIds: [...current.promptIds, promptId], endedAt: undefined, verification: undefined, lastError: undefined }));
+    return this.patchTask(workspaceId, taskId, (current) => ({ ...current, status: 'running', pauseRequested: false, trigger: 'resume' as TaskTrigger, promptIds: [...current.promptIds, promptId], endedAt: undefined, verification: undefined, lastError: undefined, error: undefined }));
   }
 
   async reply(workspaceId: string, taskId: string, text: string): Promise<ContinuoWorkspaceDoc> {
@@ -319,7 +344,7 @@ export class ContinuoTaskManager {
       }));
     }
     const promptId = await this.sendTurn(workspaceId, taskId, agent, text);
-    return this.patchTask(workspaceId, taskId, (current) => ({ ...current, status: 'running', pendingInteraction: 'none', phase: undefined, trigger: 'reply' as TaskTrigger, promptIds: [...current.promptIds, promptId], supplements: [...(current.supplements ?? []), text], endedAt: undefined, verification: undefined }));
+    return this.patchTask(workspaceId, taskId, (current) => ({ ...current, status: 'running', pendingInteraction: 'none', phase: undefined, trigger: 'reply' as TaskTrigger, promptIds: [...current.promptIds, promptId], supplements: [...(current.supplements ?? []), text], endedAt: undefined, verification: undefined, lastError: undefined, error: undefined }));
   }
 
   async choosePlan(workspaceId: string, decisionId: string, planId: string): Promise<ContinuoWorkspaceDoc> {
@@ -452,7 +477,7 @@ export class ContinuoTaskManager {
     await linesSettled(doc.root);
     const latest = line.taskIds.at(-1) === taskId;
     const commit = this.requireTask(await this.requireDoc(workspaceId), taskId).snapshot
-      ?? (latest ? await snapshotDir(doc.root, lineRoot(doc, line), `task/${taskId}`) : undefined);
+      ?? (latest && canCopyProject(doc) ? await snapshotDir(doc.root, lineRoot(doc, line), `task/${taskId}`) : undefined);
     await this.forkLine(workspaceId, line, turnIndex, `从「${taskName(task)}」继续`, {
       taskIds: kept,
       choices: inheritedChoices(line, turnIndex),
@@ -693,13 +718,12 @@ export class ContinuoTaskManager {
     }
     if (type === 'turn.ended') {
       const reason = String(event['reason']);
-      const error = event['error'] as { message?: string } | undefined;
-      await this.finishTurn(workspaceId, taskId, reason, error?.message);
+      await this.finishTurn(workspaceId, taskId, reason, event['error'] as TurnError | undefined);
     }
   }
 
-  private async finishTurn(workspaceId: string, taskId: string, reason: string, errorMessage: string | undefined): Promise<void> {
-    await this.settleTurn(workspaceId, taskId, reason, errorMessage);
+  private async finishTurn(workspaceId: string, taskId: string, reason: string, error: TurnError | undefined): Promise<void> {
+    await this.settleTurn(workspaceId, taskId, reason, error);
     await this.writePlanFiles(workspaceId, taskId);
     await this.writeWorkLog(workspaceId, taskId);
     const doc = await this.requireDoc(workspaceId);
@@ -844,6 +868,7 @@ export class ContinuoTaskManager {
     if (task.kind !== 'user' || line === undefined) return;
     const open = openDecisionOf(doc, line, taskId);
     if (open !== undefined && isExploring(open)) return;
+    if (!canCopyProject(doc)) return;
     const label = open === undefined ? `task/${taskId}` : `decision/${open.decisionId}`;
     const commit = await snapshotDir(doc.root, lineRoot(doc, line), label);
     if (commit === undefined) return;
@@ -852,7 +877,7 @@ export class ContinuoTaskManager {
       : { ...current, decisions: current.decisions.map((candidate) => (candidate.decisionId === open.decisionId ? { ...candidate, snapshot: commit } : candidate)) }));
   }
 
-  private async settleTurn(workspaceId: string, taskId: string, reason: string, errorMessage: string | undefined): Promise<void> {
+  private async settleTurn(workspaceId: string, taskId: string, reason: string, error: TurnError | undefined): Promise<void> {
     const doc = await this.requireDoc(workspaceId);
     const task = this.requireTask(doc, taskId);
     const endedAt = new Date().toISOString();
@@ -865,7 +890,7 @@ export class ContinuoTaskManager {
       return;
     }
     if (reason === 'failed' || reason === 'blocked') {
-      await this.patchTask(workspaceId, taskId, (current) => ({ ...current, status: 'failed', phase: undefined, pendingInteraction: 'none', lastError: friendlyError(errorMessage ?? reason), endedAt }));
+      await this.patchTask(workspaceId, taskId, (current) => ({ ...current, status: 'failed', phase: undefined, pendingInteraction: 'none', lastError: friendlyError(error?.message ?? reason), error: taskErrorOf(error, reason, endedAt), endedAt }));
       if (task.kind === 'init') await this.store.update(workspaceId, (current) => ({ ...current, init: { ...current.init, status: 'failed', endedAt } }));
       return;
     }
@@ -960,7 +985,8 @@ export class ContinuoTaskManager {
     const dir = resolve(root, WORK_LOG_DIR);
     try {
       await mkdir(dir, { recursive: true });
-      const path = await this.logPathFor(dir, task);
+      const earlierInit = task.kind === 'init' && task.logPath === undefined ? doc.tasks.findLast((candidate) => candidate.kind === 'init' && candidate.logPath !== undefined)?.logPath : undefined;
+      const path = earlierInit ?? await this.logPathFor(dir, task);
       if (task.logPath !== undefined && task.logPath !== path) {
         await rename(resolve(root, task.logPath), resolve(root, path)).catch(() => undefined);
       }

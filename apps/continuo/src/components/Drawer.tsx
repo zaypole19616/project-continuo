@@ -5,7 +5,8 @@ import type { TimelineState } from '#/lib/timeline';
 import { decisionsOn, lineIsBusy, taskLabel, tasksOn } from '#/lib/trajectory';
 import { Timeline } from './Timeline';
 import { ApprovalCard, QuestionCard } from './InteractionCards';
-import { InitStatus } from './InitStatus';
+import { InitCard } from './InitCard';
+import { ErrorCard } from './ErrorCard';
 import { DecisionCard } from './DecisionCard';
 import { TrajectoryTree } from './TrajectoryTree';
 import { AbandonDialog } from './AbandonDialog';
@@ -30,6 +31,7 @@ export interface DrawerProps {
   onDecide: (a: ApprovalRequest, d: 'approved' | 'rejected', scope?: 'session') => Promise<void>;
   onAction: (task: ContinuoTask, action: 'pause' | 'resume') => void;
   onOpenFile: (path: string) => void;
+  onRetryInit: () => void;
   onStartStep: (prompt: string) => void;
   onChoose: (decision: Decision, plan: TrajectoryPlan) => Promise<boolean>;
   onExpand: (decision: Decision) => Promise<boolean>;
@@ -41,6 +43,7 @@ export interface DrawerProps {
 type Tab = 'chat' | 'todo' | 'tree';
 
 const RESUMABLE = new Set(['paused', 'interrupted', 'failed', 'needs_review']);
+const CONTINUABLE = new Set(['paused', 'interrupted', 'needs_review']);
 const isFinished = (t: ContinuoTask) => t.status === 'completed' || t.status === 'needs_review';
 
 function statusLabel(task: ContinuoTask): string {
@@ -74,9 +77,8 @@ export function Drawer(p: DrawerProps) {
 
   const tasks = p.doc === null ? [] : tasksOn(p.doc, p.line);
   const todos = tasks.filter((t) => t.status !== 'completed');
-  const reading = p.doc?.init.status === 'running';
   const running = p.activeUserTask !== null && p.activeUserTask.status !== 'awaiting_user';
-  const resumable = p.latest !== null && RESUMABLE.has(p.latest.status) ? p.latest : null;
+  const resumable = p.latest !== null && CONTINUABLE.has(p.latest.status) ? p.latest : null;
   const modelName = DEFAULT_MODEL.split('/').pop();
   const send = () => { p.onSend(); setDraft(''); };
   const stop = () => { if (p.activeUserTask) p.onAction(p.activeUserTask, 'pause'); };
@@ -94,6 +96,11 @@ export function Drawer(p: DrawerProps) {
   const extras: Array<{ at: number; node: React.ReactNode }> = [];
   for (const task of tasks.filter((t) => isFinished(t) && t.endedAt !== undefined)) {
     extras.push({ at: Date.parse(task.endedAt!), node: <ClosingCard key={task.taskId} task={task} onOpenFile={p.onOpenFile} /> });
+  }
+  for (const task of tasks.filter((t) => t.status === 'failed' && t.endedAt !== undefined)) {
+    const error = task.error ?? { code: 'turn.failed', message: task.lastError ?? '没有完成', at: task.endedAt! };
+    const retry = task.taskId === p.latest?.taskId ? <Button variant="default" size="sm" disabled={p.sending} onClick={() => p.onAction(task, 'resume')}><RotateCcw size={12} />重试</Button> : undefined;
+    extras.push({ at: Date.parse(task.endedAt!), node: <ErrorCard key={`err-${task.taskId}`} kicker={`「${taskLabel(task)}」没有完成`} error={error} action={retry} /> });
   }
   if (p.doc !== null && p.line !== undefined) {
     for (const decision of decisionsOn(p.doc, p.line)) {
@@ -117,8 +124,8 @@ export function Drawer(p: DrawerProps) {
     <>
       {resumable && (
         <div className="state-bar chrome">
-          <span className="t2 sm flex-1">{resumable.status === 'paused' ? '已暂停，工作留在这里' : resumable.status === 'interrupted' ? '被打断了，可以接着做' : resumable.status === 'failed' ? '这次没做完，可以再试' : '还差一点，还没算完成'}</span>
-          <Button variant="default" size="sm" onClick={() => p.onAction(resumable, 'resume')}>{resumable.status === 'failed' ? <><RotateCcw size={12} />重试</> : <><Play size={12} />继续</>}</Button>
+          <span className="t2 sm flex-1">{resumable.status === 'paused' ? '已暂停，工作留在这里' : resumable.status === 'interrupted' ? '被打断了，可以接着做' : '还差一点，还没算完成'}</span>
+          <Button variant="default" size="sm" onClick={() => p.onAction(resumable, 'resume')}><Play size={12} />继续</Button>
         </div>
       )}
       <div className="composer">
@@ -156,7 +163,7 @@ export function Drawer(p: DrawerProps) {
         <TabsContent value="chat" className="flex min-h-0 flex-1 flex-col">
           {p.error && <div className="banner banner-err mb-2">{p.error}</div>}
           <div className="drawer-body">
-            {reading && p.doc && <InitStatus doc={p.doc} />}
+            {p.doc && <InitCard doc={p.doc} busy={p.sending} onRetry={p.onRetryInit} onOpenFile={p.onOpenFile} />}
             {p.state.items.length > 0 && <Timeline items={p.state.items} root={p.line?.workDir ?? p.doc?.root} after={(_, i) => anchored.get(i)} />}
             {trailing}
             {showNextStep && <NextStepCard step={nextStep} busy={p.sending} onStart={() => p.onStartStep(nextStep.prompt)} />}
