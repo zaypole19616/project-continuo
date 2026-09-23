@@ -89,7 +89,7 @@ function renderDone(doc: ContinuoWorkspaceDoc, line: Trajectory, task: ContinuoT
 function renderDecisions(doc: ContinuoWorkspaceDoc, line: Trajectory): string[] {
   const decisions = decisionsOn(doc, line);
   if (decisions.length === 0) return [];
-  const lines = ['', 'Decision points on this line (the full text of any plan is in its file; read it only when you need it):'];
+  const lines = ['', 'Decision points on this line (the full text of any plan is in its file; read it only when you need it). Call plans by their titles when you talk to the user; the ids are only for tool calls:'];
   for (const decision of decisions) {
     const choice = choiceOn(line, decision.decisionId);
     lines.push(`- ${decision.question}`);
@@ -97,10 +97,10 @@ function renderDecisions(doc: ContinuoWorkspaceDoc, line: Trajectory): string[] 
     else if (choice.planId === undefined) lines.push(`  The user chose their own direction: ${choice.text ?? ''}`);
     for (const plan of decision.plans) {
       if (planStatusOn(doc, line, decision, plan).kind === 'current') {
-        lines.push(`  Following plan ${plan.planId}: ${plan.title}. Basis: ${plan.basis} Risk: ${plan.risk}`);
+        lines.push(`  Following 「${plan.title}」 (id ${plan.planId}). Basis: ${plan.basis} Risk: ${plan.risk}`);
         continue;
       }
-      lines.push(`  Plan ${plan.planId}: ${plan.title} — ${otherLineNote(doc, line, decision, plan)}. ${plan.path}`);
+      lines.push(`  「${plan.title}」 (id ${plan.planId}) — ${otherLineNote(doc, line, decision, plan)}. ${plan.path}`);
     }
   }
   return lines;

@@ -174,7 +174,7 @@ export function Drawer(p: DrawerProps) {
         <TabsContent value="chat" className="flex min-h-0 flex-1 flex-col">
           {p.error && <div className="banner banner-err mb-2">{p.error}</div>}
           <div className="drawer-body">
-            {p.doc && <InitCard doc={p.doc} busy={p.sending} startLock={startLock} started={tasks.length > 0} onRetry={p.onRetryInit} onOpenFile={p.onOpenFile} onTodoAction={todoAction} onShowTodos={() => setTab('todo')} />}
+            {p.doc && <InitCard doc={p.doc} busy={p.sending} startLock={startLock} onRetry={p.onRetryInit} onOpenFile={p.onOpenFile} onTodoAction={todoAction} onShowTodos={() => setTab('todo')} />}
             {p.state.items.length > 0 && <Timeline items={p.state.items} root={p.line?.workDir ?? p.doc?.root} after={(_, i) => anchored.get(i)} />}
             {trailing}
             {p.questions.map((q) => <QuestionCard key={q.question_id} q={q} onAnswer={(answers, note) => p.onAnswer(q, answers, note)} />)}

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { BookOpen, FileText, Loader2, RotateCcw } from 'lucide-react';
+import { FileText, RotateCcw } from 'lucide-react';
 import type { ContinuoDoc, ContinuoTodo, TaskError, TodoAction } from '#/lib/api';
 import { Button } from '#/components/ui/button';
 import { isEmptyFolder } from '#/lib/trajectory';
@@ -21,8 +21,21 @@ function FileList({ files, onOpenFile }: { files: readonly string[]; onOpenFile:
   );
 }
 
-export function InitCard({ doc, busy, startLock, started, onRetry, onOpenFile, onTodoAction, onShowTodos }: {
-  doc: ContinuoDoc; busy: boolean; startLock: string | undefined; started: boolean;
+const EMPTY_TEXT = '这是一个新建的空文件夹。放进材料后再打开，我会先了解一遍；也可以直接告诉我第一件事。';
+
+function Phase({ text }: { text: string }) {
+  const match = /^(在读|在写) (.+)$/.exec(text);
+  if (match === null) return <>{text}</>;
+  return <>{match[1]} <span className="init-file">{match[2]}</span></>;
+}
+
+function clock(iso: string): string {
+  const d = new Date(iso);
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+export function InitCard({ doc, busy, startLock, onRetry, onOpenFile, onTodoAction, onShowTodos }: {
+  doc: ContinuoDoc; busy: boolean; startLock: string | undefined;
   onRetry: () => void; onOpenFile: (path: string) => void;
   onTodoAction: (todo: ContinuoTodo, action: TodoAction) => void; onShowTodos: () => void;
 }) {
@@ -30,6 +43,7 @@ export function InitCard({ doc, busy, startLock, started, onRetry, onOpenFile, o
   const running = doc.init.status === 'running';
   useEffect(() => {
     if (!running) return;
+    setNow(Date.now());
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
   }, [running]);
@@ -39,13 +53,14 @@ export function InitCard({ doc, busy, startLock, started, onRetry, onOpenFile, o
 
   if (running) {
     const started = doc.init.startedAt;
-    const elapsed = started === undefined ? 0 : (now - Date.parse(started)) / 1000;
+    const elapsed = started === undefined ? 0 : Math.max(0, (now - Date.parse(started)) / 1000);
+    const phase = task?.phase ?? STAGES.findLast(([at]) => elapsed >= at)![1];
     return (
-      <div className="init-card is-running fade-in">
-        <div className="init-card-head"><Loader2 size={14} className="spin" /><span className="font-medium">正在了解这个文件夹</span></div>
-        <div className="init-card-body">
-          <div className="init-phase">{task?.phase ?? STAGES.findLast(([at]) => elapsed >= at)![1]}</div>
-          {files.length > 0 && <><div className="init-sec">已读 {files.length} 个文件</div><FileList files={files} onOpenFile={onOpenFile} /></>}
+      <div className="init-msg fade-in">
+        <div className="turn-status"><span className="turn-avatar" /><span>正在了解这个文件夹</span></div>
+        <div className="init-reading">
+          <div key={phase} className="fade-in"><Phase text={phase} /></div>
+          {files.length > 0 && <div className="t3 xs">已读 {files.length} 个文件</div>}
         </div>
       </div>
     );
@@ -59,44 +74,28 @@ export function InitCard({ doc, busy, startLock, started, onRetry, onOpenFile, o
   }
   if (doc.understanding === undefined) return null;
   const empty = isEmptyFolder(doc);
-  const title = empty ? '新建的空文件夹' : '已了解这个文件夹';
   const suggested = (doc.todos ?? []).filter((todo) => todo.fromTaskId !== undefined && todo.fromTaskId === doc.init.taskId);
-  const summary = empty ? '放进材料后再打开，会先了解一遍；也可以直接交代第一件事。' : doc.understanding.text;
-
-  if (started) {
-    return (
-      <details className="init-card is-compact fade-in">
-        <summary className="init-card-head">
-          <BookOpen size={14} /><span className="font-medium">{title}</span>
-          {!empty && <span className="t3">· 读过 {files.length} 个文件{doc.context.length > 0 ? ` · ${doc.context.length} 条要点` : ''}</span>}
-        </summary>
-        <div className="init-card-body">
-          <div>{doc.understanding.text}</div>
-          {files.length > 0 && <FileList files={files} onOpenFile={onOpenFile} />}
-          {doc.context.length > 0 && <ul className="init-points">{doc.context.map((entry) => <li key={entry.id}>{entry.text}</li>)}</ul>}
-          {task?.logPath !== undefined && <button className="link init-log" onClick={() => onOpenFile(task.logPath!)}><FileText size={12} />工作日志</button>}
-        </div>
-      </details>
-    );
-  }
+  const understood = doc.understanding.text.trim();
+  const sentence = /[。！？.!?]$/.test(understood) ? understood : `${understood}。`;
+  const partial = doc.init.status === 'partial' ? '（文件比较多，只看了一部分）' : '';
+  const text = empty ? EMPTY_TEXT : `我已经了解了这个项目${partial}：${sentence}${suggested.length > 0 ? '我建议接下来可以做这些事：' : '你想先做什么？直接在下面告诉我就行。'}`;
+  const read = `读过 ${files.length} 个文件${doc.context.length > 0 ? `，记下 ${doc.context.length} 条要点` : ''}`;
+  const endedAt = doc.init.endedAt ?? doc.understanding.updatedAt;
 
   return (
-    <div className="init-card fade-in">
-      <div className="init-card-head">
-        <BookOpen size={14} /><span className="font-medium">{title}</span>
-        {doc.init.status === 'partial' && <span className="t3">· 文件较多，只看了一部分</span>}
-      </div>
-      <div className="init-card-body">
-        <div className="init-summary">{summary}</div>
-        {files.length > 0 && (
-          <details>
-            <summary className="init-sec">读过 {files.length} 个文件{doc.context.length > 0 ? `，记下 ${doc.context.length} 条要点` : ''}</summary>
+    <div className="init-msg fade-in">
+      <div className="msg-assistant">{text}</div>
+      {suggested.length > 0 && <SuggestedTodos todos={suggested} busy={busy} startLock={startLock} onAction={onTodoAction} onShowTodos={onShowTodos} head={false} />}
+      {!empty && files.length > 0 && (
+        <details className="init-read">
+          <summary>{clock(endedAt)} · {read}</summary>
+          <div className="init-read-body">
             <FileList files={files} onOpenFile={onOpenFile} />
             {doc.context.length > 0 && <ul className="init-points">{doc.context.map((entry) => <li key={entry.id}>{entry.text}</li>)}</ul>}
-          </details>
-        )}
-      </div>
-      {suggested.length > 0 && <div className="init-ask"><SuggestedTodos todos={suggested} busy={busy} startLock={startLock} onAction={onTodoAction} onShowTodos={onShowTodos} /></div>}
+            {task?.logPath !== undefined && <button className="link init-log" onClick={() => onOpenFile(task.logPath!)}><FileText size={12} />工作日志</button>}
+          </div>
+        </details>
+      )}
     </div>
   );
 }

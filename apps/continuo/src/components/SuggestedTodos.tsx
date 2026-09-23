@@ -16,14 +16,14 @@ export function SuggestionActions({ todo, busy, startLock, onAction }: {
   );
 }
 
-export function SuggestedTodos({ todos, busy, startLock, onAction, onShowTodos }: {
+export function SuggestedTodos({ todos, busy, startLock, onAction, onShowTodos, head = true }: {
   todos: readonly ContinuoTodo[]; busy: boolean; startLock: string | undefined;
-  onAction: (todo: ContinuoTodo, action: TodoAction) => void; onShowTodos: () => void;
+  onAction: (todo: ContinuoTodo, action: TodoAction) => void; onShowTodos: () => void; head?: boolean;
 }) {
   if (todos.length === 0) return null;
   return (
     <div className="suggest">
-      <div className="suggest-head"><Sparkles size={14} />建议的下一步事项</div>
+      {head && <div className="suggest-head"><Sparkles size={14} />建议的下一步事项</div>}
       {todos.map((todo) => (
         <div key={todo.todoId} className={`suggest-row is-${todo.state ?? 'open'}`}>
           <div className="min-w-0 flex-1">
