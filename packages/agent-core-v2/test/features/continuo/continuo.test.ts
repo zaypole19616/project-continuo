@@ -277,37 +277,77 @@ describe('ContinuoStoreService', () => {
 });
 
 describe('line isolation guard', () => {
+  const guard = (d: ContinuoWorkspaceDoc, sessionId: string, accesses: Array<{ operation: string; path: string }>, existing: string[] = []) => guardAccesses(d, sessionId, accesses, new Set(existing));
   const root = '/p';
   const main = line({ trajectoryId: 'main', sessionId: 's_main', taskIds: ['t1'] });
   const branch = line({ trajectoryId: 'b', sessionId: 's_b', status: 'alternative', workDir: '/p/.continuo/lines/b', taskIds: ['t1', 't2'] });
   const doc = { ...newWorkspaceDoc('wd_1', root), trajectories: [main, branch], tasks: [task({ taskId: 't1', sessionId: 's_main' }), task({ taskId: 't2', sessionId: 's_b' })] };
 
   it('keeps a branched line inside its own directory', () => {
-    expect(guardAccesses(doc, 's_b', [{ operation: 'write', path: '/p/.continuo/lines/b/drafts/x.md' }])).toBeUndefined();
-    expect(guardAccesses(doc, 's_b', [{ operation: 'read', path: '/p/.continuo/lines/b/materials/a.md' }])).toBeUndefined();
-    expect(guardAccesses(doc, 's_b', [{ operation: 'write', path: '/p/drafts/x.md' }])).toContain('/p/.continuo/lines/b');
-    expect(guardAccesses(doc, 's_b', [{ operation: 'read', path: '/p/drafts/x.md' }])).toContain('Denied: /p/drafts/x.md');
-    expect(guardAccesses(doc, 's_b', [{ operation: 'read', path: '/elsewhere/notes.md' }])).toBeUndefined();
+    expect(guard(doc, 's_b', [{ operation: 'write', path: '/p/.continuo/lines/b/drafts/x.md' }])).toBeUndefined();
+    expect(guard(doc, 's_b', [{ operation: 'read', path: '/p/.continuo/lines/b/materials/a.md' }])).toBeUndefined();
+    expect(guard(doc, 's_b', [{ operation: 'write', path: '/p/drafts/x.md' }])).toContain('/p/.continuo/lines/b');
+    expect(guard(doc, 's_b', [{ operation: 'read', path: '/p/drafts/x.md' }])).toContain('Denied: /p/drafts/x.md');
+    expect(guard(doc, 's_b', [{ operation: 'read', path: '/elsewhere/notes.md' }])).toBeUndefined();
   });
 
   it('keeps the main line out of the other lines', () => {
-    expect(guardAccesses(doc, 's_main', [{ operation: 'write', path: '/p/drafts/x.md' }])).toBeUndefined();
-    expect(guardAccesses(doc, 's_main', [{ operation: 'read', path: '/p/.continuo/lines/b/drafts/x.md' }])).toContain('belong to other lines');
-    expect(guardAccesses(doc, 's_main', [{ operation: 'write', path: '/p/.continuo/git/config' }])).toBeDefined();
+    expect(guard(doc, 's_main', [{ operation: 'write', path: '/p/drafts/x.md' }])).toBeUndefined();
+    expect(guard(doc, 's_main', [{ operation: 'read', path: '/p/.continuo/lines/b/drafts/x.md' }])).toContain("Continuo's own records");
+    expect(guard(doc, 's_main', [{ operation: 'write', path: '/p/.continuo/lines/b/x.md' }])).toBeDefined();
+    expect(guard(doc, 's_main', [{ operation: 'write', path: '/tmp/elsewhere.md' }])).toContain('stays inside its folder, /p');
   });
 
-  it('protects another line\'s files when a line could not get its own directory', () => {
-    const shared = line({ trajectoryId: 'c', sessionId: 's_c', status: 'alternative', taskIds: ['t1', 't3'] });
-    const withShared = { ...doc, trajectories: [main, shared], tasks: [...doc.tasks, task({ taskId: 't3', sessionId: 's_c', report: { summary: 's', deliverables: [{ path: 'drafts/c.md' }], unresolved: [], reportedAt: NOW } })] };
-    expect(guardAccesses(withShared, 's_main', [{ operation: 'write', path: '/p/drafts/c.md' }])).toContain('Denied: /p/drafts/c.md');
-    expect(guardAccesses(withShared, 's_c', [{ operation: 'write', path: '/p/drafts/c.md' }])).toBeUndefined();
+  describe('lines sharing the project folder', () => {
+    const report = (path: string) => ({ summary: 's', deliverables: [{ path }], unresolved: [], reportedAt: NOW });
+    const solo = { ...newWorkspaceDoc('wd_s', root), trajectories: [line({ trajectoryId: 'main', sessionId: 's_main', taskIds: ['t1'] })], tasks: [task({ taskId: 't1', sessionId: 's_main', report: report('drafts/a.md') })] };
+    const forked = {
+      ...solo,
+      trajectories: [
+        line({ trajectoryId: 'main', sessionId: 's_main', taskIds: ['t1', 't2'] }),
+        line({ trajectoryId: 'c', sessionId: 's_c', status: 'alternative', taskIds: ['t1', 't3'], origin: { fromTrajectoryId: 'main', turnIndex: 1, decisionId: 'd1', planId: 'C' } }),
+      ],
+      tasks: [task({ taskId: 't1', sessionId: 's_main', report: report('drafts/a.md') }), task({ taskId: 't2', sessionId: 's_main', report: report('drafts/b.md') }), task({ taskId: 't3', sessionId: 's_c', report: report('drafts/c.md') })],
+    };
+
+    it('changes any file freely while there is only one line', () => {
+      expect(guard(solo, 's_main', [{ operation: 'readwrite', path: '/p/README.md' }], ['/p/README.md'])).toBeUndefined();
+      expect(guard(solo, 's_main', [{ operation: 'write', path: '/p/drafts/a.md' }], ['/p/drafts/a.md'])).toBeUndefined();
+    });
+
+    it('lets a line change its own files, files from before the fork and files it shares with another line', () => {
+      expect(guard(forked, 's_c', [{ operation: 'write', path: '/p/drafts/new.md' }])).toBeUndefined();
+      expect(guard(forked, 's_c', [{ operation: 'readwrite', path: '/p/drafts/c.md' }], ['/p/drafts/c.md'])).toBeUndefined();
+      expect(guard(forked, 's_c', [{ operation: 'readwrite', path: '/p/README.md' }], ['/p/README.md'])).toBeUndefined();
+      expect(guard(forked, 's_c', [{ operation: 'write', path: '/p/drafts/a.md' }], ['/p/drafts/a.md'])).toBeUndefined();
+    });
+
+    it('keeps files another line wrote as they are and names the copy to change instead', () => {
+      expect(guard(forked, 's_c', [{ operation: 'write', path: '/p/drafts/b.md' }], ['/p/drafts/b.md'])).toContain('/p/drafts/b-方案C.md');
+      expect(guard(forked, 's_main', [{ operation: 'readwrite', path: '/p/drafts/c.md' }], ['/p/drafts/c.md'])).toContain('/p/drafts/c-原轨迹.md');
+      const abandoned = { ...forked, trajectories: [forked.trajectories[0]!, { ...forked.trajectories[1]!, status: 'abandoned' as const }] };
+      expect(guard(abandoned, 's_main', [{ operation: 'write', path: '/p/drafts/c.md' }], ['/p/drafts/c.md'])).toContain('written on another line');
+    });
+
+    it('treats a file the user deleted as gone rather than protected', () => {
+      expect(guard(forked, 's_c', [{ operation: 'write', path: '/p/drafts/b.md' }], [])).toBeUndefined();
+    });
+
+    it('tells each line which files belong to the others', () => {
+      const bundle = compileContextBundle({ ...forked, understanding: { text: 'u', sourceRefs: [], updatedAt: NOW } }, 's_c')!.text;
+      expect(bundle).toContain('Other lines of this project work in this same folder.');
+      expect(bundle).toContain('drafts/b.md');
+      expect(bundle).not.toContain('drafts/c.md,');
+      expect(bundle).toContain('"-方案C"');
+      expect(bundle).toContain('notes-方案C.md');
+    });
   });
 
   it('lets a plan author read but never write', () => {
     const exploring = { ...decision(), plans: [], exploration: { reason: 'r', angles: [{ key: 'A', title: 'a', angle: 'look at x', status: 'running' as const, sessionId: 's_author', steps: 0 }], messages: [], maxSteps: 8, startedAt: NOW } };
     const withAuthor = { ...doc, decisions: [exploring] };
-    expect(guardAccesses(withAuthor, 's_author', [{ operation: 'read', path: '/p/materials/a.md' }])).toBeUndefined();
-    expect(guardAccesses(withAuthor, 's_author', [{ operation: 'write', path: '/p/drafts/a.md' }])).toContain('Trajectory submit');
+    expect(guard(withAuthor, 's_author', [{ operation: 'read', path: '/p/materials/a.md' }])).toBeUndefined();
+    expect(guard(withAuthor, 's_author', [{ operation: 'write', path: '/p/drafts/a.md' }])).toContain('Trajectory submit');
     expect(guardTool(withAuthor, 's_author', 'Bash', '/p')).toContain('Read, Grep and Glob');
     expect(guardTool(withAuthor, 's_author', 'AskUserQuestion', undefined)).toContain('Trajectory ask');
     expect(guardTool(withAuthor, 's_author', 'Grep', undefined)).toBeUndefined();

@@ -1,9 +1,12 @@
-import { choiceOn, decisionsOn, doneOnLine, explorerOf, lineById, otherLineNote, planStatusOn, trajectoryOfSession } from './trajectory';
+import { join, relative } from 'node:path';
+
+import { choiceOn, decisionsOn, doneOnLine, explorerOf, lineById, lineSuffix, otherLineNote, planStatusOn, rootOfTask, trajectoryOfSession, writtenPaths } from './trajectory';
 import { currentTaskOf, type ContextEntry, type ContinuoTask, type ContinuoWorkspaceDoc, type Decision, type ExplorationAngle, type Trajectory } from './types';
 
 export const CONTEXT_BUNDLE_MAX_CHARS = 6000;
 export const CONTEXT_BUNDLE_MAX_ENTRIES = 30;
 export const CONTEXT_BUNDLE_MAX_DONE = 12;
+export const CONTEXT_BUNDLE_MAX_FOREIGN = 20;
 
 export interface ContextBundle {
   readonly text: string;
@@ -34,6 +37,7 @@ export function compileContextBundle(doc: ContinuoWorkspaceDoc, sessionId: strin
     for (const entry of kept) lines.push(renderEntry(entry));
   }
   const line = explorer === undefined ? (task === undefined ? undefined : trajectoryOfSession(doc, task.sessionId)) : lineById(doc, explorer.decision.trajectoryId);
+  if (line !== undefined && line.workDir === undefined && explorer === undefined) lines.push(...renderSharedFolder(doc, line));
   if (line?.workDir !== undefined) {
     lines.push('', `Working directory of this line: ${line.workDir}. It is a copy of the project made when this line branched off. Read and write with absolute paths under it, run shell commands with cwd set to it, and report deliverables relative to it; its work-log/ holds this line's history. Files elsewhere in the project belong to other lines: nothing here is merged back into them, and access outside this directory is refused.`);
   }
@@ -52,6 +56,24 @@ export function compileContextBundle(doc: ContinuoWorkspaceDoc, sessionId: strin
     'If the choice is between different approaches that lead to different deliverables, open a decision point with Trajectory propose. If a fact or piece of information is missing, ask with AskUserQuestion instead of guessing or ending your turn with a plain-text question. Before finishing a task that produced files, call ReportWorkspaceResult with the exact paths.',
   );
   return { text: lines.join('\n'), revision: doc.revision, entryIds: kept.map((entry) => entry.id) };
+}
+
+function renderSharedFolder(doc: ContinuoWorkspaceDoc, line: Trajectory): string[] {
+  const own = new Set(line.taskIds);
+  const foreign = [...new Set(doc.tasks
+    .filter((task) => task.kind === 'user' && !own.has(task.taskId) && rootOfTask(doc, task) === doc.root)
+    .flatMap((task) => [...writtenPaths(doc, task), ...(task.logPath === undefined ? [] : [join(doc.root, task.logPath)])])
+    .map((path) => relative(doc.root, path)))];
+  const others = doc.trajectories.some((other) => other.trajectoryId !== line.trajectoryId && other.status !== 'abandoned');
+  if (!others && foreign.length === 0) return [];
+  const suffix = lineSuffix(doc, line);
+  const lines = ['', 'Other lines of this project work in this same folder.'];
+  if (foreign.length > 0) {
+    const shown = foreign.slice(0, CONTEXT_BUNDLE_MAX_FOREIGN);
+    lines.push(`Files they wrote are not part of this line's work; read them only if the user asks: ${shown.join(', ')}${foreign.length > shown.length ? `, and ${foreign.length - shown.length} more` : ''}.`);
+  }
+  if (others) lines.push(`When you copy a file to change it, add "-${suffix}" to the copy's name (for example notes-${suffix}.md).`);
+  return lines;
 }
 
 function renderDone(doc: ContinuoWorkspaceDoc, line: Trajectory, task: ContinuoTask): string[] {
