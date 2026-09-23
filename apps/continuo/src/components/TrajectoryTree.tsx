@@ -168,7 +168,7 @@ function RootNode({ doc, tier, collapsible, onToggle, locked, actions }: { doc: 
   const status = INIT_STATUS[init.status] ?? (doc.understanding === undefined ? '还没了解' : '文件夹是空的');
   const dot = init.status === 'running' ? 'is-running' : init.status === 'failed' || init.status === 'stopped' ? 'is-failed' : init.status === 'partial' ? 'is-partial' : doc.understanding === undefined ? 'is-root' : 'is-done';
   const at = init.startedAt;
-  const sources = [...new Set([...(doc.understanding?.sourceRefs ?? []), ...doc.context.flatMap((entry) => entry.sourceRefs)])];
+  const sources = task?.sources ?? [...new Set([...(doc.understanding?.sourceRefs ?? []), ...doc.context.flatMap((entry) => entry.sourceRefs)])];
   const retryable = init.status === 'failed' || init.status === 'stopped';
   return (
     <div className="t-item">

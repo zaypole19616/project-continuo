@@ -43,10 +43,10 @@ export class WorkspaceContextTool implements IWorkspaceContextTool {
         }));
         await this.store.update(doc.workspaceId, (current) => ({
           ...current,
-          understanding: { text: args.understanding, sourceRefs: args.sourceRefs, updatedAt: now },
+          understanding: { text: args.understanding, sourceRefs: args.sourceRefs, suggestions: args.suggestions, updatedAt: now },
           context,
         }));
-        return { isError: false, output: `Recorded the understanding of this folder and ${context.length} project points.` };
+        return { isError: false, output: `Recorded the understanding of this folder, ${context.length} project points and ${args.suggestions?.length ?? 0} suggestions.` };
       },
     };
   }

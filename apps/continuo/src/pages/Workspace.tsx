@@ -157,7 +157,7 @@ export function WorkspaceView({ workspace, onClose, themePref, onTheme }: { work
   const abandon = (decision: Decision, plan: TrajectoryPlan, reason: string) => { void run(() => continuo.decisionAction(workspaceId, decision.decisionId, 'abandon', { plan_id: plan.planId, reason: reason.trim() === '' ? undefined : reason.trim() })); };
   const switchLine = (target: Trajectory) => { void run(() => continuo.activateLine(workspaceId, target.trajectoryId)); };
   const forkAfter = (task: ContinuoTask) => run(() => continuo.taskAction(workspaceId, task.taskId, 'fork'));
-  const retryInit = () => { void run(() => continuo.open(workspaceId, newRequestId())); };
+  const retryInit = () => { void run(() => continuo.retryInit(workspaceId)); };
   const addTodo = (text: string, timing: TodoTiming | undefined) => run(() => continuo.addTodo(workspaceId, text, timing));
   const todoAction = (todo: ContinuoTodo, action: 'start' | 'delete') => run(() => continuo.todoAction(workspaceId, todo.todoId, action));
   const setPermission = (mode: PermissionMode) => { void run(() => continuo.setPermission(workspaceId, mode)); };

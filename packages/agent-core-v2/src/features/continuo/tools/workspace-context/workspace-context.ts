@@ -25,6 +25,17 @@ export const WorkspaceContextInputSchema = z.object({
     .max(8)
     .optional()
     .describe('Project points, each backed by files you actually read.'),
+  suggestions: z
+    .array(
+      z.object({
+        title: z.string().min(1).max(40).describe('What to do, as a short task name in the language of the folder.'),
+        reason: z.string().min(1).max(200).describe('Why, with the file or gap that shows it.'),
+        prompt: z.string().min(1).max(600).describe('The request that starts it, written as the user would ask it.'),
+      }),
+    )
+    .max(3)
+    .optional()
+    .describe('Up to three things clearly worth doing or improving that what you read shows. Leave this out when nothing stands out.'),
 });
 
 export type WorkspaceContextInput = z.infer<typeof WorkspaceContextInputSchema>;

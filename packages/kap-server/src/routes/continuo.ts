@@ -97,6 +97,28 @@ export function registerContinuoRoutes(app: ContinuoRouteHost, core: Scope): voi
   );
   app.post(openRoute.path, openRoute.options, openRoute.handler as Parameters<ContinuoRouteHost['post']>[2]);
 
+  const retryInitRoute = defineRoute(
+    {
+      method: 'POST',
+      path: '/workspaces/{workspace_id}/continuo/init::retry',
+      params: workspaceParamSchema,
+      success: { data: docSchema },
+      errors: CONTINUO_ERRORS,
+      description: 'Read the folder again after a first read that failed or was stopped; opening a project only reads it the first time',
+      tags: ['continuo'],
+      operationId: 'continuoRetryInit',
+    },
+    async (req, reply) => {
+      if (!flagGuard(req.id, reply)) return;
+      try {
+        reply.send(okEnvelope(await manager.retryInit(req.params.workspace_id), req.id));
+      } catch (error) {
+        sendError(reply, req.id, error);
+      }
+    },
+  );
+  app.post(retryInitRoute.path, retryInitRoute.options, retryInitRoute.handler as Parameters<ContinuoRouteHost['post']>[2]);
+
   const getRoute = defineRoute(
     {
       method: 'GET',

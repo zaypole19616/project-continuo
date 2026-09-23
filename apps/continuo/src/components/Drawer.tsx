@@ -171,7 +171,7 @@ export function Drawer(p: DrawerProps) {
         <TabsContent value="chat" className="flex min-h-0 flex-1 flex-col">
           {p.error && <div className="banner banner-err mb-2">{p.error}</div>}
           <div className="drawer-body">
-            {p.doc && <InitCard doc={p.doc} busy={p.sending} onRetry={p.onRetryInit} onOpenFile={p.onOpenFile} />}
+            {p.doc && <InitCard doc={p.doc} busy={p.sending || p.activeUserTask !== null} started={tasks.length > 0} onRetry={p.onRetryInit} onOpenFile={p.onOpenFile} onStart={(prompt) => { if (!p.sending) p.onStartStep(prompt); }} />}
             {p.state.items.length > 0 && <Timeline items={p.state.items} root={p.line?.workDir ?? p.doc?.root} after={(_, i) => anchored.get(i)} />}
             {trailing}
             {showNextStep && <NextStepCard step={nextStep} busy={p.sending} onStart={() => p.onStartStep(nextStep.prompt)} />}

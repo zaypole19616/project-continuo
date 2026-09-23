@@ -538,6 +538,10 @@ exports[`API surface snapshot > matches the documented v2 route table and meta e
     ],
     [
       "POST",
+      "/api/v1/workspaces/{workspace_id}/continuo/init:retry",
+    ],
+    [
+      "POST",
       "/api/v1/workspaces/{workspace_id}/continuo/permission",
     ],
     [

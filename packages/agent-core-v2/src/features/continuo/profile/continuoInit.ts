@@ -16,6 +16,7 @@ const INIT_ROLE =
   '- Only when they do not, sample a few materials the guides or the structure point to, and stop as soon as those three things are clear. Skip anything the guides mark as archive, plus dependencies, build output, caches, version-control internals and anything that looks like credentials. For non-text files note the name only; never try to open them with text tools.\n' +
   '- Record what you learned with one WorkspaceContext call: the understanding in two to three sentences, and the points later tasks need. Every point needs the files it came from; leave out anything you cannot trace to a file you actually read. Never claim to have read a file you did not read.\n' +
   '- If the folder is empty or has no recognizable organization, say so plainly. Never invent a project purpose.\n' +
+  '- If what you read clearly shows something worth doing or improving, record it as a suggestion with its evidence; if nothing stands out, record none. The user sees your suggestions right after you finish, and waits for their own idea otherwise.\n' +
   '- Audience, tone or output choices that only matter for future writing are observations for the understanding, not open questions; do not ask about them now.\n' +
   '- Finish with a short message to the user in the language of the folder: what you understood, which parts you did not read, and one or two things they may want to correct.';
 

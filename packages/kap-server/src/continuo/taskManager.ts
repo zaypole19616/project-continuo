@@ -212,12 +212,18 @@ export class ContinuoTaskManager {
       if (isExploring(decision) && !this.attachments.has(decision.taskId)) await this.finishExploration(workspaceId, decision.decisionId, '被打断');
     }
     doc = await this.requireDoc(workspaceId);
-    if (doc.init.status === 'pending' || doc.init.status === 'failed' || doc.init.status === 'stopped') {
+    if (doc.init.status === 'pending') {
       doc = await this.startInit(doc);
     } else if (doc.init.status === 'running' && !this.isLive(doc.init.taskId, doc)) {
       doc = await this.store.update(workspaceId, (current) => ({ ...current, init: { ...current.init, status: current.understanding === undefined ? 'partial' : 'completed', endedAt: new Date().toISOString() } }));
     }
     return doc;
+  }
+
+  async retryInit(workspaceId: string): Promise<ContinuoWorkspaceDoc> {
+    const doc = await this.requireDoc(workspaceId);
+    if (doc.init.status === 'running' && this.isLive(doc.init.taskId, doc)) return doc;
+    return this.startInit(doc);
   }
 
   async snapshot(workspaceId: string): Promise<ContinuoWorkspaceDoc | undefined> {
@@ -641,7 +647,7 @@ export class ContinuoTaskManager {
         ...current,
         scan,
         init: { status: 'pending', startedAt: now, endedAt: now },
-        understanding: { text: '这个文件夹是空的。等你放进材料或交代第一件事；下次打开会重新了解一遍。', sourceRefs: [], updatedAt: now },
+        understanding: { text: '这个文件夹是空的。放进材料后再打开，会先了解一遍；也可以直接交代第一件事。', sourceRefs: [], updatedAt: now },
       }));
     }
     const session = await this.core.accessor.get(ISessionManager).create({ workspaceId, workDir: doc.root, mainAgentBinding: { profile: CONTINUO_INIT_PROFILE } });
@@ -784,6 +790,11 @@ export class ContinuoTaskManager {
       if (written !== undefined) attachment?.writes.set(String(event['toolCallId']), { path: written, turnId });
       const read = readPath(event['display']);
       if (read !== undefined) attachment?.reads.add(read);
+      if (read !== undefined && this.requireTask(await this.requireDoc(workspaceId), taskId).kind === 'init') {
+        const doc = await this.requireDoc(workspaceId);
+        const rel = this.relativeToRoot(doc.root, read);
+        await this.patchTask(workspaceId, taskId, (current) => ((current.sources ?? []).includes(rel) ? current : { ...current, sources: [...(current.sources ?? []), rel].slice(0, 40) }));
+      }
       await this.patchTask(workspaceId, taskId, (current) => ({ ...current, phase: phaseOf(typeof event['name'] === 'string' ? event['name'] : '', read ?? written) }));
       return;
     }

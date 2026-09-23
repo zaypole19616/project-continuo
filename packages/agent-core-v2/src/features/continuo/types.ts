@@ -223,9 +223,16 @@ export interface WorkspaceScan {
 
 export type InitStatus = 'pending' | 'running' | 'completed' | 'partial' | 'failed' | 'stopped';
 
+export interface InitSuggestion {
+  readonly title: string;
+  readonly reason: string;
+  readonly prompt: string;
+}
+
 export interface WorkspaceUnderstanding {
   readonly text: string;
   readonly sourceRefs: readonly string[];
+  readonly suggestions?: readonly InitSuggestion[];
   readonly updatedAt: string;
 }
 
