@@ -117,7 +117,6 @@ export function TaskNode({ doc, task, stubs, tier, collapsible, onToggle, locked
         <div className={`t-head ${collapsible ? 'is-toggle' : ''}`} onClick={collapsible ? onToggle : undefined} title={collapsible ? (tier === 'detail' ? '收起' : '展开') : undefined}>
           <span className="t-name">{taskLabel(task)}</span>
           {task.branch !== undefined && <span className="t-tag is-plan" title="这条轨迹采用的方案">{planTitle(doc, task.branch.decisionId, task.branch.planId) ?? task.branch.label}</span>}
-          {task.category !== undefined && <span className="t-tag is-muted">{task.category}</span>}
           <span className="t-time">{time}</span>
         </div>
         {tier === 'mid' && <div className="t-sub">{deliverables[0]?.path ?? statusText(task)}</div>}
@@ -170,7 +169,7 @@ export function RootNode({ doc, tier, collapsible, onToggle, locked, actions }: 
             <Field label="读过">{sources.length === 0 ? <div className="t-line">没有读文件，只看了目录结构</div> : <Paths paths={sources} />}</Field>
             {doc.context.length > 0 && (
               <Field label="要点">
-                {doc.context.slice(0, 5).map((entry) => <div key={entry.id} className="t-line t-bullet">{entry.text}</div>)}
+                {doc.context.slice(0, 5).map((entry) => <div key={entry.id} className="t-line t-bullet">{entry.text}{entry.sourceRefs.length > 0 && <span className="init-src">{entry.sourceRefs.join('、')}</span>}</div>)}
                 {doc.context.length > 5 && <div className="t-line t-more">还有 {doc.context.length - 5} 条</div>}
               </Field>
             )}

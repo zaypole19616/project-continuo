@@ -138,6 +138,20 @@ function friendlyError(message: string): string {
   return message.slice(0, 160);
 }
 
+const NO_MODEL = '还没有可用的模型：先在终端运行 node apps/kimi-code/dist/main.mjs login 登录，再回来重试。';
+
+function modelError(error: unknown): unknown {
+  return error instanceof Error && /model is required/i.test(error.message) ? new ContinuoError('invalid_state', NO_MODEL) : error;
+}
+
+async function mainAgentOf(session: Parameters<typeof ensureMainAgent>[0]): Promise<Awaited<ReturnType<typeof ensureMainAgent>>> {
+  try {
+    return await mainAgentOf(session);
+  } catch (error) {
+    throw modelError(error);
+  }
+}
+
 function phaseOf(tool: string, path: string | undefined): string {
   const file = path === undefined ? '' : ` ${basename(path)}`;
   switch (tool) {
@@ -175,6 +189,7 @@ export class ContinuoTaskManager {
   private readonly attachments = new Map<string, Attachment>();
   private readonly explorers = new Map<string, Explorer>();
   private readonly requests = new Map<string, string>();
+  private readonly creating = new Map<string, Promise<unknown>>();
   private readonly opening = new Map<string, Promise<ContinuoWorkspaceDoc>>();
 
   constructor(private readonly core: Scope) {}
@@ -219,7 +234,7 @@ export class ContinuoTaskManager {
     if (doc.init.status === 'pending') {
       doc = await this.startInit(doc);
     } else if (doc.init.status === 'running' && !this.isLive(doc.init.taskId, doc)) {
-      doc = await this.store.update(workspaceId, (current) => ({ ...current, init: { ...current.init, status: current.understanding === undefined ? 'partial' : 'completed', endedAt: new Date().toISOString() } }));
+      doc = await this.store.update(workspaceId, (current) => ({ ...current, init: { ...current.init, status: current.understanding === undefined ? 'stopped' : 'completed', endedAt: new Date().toISOString() } }));
     }
     return doc;
   }
@@ -324,7 +339,14 @@ export class ContinuoTaskManager {
     return [...todos, ...added];
   }
 
-  async createUserTask(workspaceId: string, text: string, clientRequestId?: string): Promise<{ doc: ContinuoWorkspaceDoc; task: ContinuoTask }> {
+  createUserTask(workspaceId: string, text: string, clientRequestId?: string): Promise<{ doc: ContinuoWorkspaceDoc; task: ContinuoTask }> {
+    const previous = this.creating.get(workspaceId) ?? Promise.resolve();
+    const run = previous.then(() => this.createUserTaskNow(workspaceId, text, clientRequestId));
+    this.creating.set(workspaceId, run.catch(() => undefined));
+    return run;
+  }
+
+  private async createUserTaskNow(workspaceId: string, text: string, clientRequestId?: string): Promise<{ doc: ContinuoWorkspaceDoc; task: ContinuoTask }> {
     const doc = await this.requireDoc(workspaceId);
     if (clientRequestId !== undefined) {
       const known = this.requests.get(`task:${workspaceId}:${clientRequestId}`);
@@ -337,10 +359,10 @@ export class ContinuoTaskManager {
     }
     const line = currentTrajectory(doc);
     const session = line === undefined
-      ? await this.core.accessor.get(ISessionManager).create({ workspaceId, workDir: doc.root, mainAgentBinding: { profile: CONTINUO_WORKER_PROFILE } })
+      ? await this.newSession(workspaceId, doc.root, CONTINUO_WORKER_PROFILE)
       : await resumeSessionById(this.core.accessor, line.sessionId);
     if (session === undefined) throw new ContinuoError('invalid_state', '这条轨迹的对话记录找不到了。');
-    const agent = await ensureMainAgent(session);
+    const agent = await mainAgentOf(session);
     await this.prepareWorker(agent, workspaceId);
     const sessionId = session.accessor.get(ISessionContext).sessionId;
     const taskId = `task_${randomUUID().slice(0, 8)}`;
@@ -386,7 +408,7 @@ export class ContinuoTaskManager {
     }
     const session = await resumeSessionById(this.core.accessor, task.sessionId);
     if (session !== undefined) {
-      const agent = await ensureMainAgent(session);
+      const agent = await mainAgentOf(session);
       const loop = agent.accessor.get(IAgentLoopService);
       const cancelled = loop.cancel(undefined, 'paused by user');
       if (!cancelled) {
@@ -403,9 +425,11 @@ export class ContinuoTaskManager {
     if (task.status !== 'paused' && task.status !== 'interrupted' && task.status !== 'needs_review' && task.status !== 'failed') {
       throw new ContinuoError('invalid_state', '这件事现在不能继续。');
     }
+    const resumeLine = trajectoryOfSession(doc, task.sessionId);
+    if (resumeLine !== undefined) this.assertIdle(doc, resumeLine);
     const session = await resumeSessionById(this.core.accessor, task.sessionId);
     if (session === undefined) throw new ContinuoError('invalid_state', '这件事的对话记录找不到了。');
-    const agent = await ensureMainAgent(session);
+    const agent = await mainAgentOf(session);
     await this.prepareWorker(agent, workspaceId);
     this.attach(workspaceId, taskId, session, agent);
     const reason = task.status === 'needs_review'
@@ -425,10 +449,11 @@ export class ContinuoTaskManager {
       throw new ContinuoError('invalid_state', '这件事正在等你回答或批准，先处理那张卡片。');
     }
     const line = trajectoryOfSession(doc, task.sessionId);
+    if (line !== undefined) this.assertIdle(doc, line);
     const open = line === undefined || task.pendingInteraction !== 'choice' ? undefined : openDecisionOf(doc, line, taskId);
     const session = await resumeSessionById(this.core.accessor, task.sessionId);
     if (session === undefined) throw new ContinuoError('invalid_state', '这件事的对话记录找不到了。');
-    const agent = await ensureMainAgent(session);
+    const agent = await mainAgentOf(session);
     await this.prepareWorker(agent, workspaceId);
     this.attach(workspaceId, taskId, session, agent);
     if (line !== undefined && open !== undefined) {
@@ -460,7 +485,7 @@ export class ContinuoTaskManager {
       const task = this.requireTask(doc, decision.taskId);
       const session = await resumeSessionById(this.core.accessor, task.sessionId);
       if (session === undefined) throw new ContinuoError('invalid_state', '这件事的对话记录找不到了。');
-      const agent = await ensureMainAgent(session);
+      const agent = await mainAgentOf(session);
       await this.prepareWorker(agent, workspaceId);
       this.attach(workspaceId, task.taskId, session, agent);
       await this.store.update(workspaceId, (current) => ({
@@ -522,7 +547,7 @@ export class ContinuoTaskManager {
     const task = this.requireTask(doc, decision.taskId);
     const session = await resumeSessionById(this.core.accessor, task.sessionId);
     if (session === undefined) throw new ContinuoError('invalid_state', '这件事的对话记录找不到了。');
-    const agent = await ensureMainAgent(session);
+    const agent = await mainAgentOf(session);
     await this.prepareWorker(agent, workspaceId);
     this.attach(workspaceId, task.taskId, session, agent);
     const promptId = await this.sendTurn(workspaceId, task.taskId, agent, '再给几个方案，只要和已有方案思路明显不同的。如果已经没有真正不同的方向，就告诉我为什么，以及需要我来定的那个问题。', '更多方案');
@@ -585,7 +610,7 @@ export class ContinuoTaskManager {
     const meta = await this.forkWhenIdle(await this.requireDoc(workspaceId), parent.sessionId, turnIndex, `Continuo · ${label}`);
     const session = await resumeSessionById(this.core.accessor, meta.id);
     if (session === undefined) throw new ContinuoError('invalid_state', '复制出的对话没能打开');
-    const agent = await ensureMainAgent(session);
+    const agent = await mainAgentOf(session);
     await this.prepareWorker(agent, workspaceId);
     const trajectoryId = `trj_${randomUUID().slice(0, 8)}`;
     const root = (await this.requireDoc(workspaceId)).root;
@@ -665,6 +690,19 @@ export class ContinuoTaskManager {
     return task !== undefined && this.attachments.has(taskId) && getLiveSessionById(this.core.accessor, task.sessionId) !== undefined;
   }
 
+  private async newSession(workspaceId: string, workDir: string, profile: string) {
+    try {
+      return await this.core.accessor.get(ISessionManager).create({ workspaceId, workDir, mainAgentBinding: { profile } });
+    } catch (error) {
+      throw modelError(error);
+    }
+  }
+
+  private async openInitAgent(workspaceId: string, root: string) {
+    const session = await this.newSession(workspaceId, root, CONTINUO_INIT_PROFILE);
+    return { session, agent: await mainAgentOf(session) };
+  }
+
   private async startInit(doc: ContinuoWorkspaceDoc): Promise<ContinuoWorkspaceDoc> {
     const workspaceId = doc.workspaceId;
     const scan = await scanWorkspace(doc.root);
@@ -678,8 +716,13 @@ export class ContinuoTaskManager {
         understanding: { text: '这个文件夹是空的。放进材料后再打开，会先了解一遍；也可以直接交代第一件事。', sourceRefs: [], updatedAt: now },
       }));
     }
-    const session = await this.core.accessor.get(ISessionManager).create({ workspaceId, workDir: doc.root, mainAgentBinding: { profile: CONTINUO_INIT_PROFILE } });
-    const agent = await ensureMainAgent(session);
+    const opened = await this.openInitAgent(workspaceId, doc.root).catch((error: unknown) => (error instanceof Error ? error : new Error(String(error))));
+    if (opened instanceof Error) {
+      const error = { code: opened.message === NO_MODEL ? 'model.not_configured' : 'turn.failed', message: opened.message, at: now };
+      const failed: ContinuoTask = { taskId, kind: 'init', title: '了解这个文件夹', trigger: 'first_open', sessionId: '', promptIds: [], status: 'failed', pauseRequested: false, contextRevision: doc.revision, usage: EMPTY_USAGE, createdAt: now, updatedAt: now, endedAt: now, error, lastError: opened.message };
+      return this.store.update(workspaceId, (current) => ({ ...current, scan, init: { status: 'failed', taskId, startedAt: now, endedAt: now }, tasks: [...current.tasks, failed] }));
+    }
+    const { session, agent } = opened;
     agent.accessor.get(IAgentLifecycleService).broadcastPermissionMode('auto');
     const sessionId = session.accessor.get(ISessionContext).sessionId;
     const task: ContinuoTask = {
@@ -746,7 +789,7 @@ export class ContinuoTaskManager {
     const doc = await this.store.update(workspaceId, (current) => ({ ...current, permissionMode: mode }));
     const line = currentTrajectory(doc);
     const session = line === undefined ? undefined : getLiveSessionById(this.core.accessor, line.sessionId);
-    if (session !== undefined) (await ensureMainAgent(session)).accessor.get(IAgentLifecycleService).broadcastPermissionMode(mode);
+    if (session !== undefined) (await mainAgentOf(session)).accessor.get(IAgentLifecycleService).broadcastPermissionMode(mode);
     return doc;
   }
 
@@ -864,7 +907,7 @@ export class ContinuoTaskManager {
         const meta = await this.forkWhenIdle(doc, home.sessionId, decision.turnIndex, `Continuo · 方案 ${angle.key}`);
         const session = await resumeSessionById(this.core.accessor, meta.id);
         if (session === undefined) throw new Error('复制出的对话没能打开');
-        const agent = await ensureMainAgent(session);
+        const agent = await mainAgentOf(session);
         await this.ensureModel(agent);
         agent.accessor.get(IAgentLifecycleService).broadcastPermissionMode('auto');
         await this.patchAngle(workspaceId, decisionId, angle.key, (current) => ({ ...current, status: 'running', sessionId: meta.id }));
@@ -974,10 +1017,10 @@ export class ContinuoTaskManager {
     const task = this.requireTask(await this.requireDoc(workspaceId), decision.taskId);
     const session = await resumeSessionById(this.core.accessor, task.sessionId);
     if (session === undefined) return false;
-    const agent = await ensureMainAgent(session);
+    const agent = await mainAgentOf(session);
     await this.prepareWorker(agent, workspaceId);
     this.attach(workspaceId, task.taskId, session, agent);
-    const list = decision.plans.map((plan) => `- ${plan.planId}「${plan.title}」：${plan.path}`).join('\n');
+    const list = decision.plans.map((plan) => `- 「${plan.title}」：${plan.path}`).join('\n');
     const promptId = await this.sendTurn(workspaceId, task.taskId, agent, `分头写的方案都交上来了：\n${list}\n比较一下：先说清楚选哪个取决于什么；如果材料里有事实能定下来，再说你建议哪个、为什么。先不要开始任何一个。`, '比较方案');
     await this.patchTask(workspaceId, task.taskId, (current) => ({ ...current, status: 'running', pendingInteraction: 'none', phase: '在比较方案', pauseRequested: false, promptIds: [...current.promptIds, promptId], endedAt: undefined }));
     return true;
@@ -1196,7 +1239,7 @@ function oneLine(text: string, max: number): string {
 }
 
 function planPrompt(plan: TrajectoryPlan): string {
-  return `按方案 ${plan.planId}「${plan.title}」继续：${plan.prompt}`;
+  return `按「${plan.title}」继续：${plan.prompt}`;
 }
 
 function decisionsOfTask(doc: ContinuoWorkspaceDoc, task: ContinuoTask): Array<{ decision: Decision }> {

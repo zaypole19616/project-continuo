@@ -31,7 +31,8 @@ const newRequestId = () => `req_${Date.now().toString(36)}_${Math.random().toStr
 
 export function WorkspaceView({ workspace, onClose, themePref, onTheme }: { workspace: Workspace; onClose: () => void; themePref: ThemePref; onTheme: (pref: ThemePref) => void }) {
   const workspaceId = workspace.id;
-  const [doc, setDoc] = useState<ContinuoDoc | null>(null);
+  const [doc, setDocState] = useState<ContinuoDoc | null>(null);
+  const setDoc = useCallback((next: ContinuoDoc | null) => setDocState((prev) => (prev !== null && next !== null && prev.workspaceId === next.workspaceId && prev.revision > next.revision ? prev : next)), []);
   const [target, setTarget] = useState<NavTarget>({ kind: 'folder', path: '' });
   const [error, setError] = useState<string | null>(null);
   const [offline, setOffline] = useState(false);
@@ -122,10 +123,11 @@ export function WorkspaceView({ workspace, onClose, themePref, onTheme }: { work
   const activeUserTask = lineTasks.find(isBlocking) ?? null;
   const replyTarget = latest !== null && isAwaitingReply(latest) ? latest : null;
 
-  const submit = async (text: string, reply: ContinuoTask | null) => {
+  const submit = async (text: string, reply: ContinuoTask | null): Promise<boolean> => {
     setSending(true); setError(null);
+    const localId = `local_${Date.now()}`;
     try {
-      if (sessionId !== null) setState((prev) => withUserMessage(prev, `local_${Date.now()}`, text));
+      if (sessionId !== null) setState((prev) => withUserMessage(prev, localId, text));
       if (reply !== null) {
         setDoc(await continuo.taskAction(workspaceId, reply.taskId, 'reply', { text }));
       } else {
@@ -134,24 +136,25 @@ export function WorkspaceView({ workspace, onClose, themePref, onTheme }: { work
         setDoc(r.doc);
       }
       if (composerRef.current) composerRef.current.value = '';
-    } catch (error) { setError((error as Error).message); } finally { setSending(false); }
+      return true;
+    } catch (error) {
+      setState((prev) => ({ ...prev, items: prev.items.filter((item) => item.id !== localId) }));
+      setError((error as Error).message);
+      return false;
+    } finally { setSending(false); }
   };
 
-  const send = () => {
+  const send = (): Promise<boolean> => {
     const text = (composerRef.current?.value ?? '').trim();
-    if (!text || sending) return;
-    void submit(text, replyTarget);
-  };
-
-  const action = async (task: ContinuoTask, a: 'pause' | 'resume') => {
-    setError(null);
-    try { setDoc(await continuo.taskAction(workspaceId, task.taskId, a)); } catch (error) { setError((error as Error).message); }
+    if (!text || sending) return Promise.resolve(true);
+    return submit(text, replyTarget);
   };
 
   const run = async (work: () => Promise<ContinuoDoc>): Promise<boolean> => {
     setSending(true); setError(null);
     try { setDoc(await work()); return true; } catch (error) { setError((error as Error).message); return false; } finally { setSending(false); }
   };
+  const action = (task: ContinuoTask, a: 'pause' | 'resume') => { void run(() => continuo.taskAction(workspaceId, task.taskId, a)); };
   const choose = (decision: Decision, plan: TrajectoryPlan) => run(() => continuo.decisionAction(workspaceId, decision.decisionId, 'choose', { plan_id: plan.planId }));
   const expand = (decision: Decision) => run(() => continuo.decisionAction(workspaceId, decision.decisionId, 'expand'));
   const abandon = (decision: Decision, plan: TrajectoryPlan, reason: string) => { void run(() => continuo.decisionAction(workspaceId, decision.decisionId, 'abandon', { plan_id: plan.planId, reason: reason.trim() === '' ? undefined : reason.trim() })); };
@@ -207,9 +210,9 @@ export function WorkspaceView({ workspace, onClose, themePref, onTheme }: { work
           workspace={workspace} doc={doc} line={line} latest={latest} state={state} questions={questions} approvals={approvals} error={error ?? (offline ? '连不上本地服务，正在重试…' : null)}
           activeUserTask={activeUserTask} replyTarget={replyTarget} composerRef={composerRef} sending={sending}
           onSend={send}
-          onAnswer={async (q, answers, note) => { if (!sessionId) return; await kimi.resolveQuestion(sessionId, q.question_id, answers, note); await refreshPending(sessionId); void refresh(); }}
-          onDecide={async (a, d, scope) => { if (!sessionId) return; await kimi.resolveApproval(sessionId, a.approval_id, d, scope); await refreshPending(sessionId); void refresh(); }}
-          onAction={(t, a) => { void action(t, a); }} onOpenFile={(path) => setTarget({ kind: 'file', path })}
+          onAnswer={async (q, answers, note) => { if (!sessionId) return; try { await kimi.resolveQuestion(sessionId, q.question_id, answers, note); await refreshPending(sessionId); void refresh(); } catch (error) { setError((error as Error).message); } }}
+          onDecide={async (a, d, scope) => { if (!sessionId) return; try { await kimi.resolveApproval(sessionId, a.approval_id, d, scope); await refreshPending(sessionId); void refresh(); } catch (error) { setError((error as Error).message); } }}
+          onAction={action} onOpenFile={(path) => setTarget({ kind: 'file', path })}
           onChoose={choose} onExpand={expand} onAbandon={abandon} onSwitch={switchLine} onForkAfter={forkAfter} onRetryInit={retryInit} onAddTodo={addTodo} onTodoAction={todoAction} onPermission={setPermission}
         />
       </div>

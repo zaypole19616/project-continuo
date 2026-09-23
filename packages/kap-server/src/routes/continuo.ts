@@ -132,12 +132,16 @@ export function registerContinuoRoutes(app: ContinuoRouteHost, core: Scope): voi
     },
     async (req, reply) => {
       if (!flagGuard(req.id, reply)) return;
-      const doc = await manager.snapshot(req.params.workspace_id);
-      if (doc === undefined) {
-        reply.send(errEnvelope(ErrorCode.WORKSPACE_NOT_FOUND, '这个项目还没有打开过。', req.id));
-        return;
+      try {
+        const doc = await manager.snapshot(req.params.workspace_id);
+        if (doc === undefined) {
+          reply.send(errEnvelope(ErrorCode.WORKSPACE_NOT_FOUND, '这个项目还没有打开过。', req.id));
+          return;
+        }
+        reply.send(okEnvelope(doc, req.id));
+      } catch (error) {
+        sendError(reply, req.id, error);
       }
-      reply.send(okEnvelope(doc, req.id));
     },
   );
   app.get(getRoute.path, getRoute.options, getRoute.handler as Parameters<ContinuoRouteHost['get']>[2]);

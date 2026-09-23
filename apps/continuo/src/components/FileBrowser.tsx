@@ -112,7 +112,7 @@ function Grid({ entries, taskTitle, onNavigate }: { entries: FileEntry[]; taskTi
   return (
     <div className="file-grid">
       {entries.map((e) => (
-        <button key={e.path} className="file-tile" onDoubleClick={() => onNavigate(e.kind === 'dir' ? { kind: 'folder', path: e.path } : { kind: 'file', path: e.path })} onClick={() => onNavigate(e.kind === 'dir' ? { kind: 'folder', path: e.path } : { kind: 'file', path: e.path })} title={e.name}>
+        <button key={e.path} className="file-tile" onClick={(ev) => { if (ev.detail <= 1) onNavigate(e.kind === 'dir' ? { kind: 'folder', path: e.path } : { kind: 'file', path: e.path }); }} title={e.name}>
           <div className="tile-icon">{e.kind === 'dir' ? <FolderGlyph size={82} /> : <FileGlyph name={e.name} size={62} />}</div>
           <div className="tile-name">{e.name}</div>
           <div className="tile-meta">{fileTypeLabel(e.name, e.kind)}{e.kind === 'dir' && e.childCount !== undefined ? ` · ${e.childCount} 项` : ''}</div>
@@ -129,7 +129,7 @@ function FileTable({ entries, taskTitle, onNavigate }: { entries: FileEntry[]; t
       <thead><tr><th className="col-name">名称</th><th className="col-mark">标记</th><th className="col-time">修改时间</th><th className="col-size" style={{ textAlign: 'right' }}>大小</th></tr></thead>
       <tbody>
         {entries.map((e) => (
-          <tr key={e.path} className="row-click" onClick={() => onNavigate(e.kind === 'dir' ? { kind: 'folder', path: e.path } : { kind: 'file', path: e.path })}>
+          <tr key={e.path} className="row-click" onClick={(ev) => { if (ev.detail <= 1) onNavigate(e.kind === 'dir' ? { kind: 'folder', path: e.path } : { kind: 'file', path: e.path }); }}>
             <td className="col-name"><div className="name-cell">{e.kind === 'dir' ? <FolderGlyph size={20} /> : <FileGlyph name={e.name} size={15} />}<span className="name-text">{e.name}</span><span className="text-3 fs-meta">{fileTypeLabel(e.name, e.kind)}</span></div></td>
             <td className="col-mark"><Markers entry={e} taskTitle={taskTitle}  /></td>
             <td className="col-time text-3 fs-meta">{formatTime(e.modifiedAt)}</td>

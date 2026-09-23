@@ -30,8 +30,8 @@ export class ContinuoStoreService extends Service implements IContinuoStore {
     super();
   }
 
-  workspaceIds(): Promise<readonly string[]> {
-    return this.documents.list(CONTINUO_STORE_SCOPE);
+  async workspaceIds(): Promise<readonly string[]> {
+    return (await this.documents.list(CONTINUO_STORE_SCOPE)).filter((key) => !key.includes('.tmp.'));
   }
 
   peek(workspaceId: string): ContinuoWorkspaceDoc | undefined {
@@ -43,7 +43,7 @@ export class ContinuoStoreService extends Service implements IContinuoStore {
     if (cached !== undefined) return cached;
     const stored = await this.documents.get<unknown>(CONTINUO_STORE_SCOPE, workspaceId);
     const doc = migrateWorkspaceDoc(stored);
-    if (doc === undefined) return undefined;
+    if (doc === undefined || doc.workspaceId !== workspaceId) return undefined;
     if ((stored as { schemaVersion?: number }).schemaVersion !== CONTINUO_SCHEMA_VERSION) await this.documents.set(CONTINUO_STORE_SCOPE, workspaceId, doc);
     this.cache.set(workspaceId, doc);
     return doc;

@@ -46,6 +46,7 @@ export function Backlog({ doc, busy, startLock, onAdd, onAction }: {
 
   const add = async () => {
     if (text.trim() === '') { setProblem('先写下要做的事'); return; }
+    if (when === 'once' && Number.isNaN(Date.parse(at))) { setProblem('先选一个时间'); return; }
     if (when === 'once' && Date.parse(at) <= Date.now()) { setProblem('这个时间已经过了'); return; }
     const timing: TodoTiming | undefined = when === 'none' ? undefined : when === 'once' ? { kind: 'once', at: new Date(at).toISOString() } : when === 'daily' ? { kind: 'daily', time } : { kind: 'weekly', day, time };
     if (await onAdd(text.trim(), timing)) { setText(''); setWhen('none'); setProblem(null); }

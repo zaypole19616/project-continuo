@@ -223,6 +223,15 @@ describe('ContinuoStoreService', () => {
     expect(doc?.revision).toBe(26);
   });
 
+  it('never treats an in-flight atomic write as a workspace', async () => {
+    const documents = new MemoryDocumentStore();
+    const store = new ContinuoStoreService(documents);
+    await store.ensure('wd_1', '/tmp/ws');
+    await documents.set(CONTINUO_STORE_SCOPE, 'wd_1.tmp.123.abc', await documents.get(CONTINUO_STORE_SCOPE, 'wd_1'));
+    expect(await store.workspaceIds()).toEqual(['wd_1']);
+    expect(await store.load('wd_1.tmp.123.abc')).toBeUndefined();
+  });
+
   it('notifies listeners until they unsubscribe', async () => {
     const store = new ContinuoStoreService(new MemoryDocumentStore());
     await store.ensure('wd_1', '/tmp/ws');

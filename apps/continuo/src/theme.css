@@ -468,6 +468,7 @@ button.deck-option:disabled { opacity: 0.5; cursor: default; }
 .init-read-body { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; font-size: var(--fs-xs); color: var(--text-2); }
 .init-files { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
 .init-files .tag { cursor: pointer; font-family: var(--font-mono); font-size: 11.5px; }
+.init-src { margin-left: 6px; font-family: var(--font-mono); font-size: 11px; color: var(--text-3); }
 .init-points { margin: 4px 0 0; padding-left: 18px; font-size: var(--fs-xs); color: var(--text-2); line-height: 1.6; }
 .init-log { display: inline-flex; align-items: center; gap: 4px; align-self: flex-start; font-size: var(--fs-xs); }
 .suggest { display: flex; flex-direction: column; gap: 8px; }
@@ -557,6 +558,10 @@ button.deck-option:disabled { opacity: 0.5; cursor: default; }
 .diff-line.added { background: var(--diff-add-bg); }
 .diff-line.removed { background: var(--diff-del-bg); }
 .diff-skip { padding: 4px 12px; background: var(--surface-sunken); color: var(--text-3); font-family: var(--font-ui); font-size: var(--fs-xs); }
+
+.crash { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 24px; background: var(--surface); text-align: center; }
+.crash-title { font-size: var(--fs-h2); font-weight: 700; color: var(--text-1); }
+.crash-text { max-width: 560px; font-size: var(--fs-sm); color: var(--text-3); word-break: break-word; }
 
 /* onboarding */
 .ob-card { width: 1040px; height: 540px; overflow: hidden; border-radius: 22px; border: 1px solid var(--line); background: var(--surface-raised); box-shadow: 0 24px 60px rgba(0, 0, 0, 0.18), 0 2px 8px rgba(0, 0, 0, 0.08); text-align: left; }
