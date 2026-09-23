@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -9,15 +9,23 @@ import { createLineDir, snapshotDir } from '../src/continuo/lines';
 
 const roots: string[] = [];
 
-function project(): string {
+function git(root: string, ...args: string[]): string {
+  return execFileSync('git', ['-C', root, ...args], { encoding: 'utf8', env: { ...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@example.test', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@example.test' } }).trim();
+}
+
+function folder(): string {
   const root = mkdtempSync(join(tmpdir(), 'continuo-lines-'));
   roots.push(root);
   writeFileSync(join(root, 'notes.md'), 'draft one\n');
   return root;
 }
 
-function git(root: string, ...args: string[]): string {
-  return execFileSync('git', ['-C', root, ...args], { encoding: 'utf8', env: { ...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@example.test', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@example.test' } }).trim();
+function repository(): string {
+  const root = folder();
+  git(root, 'init', '--quiet');
+  git(root, 'add', 'notes.md');
+  git(root, 'commit', '--quiet', '-m', 'init');
+  return root;
 }
 
 afterEach(() => {
@@ -25,8 +33,15 @@ afterEach(() => {
 });
 
 describe('continuo line directories', () => {
-  it('copies a plain folder into a line directory that changes independently', async () => {
-    const root = project();
+  it('never copies a folder that is not a git repository', async () => {
+    const root = folder();
+    expect(await snapshotDir(root, root, 'task/t1')).toBeUndefined();
+    expect(await createLineDir(root, 'HEAD', 'trj_b')).toBeUndefined();
+    expect(existsSync(join(root, '.continuo'))).toBe(false);
+  });
+
+  it('checks a git project out into a line directory that changes independently', async () => {
+    const root = repository();
     mkdirSync(join(root, 'drafts', 'empty'), { recursive: true });
     const commit = await snapshotDir(root, root, 'decision/dec_1');
     expect(commit).toMatch(/^[0-9a-f]{40}$/);
@@ -34,28 +49,23 @@ describe('continuo line directories', () => {
     const dir = await createLineDir(root, commit!, 'trj_b');
     expect(dir).toBe(join(root, '.continuo', 'lines', 'trj_b'));
     expect(readFileSync(join(dir!, 'notes.md'), 'utf8')).toBe('draft one\n');
+    expect(existsSync(join(dir!, 'drafts', 'empty'))).toBe(true);
     writeFileSync(join(dir!, 'notes.md'), 'branch edit\n');
     expect(readFileSync(join(root, 'notes.md'), 'utf8')).toBe('main line edit\n');
-    expect(existsSync(join(dir!, '.continuo'))).toBe(false);
-    expect(existsSync(join(dir!, 'drafts', 'empty'))).toBe(true);
     expect(readFileSync(join(root, '.continuo', '.gitignore'), 'utf8')).toBe('*\n');
   });
 
   it('forks a line directory from a snapshot of another line directory', async () => {
-    const root = project();
+    const root = repository();
     const first = await createLineDir(root, (await snapshotDir(root, root, 'task/t1'))!, 'trj_b');
     writeFileSync(join(first!, 'plan-b.md'), 'only on b\n');
-    const commit = await snapshotDir(root, first!, 'task/t2');
-    const second = await createLineDir(root, commit!, 'trj_c');
+    const second = await createLineDir(root, (await snapshotDir(root, first!, 'task/t2'))!, 'trj_c');
     expect(readFileSync(join(second!, 'plan-b.md'), 'utf8')).toBe('only on b\n');
     expect(existsSync(join(root, 'plan-b.md'))).toBe(false);
   });
 
   it('leaves the index and branches of a git project untouched', async () => {
-    const root = project();
-    git(root, 'init', '--quiet');
-    git(root, 'add', 'notes.md');
-    git(root, 'commit', '--quiet', '-m', 'init');
+    const root = repository();
     writeFileSync(join(root, 'draft.md'), 'untracked work\n');
     const statusBefore = git(root, 'status', '--porcelain');
     const commit = await snapshotDir(root, root, 'task/t1');
@@ -64,18 +74,5 @@ describe('continuo line directories', () => {
     expect(git(root, 'branch', '--list')).toBe(`* ${git(root, 'branch', '--show-current')}`);
     expect(readFileSync(join(dir!, 'draft.md'), 'utf8')).toBe('untracked work\n');
     expect(git(root, 'rev-parse', 'refs/continuo/task/t1')).toBe(commit);
-  });
-
-  it('removes its own empty repository when the first snapshot fails', async () => {
-    const root = project();
-    writeFileSync(join(root, 'locked.md'), 'secret\n');
-    chmodSync(join(root, 'locked.md'), 0o000);
-    expect(await snapshotDir(root, root, 'task/t1')).toBeUndefined();
-    chmodSync(join(root, 'locked.md'), 0o644);
-    expect(existsSync(join(root, '.continuo', 'git'))).toBe(false);
-  });
-
-  it('reports no snapshot when the folder cannot be snapshotted', async () => {
-    expect(await snapshotDir(join(tmpdir(), 'continuo-missing-folder'), join(tmpdir(), 'continuo-missing-folder', 'x'), 'task/t1')).toBeUndefined();
   });
 });

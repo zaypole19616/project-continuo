@@ -75,7 +75,7 @@ export async function listFiles(doc: ContinuoWorkspaceDoc, relPath: string): Pro
   try {
     names = await readdir(dir, { withFileTypes: true });
   } catch {
-    throw new ContinuoError('entry_not_found', `找不到文件夹 ${relPath}。`);
+    throw new ContinuoError('entry_not_found', `文件夹不存在：${relPath}`);
   }
   const entries: ContinuoFileEntry[] = [];
   for (const dirent of names) {
@@ -101,7 +101,7 @@ export async function readTextFile(doc: ContinuoWorkspaceDoc, relPath: string): 
   const root = viewRoot(doc);
   const abs = resolveInsideRoot(root, relPath);
   let info: Awaited<ReturnType<typeof stat>>;
-  try { info = await stat(abs); } catch { throw new ContinuoError('entry_not_found', `找不到文件 ${relPath}。`); }
+  try { info = await stat(abs); } catch { throw new ContinuoError('entry_not_found', `文件不存在：${relPath}`); }
   if (!info.isFile()) throw new ContinuoError('invalid_state', `${relPath} 不是文件。`);
   const rel = normalize(relative(root, abs));
   const producedBy = producedByIndex(doc).get(rel);
