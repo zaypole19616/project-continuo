@@ -9,12 +9,14 @@ export class SessionStream {
   private listeners = new Set<Listener>();
   private closed = false;
   private retry = 0;
+  private timer: ReturnType<typeof setTimeout> | undefined;
   status: 'connecting' | 'open' | 'closed' = 'connecting';
   onStatus: ((s: SessionStream['status']) => void) | null = null;
 
   constructor(private readonly sessionId: string) { this.connect(); }
 
   private connect(): void {
+    if (this.closed) return;
     const token = readToken() ?? '';
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
     const ws = new WebSocket(`${proto}://${location.host}/api/v1/ws`, ['kimi-code.bearer.' + token]);
@@ -35,7 +37,7 @@ export class SessionStream {
       if (this.closed) return;
       this.setStatus('connecting');
       const delay = Math.min(8000, 500 * 2 ** this.retry++);
-      setTimeout(() => this.connect(), delay);
+      this.timer = setTimeout(() => this.connect(), delay);
     };
     ws.onerror = () => { ws.close(); };
   }
@@ -44,5 +46,5 @@ export class SessionStream {
 
   subscribe(l: Listener): () => void { this.listeners.add(l); return () => this.listeners.delete(l); }
 
-  close(): void { this.closed = true; this.setStatus('closed'); this.ws?.close(); }
+  close(): void { this.closed = true; clearTimeout(this.timer); this.setStatus('closed'); this.ws?.close(); }
 }

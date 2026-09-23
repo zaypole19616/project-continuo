@@ -54,7 +54,7 @@ export function InitCard({ doc, busy, startLock, onRetry, onOpenFile, onTodoActi
   if (running) {
     const started = doc.init.startedAt;
     const elapsed = started === undefined ? 0 : Math.max(0, (now - Date.parse(started)) / 1000);
-    const phase = task?.phase ?? STAGES.findLast(([at]) => elapsed >= at)![1];
+    const phase = task?.phase ?? (STAGES.findLast(([at]) => elapsed >= at) ?? STAGES[0]!)[1];
     return (
       <div className="init-msg fade-in">
         <div className="turn-status"><span className="turn-avatar" /><span>正在了解这个文件夹</span></div>
@@ -91,7 +91,7 @@ export function InitCard({ doc, busy, startLock, onRetry, onOpenFile, onTodoActi
           <summary>{clock(endedAt)} · {read}</summary>
           <div className="init-read-body">
             <FileList files={files} onOpenFile={onOpenFile} />
-            {doc.context.length > 0 && <ul className="init-points">{doc.context.map((entry) => <li key={entry.id}>{entry.text}</li>)}</ul>}
+            {doc.context.length > 0 && <ul className="init-points">{doc.context.map((entry) => <li key={entry.id}>{entry.text}{entry.sourceRefs.length > 0 && <span className="init-src">{entry.sourceRefs.join('、')}</span>}</li>)}</ul>}
             {task?.logPath !== undefined && <button className="link init-log" onClick={() => onOpenFile(task.logPath!)}><FileText size={12} />工作日志</button>}
           </div>
         </details>
