@@ -1161,7 +1161,7 @@ function renderStar(doc: ContinuoWorkspaceDoc, task: ContinuoTask): string[] {
     ? '⏳ 待阶段完成'
     : [
         task.report === undefined ? '' : oneLine(task.report.summary, 300),
-        deliverables.length === 0 ? '' : `产物 ${deliverables.length} 份，${missing === 0 ? '已逐个核对存在' : `其中 ${missing} 份没找到`}。`,
+        deliverables.length === 0 ? '' : `产物 ${deliverables.length} 份，${missing === 0 ? '已逐个核对存在' : `其中 ${missing} 份不存在`}。`,
         (task.report?.unresolved ?? []).length === 0 ? '' : `遗留：${(task.report?.unresolved ?? []).join('；')}。`,
       ].filter((part) => part !== '').join(' ');
   return [
@@ -1199,7 +1199,7 @@ function renderSession(doc: ContinuoWorkspaceDoc, task: ContinuoTask): string[] 
   }
   if (deliverables.length > 0 || plans.length > 0) {
     lines.push('', '### 最终产出', '', '| 文件 | 说明 | 状态 |', '|------|------|------|');
-    for (const item of deliverables) lines.push(`| ${item.path} | ${item.note === undefined || item.note === '' ? '—' : item.note} | ${item.exists === false ? '❌ 没找到' : '✅'} |`);
+    for (const item of deliverables) lines.push(`| ${item.path} | ${item.note === undefined || item.note === '' ? '—' : item.note} | ${item.exists === false ? '❌ 不存在' : '✅'} |`);
     for (const { decision, plan } of plans) lines.push(`| ${plan.path} | 方案 ${plan.planId}：${plan.title} | ${planStatusText(doc, task, decision, plan)} |`);
   }
   const notes = [

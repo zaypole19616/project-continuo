@@ -70,6 +70,7 @@ function ToolRow({ t, root }: { t: ToolCall; root?: string }) {
         <span className="name">{known ?? t.name}</span>
         <span className="desc flex-1">{label}</span>
       </button>
+      {t.isError === true && missingFile(t) && <div className="tool-err">文件不存在：{describe(t, root) || '这个文件'}</div>}
       {open && t.output !== undefined && (
         <pre className="m-2 mt-0 max-h-56 overflow-auto p-2" style={{ background: 'var(--row-hover)', borderRadius: 'var(--r-2)' }}>{t.output.slice(0, 4000)}</pre>
       )}
@@ -86,6 +87,10 @@ function StatusIcon({ t }: { t: ToolCall }) {
 function clock(ms: number): string {
   const d = new Date(ms);
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+function missingFile(t: ToolCall): boolean {
+  return /does not exist|not found|no such file|ENOENT/i.test(t.output ?? '');
 }
 
 function describe(t: ToolCall, root?: string): string {

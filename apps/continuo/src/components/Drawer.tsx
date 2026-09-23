@@ -218,13 +218,13 @@ function ClosingCard({ task, onOpenFile }: { task: ContinuoTask; onOpenFile: (pa
         {done ? <Check size={14} style={{ color: 'var(--ok)' }} /> : <CircleAlert size={14} style={{ color: 'var(--warn)' }} />}
         <span className="font-medium">{taskLabel(task)}</span>
         <span className="t3">· {done ? '做完了' : '还差一点'}</span>
-        <span className="t3">· {deliverables.length === 0 ? '没有新文件' : ok === deliverables.length ? `${deliverables.length} 份文件，已核对` : `${deliverables.length} 份文件，${deliverables.length - ok} 份没找到`}</span>
+        <span className="t3">· {deliverables.length === 0 ? '没有新文件' : ok === deliverables.length ? `${deliverables.length} 份文件，已核对` : `${deliverables.length} 份文件，${deliverables.length - ok} 份不存在`}</span>
       </div>
       {deliverables.map((d) => (
         <div key={d.path} className="deliverable-row">
           {d.exists === false ? <CircleAlert size={13} style={{ color: 'var(--err)' }} /> : <Check size={13} style={{ color: 'var(--ok)' }} />}
           <span className="path" onClick={() => onOpenFile(d.path)} title="在左侧打开">{d.path}</span>
-          {d.exists === false && <span className="t3 xs">没找到这个文件</span>}
+          {d.exists === false && <span className="t3 xs">文件不存在</span>}
         </div>
       ))}
       {unresolved.map((u) => <div key={u} className="deliverable-row" style={{ color: 'var(--warn)' }}><CircleAlert size={13} />还没做到：{u}</div>)}

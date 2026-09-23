@@ -72,7 +72,7 @@ function renderSharedFolder(doc: ContinuoWorkspaceDoc, line: Trajectory): string
     const shown = foreign.slice(0, CONTEXT_BUNDLE_MAX_FOREIGN);
     lines.push(`Files they wrote are not part of this line's work; read them only if the user asks: ${shown.join(', ')}${foreign.length > shown.length ? `, and ${foreign.length - shown.length} more` : ''}.`);
   }
-  if (others) lines.push(`A file this line shares with another line stays as it is. To change one, write this line's version next to it with "-${suffix}" added to the name (for example notes-${suffix}.md) and report that path.`);
+  if (others) lines.push(`When you copy a file to change it, add "-${suffix}" to the copy's name (for example notes-${suffix}.md).`);
   return lines;
 }
 

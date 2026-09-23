@@ -141,14 +141,8 @@ export function variantPath(path: string, suffix: string): string {
   return `${path.slice(0, path.length - ext.length)}-${suffix}${ext}`;
 }
 
-function sharedWithOtherLine(doc: ContinuoWorkspaceDoc, line: Trajectory, path: string, exists: boolean): boolean {
-  const writers = doc.tasks.filter((task) => task.kind === 'user' && writtenPaths(doc, task).includes(path));
-  if (writers.length === 0) return exists && doc.trajectories.some((other) => other.trajectoryId !== line.trajectoryId && other.status !== 'abandoned');
-  return writers.some((task) => {
-    const holders = doc.trajectories.filter((other) => other.taskIds.includes(task.taskId));
-    if (!holders.some((other) => other.trajectoryId === line.trajectoryId)) return true;
-    return holders.some((other) => other.trajectoryId !== line.trajectoryId && other.status !== 'abandoned');
-  });
+function writtenByOtherLine(doc: ContinuoWorkspaceDoc, line: Trajectory, path: string): boolean {
+  return doc.tasks.some((task) => task.kind === 'user' && !line.taskIds.includes(task.taskId) && writtenPaths(doc, task).includes(path));
 }
 
 export function guardAccesses(doc: ContinuoWorkspaceDoc, sessionId: string, accesses: readonly GuardedAccess[], existing: ReadonlySet<string>): string | undefined {
@@ -169,10 +163,9 @@ export function guardAccesses(doc: ContinuoWorkspaceDoc, sessionId: string, acce
     return root === doc.root ? inHidden : !inLine;
   });
   if (blocked.length === 0 && line.workDir === undefined) {
-    const shared = accesses.find((access) => isWrite(access) && sharedWithOtherLine(doc, line, access.path, existing.has(access.path)));
-    if (shared === undefined) return undefined;
-    const suffix = lineSuffix(doc, line);
-    return `${shared.path} is shared with another line of this project, so it stays as it is. Write this line's version next to it as ${variantPath(shared.path, suffix)} (the same name plus "-${suffix}") and report that path.`;
+    const foreign = accesses.find((access) => isWrite(access) && existing.has(access.path) && writtenByOtherLine(doc, line, access.path));
+    if (foreign === undefined) return undefined;
+    return `${foreign.path} was written on another line of this project and stays as it is. Copy it to ${variantPath(foreign.path, lineSuffix(doc, line))} and change the copy instead, then report that path.`;
   }
   if (blocked.length === 0) return undefined;
   const paths = [...new Set(blocked.map((access) => access.path))].join(', ');

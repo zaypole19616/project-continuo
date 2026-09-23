@@ -314,24 +314,22 @@ describe('line isolation guard', () => {
       expect(guard(solo, 's_main', [{ operation: 'write', path: '/p/drafts/a.md' }], ['/p/drafts/a.md'])).toBeUndefined();
     });
 
-    it('lets a line create files and change the ones only it wrote', () => {
+    it('lets a line change its own files, files from before the fork and files it shares with another line', () => {
       expect(guard(forked, 's_c', [{ operation: 'write', path: '/p/drafts/new.md' }])).toBeUndefined();
       expect(guard(forked, 's_c', [{ operation: 'readwrite', path: '/p/drafts/c.md' }], ['/p/drafts/c.md'])).toBeUndefined();
-      expect(guard(forked, 's_main', [{ operation: 'readwrite', path: '/p/drafts/b.md' }], ['/p/drafts/b.md'])).toBeUndefined();
+      expect(guard(forked, 's_c', [{ operation: 'readwrite', path: '/p/README.md' }], ['/p/README.md'])).toBeUndefined();
+      expect(guard(forked, 's_c', [{ operation: 'write', path: '/p/drafts/a.md' }], ['/p/drafts/a.md'])).toBeUndefined();
     });
 
-    it('keeps shared and other lines\' files as they are and names the version to write instead', () => {
-      expect(guard(forked, 's_c', [{ operation: 'readwrite', path: '/p/README.md' }], ['/p/README.md'])).toContain('/p/README-方案C.md');
-      expect(guard(forked, 's_c', [{ operation: 'write', path: '/p/drafts/a.md' }], ['/p/drafts/a.md'])).toContain('/p/drafts/a-方案C.md');
-      expect(guard(forked, 's_c', [{ operation: 'write', path: '/p/drafts/b.md' }], ['/p/drafts/b.md'])).toContain('shared with another line');
-      expect(guard(forked, 's_main', [{ operation: 'write', path: '/p/drafts/c.md' }], ['/p/drafts/c.md'])).toContain('/p/drafts/c-原轨迹.md');
-    });
-
-    it('frees shared files again once the other line is abandoned, but never its own files', () => {
+    it('keeps files another line wrote as they are and names the copy to change instead', () => {
+      expect(guard(forked, 's_c', [{ operation: 'write', path: '/p/drafts/b.md' }], ['/p/drafts/b.md'])).toContain('/p/drafts/b-方案C.md');
+      expect(guard(forked, 's_main', [{ operation: 'readwrite', path: '/p/drafts/c.md' }], ['/p/drafts/c.md'])).toContain('/p/drafts/c-原轨迹.md');
       const abandoned = { ...forked, trajectories: [forked.trajectories[0]!, { ...forked.trajectories[1]!, status: 'abandoned' as const }] };
-      expect(guard(abandoned, 's_main', [{ operation: 'readwrite', path: '/p/drafts/a.md' }], ['/p/drafts/a.md'])).toBeUndefined();
-      expect(guard(abandoned, 's_main', [{ operation: 'readwrite', path: '/p/README.md' }], ['/p/README.md'])).toBeUndefined();
-      expect(guard(abandoned, 's_main', [{ operation: 'write', path: '/p/drafts/c.md' }], ['/p/drafts/c.md'])).toBeDefined();
+      expect(guard(abandoned, 's_main', [{ operation: 'write', path: '/p/drafts/c.md' }], ['/p/drafts/c.md'])).toContain('written on another line');
+    });
+
+    it('treats a file the user deleted as gone rather than protected', () => {
+      expect(guard(forked, 's_c', [{ operation: 'write', path: '/p/drafts/b.md' }], [])).toBeUndefined();
     });
 
     it('tells each line which files belong to the others', () => {
@@ -340,6 +338,7 @@ describe('line isolation guard', () => {
       expect(bundle).toContain('drafts/b.md');
       expect(bundle).not.toContain('drafts/c.md,');
       expect(bundle).toContain('"-方案C"');
+      expect(bundle).toContain('notes-方案C.md');
     });
   });
 
