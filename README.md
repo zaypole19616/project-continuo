@@ -16,7 +16,7 @@ Continuo，通奏低音：巴洛克音乐里贯穿全曲、从不中断的低音
 
 | | |
 |---|---|
-| 说明文档（产品判断、产品功能、如何体验） | [docs/continuo/submission.md](docs/continuo/submission.md) |
+| 产品介绍（产品判断、产品功能、如何体验） | [docs/continuo/2026-09-21-continuo-产品介绍.md](docs/continuo/2026-09-21-continuo-产品介绍.md) |
 | 这个原型实现到哪、边界在哪、怎么跑 | [docs/continuo/README.md](docs/continuo/README.md) |
 | Kimi Code's original README | [README.kimi-code.md](README.kimi-code.md) · [中文](README.kimi-code.zh-CN.md) |
 
@@ -29,7 +29,7 @@ Continuo，通奏低音：巴洛克音乐里贯穿全曲、从不中断的低音
 | 决策 | 对话里的决策卡：选择取决于什么，每个方案的依据、风险和适合情况；可以要更多方向，或自己写 | 1.2 第一点 |
 | 轨迹 | 右上角「轨迹」：回看执行过程，回到当时的决策换一条路，在轨迹之间切换；导出接口 | Clarity；1.2 第二点 |
 
-首次打开有三页引导，启动页的「使用引导」可以重看。每一行怎么试，见 [说明文档 §3 如何体验](docs/continuo/submission.md#3-如何体验)。
+首次打开有三页引导，启动页的「使用引导」可以重看。每一行怎么试，见 [产品介绍 §3 如何体验](docs/continuo/2026-09-21-continuo-产品介绍.md#3-如何体验)。
 
 ## Run
 

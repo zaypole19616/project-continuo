@@ -18,7 +18,7 @@ Continuo，通奏低音。巴洛克音乐里贯穿全曲、从不中断的低音
 
 This repository is a fork of [MoonshotAI/kimi-code](https://github.com/MoonshotAI/kimi-code). Continuo reuses the engine, sessions, tools, permissions, questions/approvals, file history and the local server as they are, and adds a workspace feature plus a small front-end on top.
 
-本文是实现说明：产品判断与功能定义见 [submission.md](submission.md)，这里写的是**做到了哪一步、边界在哪、怎么跑**。
+本文是实现说明：产品判断与功能定义见 [产品介绍](2026-09-21-continuo-产品介绍.md)，这里写的是**做到了哪一步、边界在哪、怎么跑**。
 
 ---
 
@@ -44,7 +44,7 @@ This repository is a fork of [MoonshotAI/kimi-code](https://github.com/MoonshotA
 
 ### 信息的统一口径
 
-同一件事在日志、记录、事项、轨迹里必须长成一个样子。口径取自这个项目自己的 [Agent 工作规范](submission.md)，一处定义、四处复用：
+同一件事在日志、记录、事项、轨迹里必须长成一个样子。口径取自作者自己的 Agent 工作规范，一处定义、四处复用：
 
 | | 规则 |
 |---|---|
