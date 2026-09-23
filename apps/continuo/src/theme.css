@@ -52,6 +52,9 @@
   --color-send-icon-disabled: rgba(255, 255, 255, 0.30);
   --diff-add-bg: rgba(63, 185, 80, 0.14); --diff-del-bg: rgba(248, 81, 73, 0.14);
   --glow: rgba(26, 136, 255, 0.10);
+  --mark-paper: #2a2a2d;
+  --mark-ink: #e8e7e3;
+  --mark-shadow: 0 14px 40px rgba(0, 0, 0, 0.45);
   --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.3);
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 3px rgba(0, 0, 0, 0.3);
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.35), 0 2px 4px rgba(0, 0, 0, 0.3);
@@ -115,6 +118,9 @@
   --color-send-icon-disabled: rgba(0, 0, 0, 0.27);
   --diff-add-bg: rgba(22, 196, 86, 0.10); --diff-del-bg: rgba(255, 77, 77, 0.10);
   --glow: rgba(23, 131, 255, 0.07);
+  --mark-paper: #e4e3df;
+  --mark-ink: #2e2e2d;
+  --mark-shadow: 0 14px 36px rgba(0, 0, 0, 0.14);
   --shadow-xs: 0 1px 2px rgba(16, 24, 40, 0.04);
   --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.05), 0 1px 3px rgba(16, 24, 40, 0.06);
   --shadow-md: 0 4px 12px rgba(16, 24, 40, 0.07), 0 2px 4px rgba(16, 24, 40, 0.05);
@@ -191,8 +197,8 @@ button.link:hover { text-decoration: underline; }
 .launcher-stage::before { content: ''; position: absolute; inset: 0; background: radial-gradient(56% 42% at 50% 28%, var(--glow), transparent 72%); pointer-events: none; }
 .launcher { position: relative; z-index: 1; width: 100%; max-width: 420px; display: flex; flex-direction: column; align-items: center; animation: rise 360ms var(--ease-out); }
 @keyframes rise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
-.launcher-mark { width: 64px; height: 64px; border-radius: 19px; background: var(--accent); display: flex; align-items: center; justify-content: center; box-shadow: 0 14px 44px rgba(26, 136, 255, 0.32); }
-.launcher-mark::after { content: ''; width: 22px; height: 22px; border-radius: 5px; background: #fff; }
+.launcher-mark { position: relative; width: 80px; height: 80px; border-radius: 22px; overflow: hidden; background: var(--mark-paper); box-shadow: var(--mark-shadow), inset 0 0 0 1px var(--line); }
+.launcher-mark::after { content: ''; position: absolute; inset: 0; background: var(--mark-ink); -webkit-mask: url('./assets/continuo-mark.png') center / cover no-repeat; mask: url('./assets/continuo-mark.png') center / cover no-repeat; }
 .launcher h1 { font-size: 30px; font-weight: 700; letter-spacing: -0.02em; margin: 18px 0 4px; }
 .launcher .ver { font-size: 13px; color: var(--text-3); margin: 0 0 30px; }
 .launch-card { width: 100%; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 2px 16px; }
