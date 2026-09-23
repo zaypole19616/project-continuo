@@ -111,6 +111,7 @@ export const continuo = {
   decisionAction: (workspaceId: string, decisionId: string, action: 'choose' | 'expand' | 'abandon', body: { plan_id?: string; reason?: string } = {}) => api.post<ContinuoDoc>(`/workspaces/${workspaceId}/continuo/decisions/${decisionId}:${action}`, body),
   addTodo: (workspaceId: string, text: string, timing?: TodoTiming) => api.post<ContinuoDoc>(`/workspaces/${workspaceId}/continuo/todos`, { text, timing }),
   todoAction: (workspaceId: string, todoId: string, action: 'start' | 'delete') => api.post<ContinuoDoc>(`/workspaces/${workspaceId}/continuo/todos/${todoId}:${action}`, {}),
+  chooseFolder: (prompt: string, defaultPath?: string) => api.post<{ path: string | null }>('/continuo/choose-folder', { prompt, default_path: defaultPath }),
   setPermission: (workspaceId: string, mode: PermissionMode) => api.post<ContinuoDoc>(`/workspaces/${workspaceId}/continuo/permission`, { mode }),
   activateLine: (workspaceId: string, trajectoryId: string) => api.post<ContinuoDoc>(`/workspaces/${workspaceId}/continuo/trajectories/${trajectoryId}:activate`, {}),
 };

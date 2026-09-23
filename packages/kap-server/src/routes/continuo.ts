@@ -5,6 +5,7 @@ import { ContinuoError, ContinuoTaskManager } from '../continuo/taskManager';
 import { errEnvelope, okEnvelope } from '../envelope';
 import { defineRoute } from '../middleware/defineRoute';
 import { parseActionSuffix } from './action-suffix';
+import { chooseFolder } from '../continuo/chooseFolder';
 import { listFiles, readTextFile } from '../continuo/files';
 import { ErrorCode } from '../protocol/error-codes';
 
@@ -49,6 +50,29 @@ export function registerContinuoRoutes(app: ContinuoRouteHost, core: Scope): voi
     }
     reply.send(errEnvelope(ErrorCode.INTERNAL_ERROR, error instanceof Error ? error.message : String(error), requestId));
   };
+
+  const chooseFolderRoute = defineRoute(
+    {
+      method: 'POST',
+      path: '/continuo/choose-folder',
+      body: z.object({ prompt: z.string().min(1).max(120).optional(), default_path: z.string().min(1).max(4096).optional() }).optional(),
+      success: { data: z.object({ path: z.string().nullable() }) },
+      errors: CONTINUO_ERRORS,
+      description: "Open the operating system's own folder chooser on the machine running the server (macOS) and return the chosen folder, or null when the user cancels",
+      tags: ['continuo'],
+      operationId: 'continuoChooseFolder',
+    },
+    async (req, reply) => {
+      if (!flagGuard(req.id, reply)) return;
+      try {
+        const path = await chooseFolder(req.body?.prompt ?? '选择文件夹', req.body?.default_path);
+        reply.send(okEnvelope({ path: path ?? null }, req.id));
+      } catch (error) {
+        sendError(reply, req.id, error);
+      }
+    },
+  );
+  app.post(chooseFolderRoute.path, chooseFolderRoute.options, chooseFolderRoute.handler as Parameters<ContinuoRouteHost['post']>[2]);
 
   const openRoute = defineRoute(
     {

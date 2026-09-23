@@ -1,12 +1,25 @@
 import { useEffect, useState } from 'react';
-import { DEFAULT_MODEL, kimi, readRecent, type Workspace } from '#/lib/api';
+import { continuo, DEFAULT_MODEL, kimi, readRecent, type Workspace } from '#/lib/api';
 import { FolderPicker } from '#/components/FolderPicker';
+import { CreateProjectDialog } from '#/components/CreateProjectDialog';
 import { ThemeToggle } from '#/components/ThemeToggle';
 import type { ThemePref } from '#/lib/theme';
 
 export function Launcher({ onOpen, themePref, onTheme }: { onOpen: (w: Workspace) => void; themePref: ThemePref; onTheme: (pref: ThemePref) => void }) {
   const [recent, setRecent] = useState<Workspace[]>([]);
-  const [picker, setPicker] = useState<'open' | 'create' | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [browsing, setBrowsing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const openExisting = async () => {
+    setError(null);
+    try {
+      const picked = await continuo.chooseFolder('选择要打开的项目文件夹');
+      if (picked.path !== null) onOpen(await kimi.createWorkspace(picked.path));
+    } catch {
+      setBrowsing(true);
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -33,15 +46,16 @@ export function Launcher({ onOpen, themePref, onTheme }: { onOpen: (w: Workspace
         <span className="launcher-mark" aria-hidden="true" />
         <h1>Continuo</h1>
         <p className="ver">基于 Kimi Code · {DEFAULT_MODEL.split('/').pop()}</p>
+        {error !== null && <div className="banner banner-err launch-error">{error}</div>}
         <div className="launch-card">
           <div className="launch-pair">
             <div className="launch-cell">
-              <b>新建项目</b><span>在指定位置创建一个新的项目文件夹。</span>
-              <button className="launch-btn" onClick={() => setPicker('create')}>创建</button>
+              <b>创建项目</b><span>在指定位置创建一个新的项目文件夹。</span>
+              <button className="launch-btn" onClick={() => setCreating(true)}>创建</button>
             </div>
             <div className="launch-cell">
               <b>打开已有项目</b><span>把一个本地文件夹作为项目打开。</span>
-              <button className="launch-btn" onClick={() => setPicker('open')}>打开</button>
+              <button className="launch-btn" onClick={() => void openExisting()}>打开</button>
             </div>
           </div>
           {recent.length > 0 && (
@@ -56,7 +70,8 @@ export function Launcher({ onOpen, themePref, onTheme }: { onOpen: (w: Workspace
           )}
         </div>
       </div>
-      <FolderPicker mode={picker ?? 'open'} open={picker !== null} onOpenChange={(open) => { if (!open) setPicker(null); }} onPick={(w) => { setPicker(null); onOpen(w); }} />
+      <CreateProjectDialog open={creating} onOpenChange={setCreating} onCreated={(w) => { setCreating(false); onOpen(w); }} />
+      <FolderPicker title="打开已有项目" confirmLabel="打开这个文件夹" open={browsing} onOpenChange={setBrowsing} onPick={(path) => { setBrowsing(false); void kimi.createWorkspace(path).then(onOpen).catch((error: Error) => setError(error.message)); }} />
     </div>
   );
 }

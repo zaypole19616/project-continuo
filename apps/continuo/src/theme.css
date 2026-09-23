@@ -196,6 +196,21 @@ button.link:hover { text-decoration: underline; }
 .launcher-stage { position: relative; height: 100%; overflow: auto; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 48px 24px; }
 .launcher-stage::before { content: ''; position: absolute; inset: 0; background: radial-gradient(56% 42% at 50% 28%, var(--glow), transparent 72%); pointer-events: none; }
 .launcher-theme { position: absolute; top: 12px; right: 16px; z-index: 2; }
+.launch-error { width: 100%; margin-bottom: 10px; }
+.create-dialog { max-width: 480px; padding: 26px 24px 22px; display: flex; flex-direction: column; gap: 10px; text-align: left; }
+.cd-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.cd-title { font-size: 20px; font-weight: 600; }
+.cd-label { font-size: 15px; font-weight: 600; color: var(--text-1); margin-top: 4px; }
+.cd-req { color: var(--err); margin-left: 3px; }
+.cd-field { width: 100%; height: 46px; padding: 0 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-sunken); color: var(--text-1); font: inherit; font-size: 15px; outline: none; transition: border-color var(--motion-fast), box-shadow var(--motion-fast); }
+.cd-field::placeholder { color: var(--text-3); }
+.cd-field:focus, .cd-field:focus-visible { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.cd-path { display: flex; align-items: center; gap: 10px; cursor: pointer; text-align: left; color: var(--text-2); }
+.cd-path:hover:not(:disabled) { border-color: var(--line-strong); }
+.cd-path-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cd-error { font-size: var(--fs-xs); color: var(--err); }
+.cd-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px; }
+.cd-btn { height: 40px; min-width: 88px; border-radius: 12px; font-size: 15px; }
 .launcher { position: relative; z-index: 1; width: 100%; max-width: 420px; display: flex; flex-direction: column; align-items: center; animation: rise 360ms var(--ease-out); }
 @keyframes rise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
 .launcher-mark { position: relative; width: 80px; height: 80px; border-radius: 22px; overflow: hidden; background: var(--mark-paper); box-shadow: var(--mark-shadow), inset 0 0 0 1px var(--line); }
