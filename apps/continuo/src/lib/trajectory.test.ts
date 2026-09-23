@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ContinuoDoc, ContinuoTask, Decision, Trajectory } from './api';
-import { buildTrunk, currentLine, isExploring, lineIsBusy, planState, todoGroup } from './trajectory';
+import { buildTrunk, currentLine, isExploring, lineIsBusy, orderedPlans, planState, stanceTag, todoGroup } from './trajectory';
 import { errorTitle, spentLimit, untilText } from './errors';
 
 const NOW = '2026-09-23T04:00:00.000Z';
@@ -54,6 +54,17 @@ describe('trajectory tree', () => {
     expect(currentLine(busy)?.trajectoryId).toBe('main');
     expect(lineIsBusy(busy, currentLine(busy))).toBe(true);
     expect(lineIsBusy(doc([{ ...main, status: 'current' }]), currentLine(doc([{ ...main, status: 'current' }])))).toBe(false);
+  });
+});
+
+describe('where the agent stands', () => {
+  it('puts the recommended plan first and marks only it and the plans it warns against', () => {
+    const picked: Decision = { ...decision, plans: [plan('A'), plan('B'), { ...plan('C'), caution: 'budget missing' }], stance: { pick: 'B', why: 'w', at: NOW } };
+    expect(orderedPlans(picked).map((item) => item.planId)).toEqual(['B', 'A', 'C']);
+    expect(picked.plans.map((item) => stanceTag(picked, item))).toEqual([undefined, '建议', '不建议']);
+    const open: Decision = { ...decision, stance: { dependsOn: 'speed or ownership', at: NOW } };
+    expect(orderedPlans(open).map((item) => item.planId)).toEqual(['A', 'B', 'C']);
+    expect(open.plans.map((item) => stanceTag(open, item))).toEqual([undefined, undefined, undefined]);
   });
 });
 

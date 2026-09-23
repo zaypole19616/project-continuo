@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
-import { ArrowRight, BookOpen, FileText, Loader2, RotateCcw } from 'lucide-react';
-import type { ContinuoDoc, TaskError } from '#/lib/api';
+import { BookOpen, FileText, Loader2, RotateCcw } from 'lucide-react';
+import type { ContinuoDoc, ContinuoTodo, TaskError, TodoAction } from '#/lib/api';
 import { Button } from '#/components/ui/button';
+import { isEmptyFolder } from '#/lib/trajectory';
 import { ErrorCard } from './ErrorCard';
+import { SuggestedTodos } from './SuggestedTodos';
 
 const STAGES: Array<[number, string]> = [
   [0, '正在看目录结构…'],
@@ -19,9 +21,10 @@ function FileList({ files, onOpenFile }: { files: readonly string[]; onOpenFile:
   );
 }
 
-export function InitCard({ doc, busy, started, onRetry, onOpenFile, onStart }: {
-  doc: ContinuoDoc; busy: boolean; started: boolean;
-  onRetry: () => void; onOpenFile: (path: string) => void; onStart: (prompt: string) => void;
+export function InitCard({ doc, busy, startLock, started, onRetry, onOpenFile, onTodoAction, onShowTodos }: {
+  doc: ContinuoDoc; busy: boolean; startLock: string | undefined; started: boolean;
+  onRetry: () => void; onOpenFile: (path: string) => void;
+  onTodoAction: (todo: ContinuoTodo, action: TodoAction) => void; onShowTodos: () => void;
 }) {
   const [now, setNow] = useState(() => Date.now());
   const running = doc.init.status === 'running';
@@ -55,9 +58,10 @@ export function InitCard({ doc, busy, started, onRetry, onOpenFile, onStart }: {
     return <div className="state-bar chrome"><span className="t2 sm flex-1">了解这个文件夹时被打断了</span>{retry}</div>;
   }
   if (doc.understanding === undefined) return null;
-  const empty = doc.init.status === 'pending';
-  const title = empty ? '这个文件夹还是空的' : '已了解这个文件夹';
-  const suggestions = doc.understanding.suggestions ?? [];
+  const empty = isEmptyFolder(doc);
+  const title = empty ? '新建的空文件夹' : '已了解这个文件夹';
+  const suggested = (doc.todos ?? []).filter((todo) => todo.fromTaskId !== undefined && todo.fromTaskId === doc.init.taskId);
+  const summary = empty ? '放进材料后再打开，会先了解一遍；也可以直接交代第一件事。' : doc.understanding.text;
 
   if (started) {
     return (
@@ -83,7 +87,7 @@ export function InitCard({ doc, busy, started, onRetry, onOpenFile, onStart }: {
         {doc.init.status === 'partial' && <span className="t3">· 文件较多，只看了一部分</span>}
       </div>
       <div className="init-card-body">
-        <div>{doc.understanding.text}</div>
+        <div className="init-summary">{summary}</div>
         {files.length > 0 && (
           <details>
             <summary className="init-sec">读过 {files.length} 个文件{doc.context.length > 0 ? `，记下 ${doc.context.length} 条要点` : ''}</summary>
@@ -92,20 +96,7 @@ export function InitCard({ doc, busy, started, onRetry, onOpenFile, onStart }: {
           </details>
         )}
       </div>
-      <div className="init-ask">
-        <div className="init-ask-q">接下来想做什么？</div>
-        {suggestions.length === 0
-          ? <div className="t3 sm">{empty ? '放进材料，或者直接说第一件事。' : '我没有要先提的，等你安排。'}</div>
-          : suggestions.map((item) => (
-            <div key={item.title} className="init-suggestion">
-              <div className="min-w-0 flex-1">
-                <div className="init-suggestion-title">{item.title}</div>
-                <div className="t3 xs">{item.reason}</div>
-              </div>
-              <Button variant="outline" size="sm" disabled={busy} onClick={() => onStart(item.prompt)}>就做这个<ArrowRight size={12} /></Button>
-            </div>
-          ))}
-      </div>
+      {suggested.length > 0 && <div className="init-ask"><SuggestedTodos todos={suggested} busy={busy} startLock={startLock} onAction={onTodoAction} onShowTodos={onShowTodos} /></div>}
     </div>
   );
 }

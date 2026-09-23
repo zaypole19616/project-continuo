@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ChevronLeft } from 'lucide-react';
-import { continuo, isOffline, kimi, type ApprovalRequest, type ContinuoDoc, type ContinuoTask, type ContinuoTodo, type PermissionMode, type TodoTiming, type Decision, type QuestionRequest, type Trajectory, type TrajectoryPlan, type Workspace } from '#/lib/api';
-import { currentLine, tasksOn } from '#/lib/trajectory';
+import { continuo, isOffline, kimi, type ApprovalRequest, type ContinuoDoc, type ContinuoTask, type ContinuoTodo, type PermissionMode, type TodoAction, type TodoTiming, type Decision, type QuestionRequest, type Trajectory, type TrajectoryPlan, type Workspace } from '#/lib/api';
+import { currentLine, lineName, tasksOn } from '#/lib/trajectory';
 import { SessionStream } from '#/lib/ws';
 import { applyEvent, emptyTimeline, fromMessages, withUserMessage, type TimelineState } from '#/lib/timeline';
 import type { ThemePref } from '#/lib/theme';
@@ -159,7 +159,7 @@ export function WorkspaceView({ workspace, onClose, themePref, onTheme }: { work
   const forkAfter = (task: ContinuoTask) => run(() => continuo.taskAction(workspaceId, task.taskId, 'fork'));
   const retryInit = () => { void run(() => continuo.retryInit(workspaceId)); };
   const addTodo = (text: string, timing: TodoTiming | undefined) => run(() => continuo.addTodo(workspaceId, text, timing));
-  const todoAction = (todo: ContinuoTodo, action: 'start' | 'delete') => run(() => continuo.todoAction(workspaceId, todo.todoId, action));
+  const todoAction = (todo: ContinuoTodo, action: TodoAction) => run(() => continuo.todoAction(workspaceId, todo.todoId, action));
   const setPermission = (mode: PermissionMode) => { void run(() => continuo.setPermission(workspaceId, mode)); };
 
   const startDrag = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -184,7 +184,7 @@ export function WorkspaceView({ workspace, onClose, themePref, onTheme }: { work
         <Button variant="ghost" size="sm" onClick={onClose} title="回到项目列表"><ChevronLeft size={15} />项目</Button>
         <span className="sep">/</span>
         <span className="project-name">{workspace.name}</span>
-        {line?.origin !== undefined && <span className="line-chip" title={line.workDir === undefined ? '这条轨迹和原来的轨迹共用项目文件夹' : `这条轨迹的文件在 ${line.workDir}`}>{line.label}</span>}
+        {line?.origin !== undefined && <span className="line-chip" title={line.workDir === undefined ? '这条轨迹和原来的轨迹共用项目文件夹' : `这条轨迹的文件在 ${line.workDir}`}>{doc === null ? line.label : lineName(doc, line)}</span>}
         <span className="project-path" title={workspace.root}>{workspace.root}</span>
         <span className="flex-1" />
         <ThemeToggle themePref={themePref} onTheme={onTheme} />
@@ -210,7 +210,6 @@ export function WorkspaceView({ workspace, onClose, themePref, onTheme }: { work
           onAnswer={async (q, answers, note) => { if (!sessionId) return; await kimi.resolveQuestion(sessionId, q.question_id, answers, note); await refreshPending(sessionId); void refresh(); }}
           onDecide={async (a, d, scope) => { if (!sessionId) return; await kimi.resolveApproval(sessionId, a.approval_id, d, scope); await refreshPending(sessionId); void refresh(); }}
           onAction={(t, a) => { void action(t, a); }} onOpenFile={(path) => setTarget({ kind: 'file', path })}
-          onStartStep={(text) => { if (!sending) void submit(text, null); }}
           onChoose={choose} onExpand={expand} onAbandon={abandon} onSwitch={switchLine} onForkAfter={forkAfter} onRetryInit={retryInit} onAddTodo={addTodo} onTodoAction={todoAction} onPermission={setPermission}
         />
       </div>

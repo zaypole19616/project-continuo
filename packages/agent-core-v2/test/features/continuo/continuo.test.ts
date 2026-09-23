@@ -6,7 +6,7 @@ import { ContinuoStoreService } from '#/features/continuo/store';
 import { buildTrajectoryExport } from '#/features/continuo/export';
 import { migrateWorkspaceDoc } from '#/features/continuo/migrate';
 import { afterRun, dueTodo, nextRunAt, scheduleOf } from '#/features/continuo/todo';
-import { doneOnLine, guardAccesses, guardTool, inheritedChoices, otherLineNote, planPath, planStatusOn, tasksThrough } from '#/features/continuo/trajectory';
+import { doneOnLine, guardAccesses, guardTool, inheritedChoices, otherLineNote, decisionStance, planPath, planStatusOn, tasksThrough } from '#/features/continuo/trajectory';
 import {
   CONTINUO_STORE_SCOPE,
   currentTaskOf,
@@ -419,6 +419,16 @@ describe('trajectory export (phase five)', () => {
   });
 });
 
+describe('where the agent stands on the plans', () => {
+  it('always records what the choice comes down to, and a recommendation only with its reason', () => {
+    expect(decisionStance([], undefined, 'reading speed or per-city ownership', NOW)).toEqual({ dependsOn: 'reading speed or per-city ownership', at: NOW });
+    expect(decisionStance(['B'], 'the guide asks for conclusions first', 'reading speed or per-city ownership', NOW)).toEqual({ dependsOn: 'reading speed or per-city ownership', pick: 'B', why: 'the guide asks for conclusions first', at: NOW });
+    expect(decisionStance(['B'], 'why', undefined, NOW)).toMatch(/Always give dependsOn/);
+    expect(decisionStance(['A', 'B'], 'both', 'd', NOW)).toMatch(/at most one/);
+    expect(decisionStance(['A'], undefined, 'd', NOW)).toMatch(/needs why/);
+  });
+});
+
 describe('backlog timing (built on the cron scheduler)', () => {
   const local = (y: number, m: number, d: number, h: number, min: number) => new Date(y, m - 1, d, h, min).getTime();
 
@@ -440,6 +450,8 @@ describe('backlog timing (built on the cron scheduler)', () => {
       { todoId: 'manual', text: 'c', createdAt: NOW },
     ] };
     expect(dueTodo(doc, now)?.todoId).toBe('due');
+    const handled = { ...doc, todos: doc.todos.map((todo) => (todo.todoId === 'due' ? { ...todo, state: 'dismissed' as const } : todo)) };
+    expect(dueTodo(handled, now)).toBeUndefined();
   });
 
   it('moves a recurring todo to its next run after missed ones, and drops a one-off', () => {

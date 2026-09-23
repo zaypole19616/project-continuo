@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowRight, ArrowUp, Check, CircleAlert, Play, RotateCcw, Sparkles, Square } from 'lucide-react';
-import { DEFAULT_MODEL, type ApprovalRequest, type ContinuoDoc, type ContinuoTask, type ContinuoTodo, type Decision, type PermissionMode, type TodoTiming, type QuestionRequest, type Trajectory, type TrajectoryPlan, type Workspace } from '#/lib/api';
+import { ArrowRight, ArrowUp, Check, CircleAlert, Play, RotateCcw, Square } from 'lucide-react';
+import { DEFAULT_MODEL, type ApprovalRequest, type ContinuoDoc, type ContinuoTask, type ContinuoTodo, type Decision, type PermissionMode, type TodoAction, type TodoTiming, type QuestionRequest, type Trajectory, type TrajectoryPlan, type Workspace } from '#/lib/api';
 import type { TimelineState } from '#/lib/timeline';
 import { decisionsOn, lineIsBusy, taskLabel, tasksOn, todoGroup, TODO_GROUPS } from '#/lib/trajectory';
 import { Timeline } from './Timeline';
@@ -10,6 +10,7 @@ import { Backlog } from './Backlog';
 import { failureReason } from '#/lib/errors';
 import { PermissionPicker } from './PermissionPicker';
 import { ErrorCard } from './ErrorCard';
+import { SuggestedTodos } from './SuggestedTodos';
 import { DecisionCard } from './DecisionCard';
 import { TrajectoryTree } from './TrajectoryTree';
 import { AbandonDialog } from './AbandonDialog';
@@ -36,9 +37,8 @@ export interface DrawerProps {
   onOpenFile: (path: string) => void;
   onRetryInit: () => void;
   onAddTodo: (text: string, timing: TodoTiming | undefined) => Promise<boolean>;
-  onTodoAction: (todo: ContinuoTodo, action: 'start' | 'delete') => Promise<boolean>;
+  onTodoAction: (todo: ContinuoTodo, action: TodoAction) => Promise<boolean>;
   onPermission: (mode: PermissionMode) => void;
-  onStartStep: (prompt: string) => void;
   onChoose: (decision: Decision, plan: TrajectoryPlan) => Promise<boolean>;
   onExpand: (decision: Decision) => Promise<boolean>;
   onAbandon: (decision: Decision, plan: TrajectoryPlan, reason: string) => void;
@@ -91,9 +91,12 @@ export function Drawer(p: DrawerProps) {
   const stop = () => { if (p.activeUserTask) p.onAction(p.activeUserTask, 'pause'); };
   const focusComposer = () => { setTab('chat'); setTimeout(() => p.composerRef.current?.focus(), 50); };
   const locked = p.sending || (p.doc !== null && lineIsBusy(p.doc, p.line));
+  const startLock = p.activeUserTask !== null ? '等手上的事做完或停下后再开始' : undefined;
+  const todoAction = (todo: ContinuoTodo, action: TodoAction) => { void p.onTodoAction(todo, action).then((ok) => { if (ok && action === 'start') setTab('chat'); }); };
   const planActions = {
     onChoose: (decision: Decision, plan: TrajectoryPlan) => { void p.onChoose(decision, plan).then((ok) => { if (ok) setTab('chat'); }); },
     onExpand: (decision: Decision) => { void p.onExpand(decision).then((ok) => { if (ok) setTab('chat'); }); },
+    onCustom: () => focusComposer(),
     onAbandon: (decision: Decision, plan: TrajectoryPlan) => setDropping({ decision, plan }),
     onSwitch: p.onSwitch,
     onOpenFile: p.onOpenFile,
@@ -103,6 +106,8 @@ export function Drawer(p: DrawerProps) {
   const extras: Array<{ at: number; node: React.ReactNode }> = [];
   for (const task of tasks.filter((t) => isFinished(t) && t.endedAt !== undefined)) {
     extras.push({ at: Date.parse(task.endedAt!), node: <ClosingCard key={task.taskId} task={task} onOpenFile={p.onOpenFile} /> });
+    const suggested = (p.doc?.todos ?? []).filter((todo) => todo.fromTaskId === task.taskId);
+    if (suggested.length > 0) extras.push({ at: Date.parse(task.endedAt!), node: <NextStepCard key={`next-${task.taskId}`} todos={suggested} busy={p.sending} startLock={startLock} onAction={todoAction} onShowTodos={() => setTab('todo')} /> });
   }
   for (const task of tasks.filter((t) => t.status === 'failed' && t.endedAt !== undefined)) {
     const error = task.error ?? { code: 'turn.failed', message: task.lastError ?? '没有完成', at: task.endedAt! };
@@ -123,8 +128,6 @@ export function Drawer(p: DrawerProps) {
     if (index === -1) trailing.push(extra.node);
     else anchored.set(index, [...(anchored.get(index) ?? []), extra.node]);
   }
-  const nextStep = p.latest?.report?.nextStep;
-  const showNextStep = nextStep !== undefined && p.latest !== null && isFinished(p.latest) && !tasks.some((t) => t.title === nextStep.prompt.slice(0, 120));
   const choosing = p.replyTarget?.pendingInteraction === 'choice';
 
   const composer = (
@@ -139,7 +142,7 @@ export function Drawer(p: DrawerProps) {
         <textarea
           ref={p.composerRef}
           rows={2}
-          placeholder={choosing ? '也可以直接说你想怎么做…' : p.replyTarget ? '回复它…' : '这次想完成什么？'}
+          placeholder={choosing ? '写下你想要的方向' : p.replyTarget ? '回复它…' : '这次想完成什么？'}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); if (!running && !p.sending) send(); } }}
@@ -171,10 +174,9 @@ export function Drawer(p: DrawerProps) {
         <TabsContent value="chat" className="flex min-h-0 flex-1 flex-col">
           {p.error && <div className="banner banner-err mb-2">{p.error}</div>}
           <div className="drawer-body">
-            {p.doc && <InitCard doc={p.doc} busy={p.sending || p.activeUserTask !== null} started={tasks.length > 0} onRetry={p.onRetryInit} onOpenFile={p.onOpenFile} onStart={(prompt) => { if (!p.sending) p.onStartStep(prompt); }} />}
+            {p.doc && <InitCard doc={p.doc} busy={p.sending} startLock={startLock} started={tasks.length > 0} onRetry={p.onRetryInit} onOpenFile={p.onOpenFile} onTodoAction={todoAction} onShowTodos={() => setTab('todo')} />}
             {p.state.items.length > 0 && <Timeline items={p.state.items} root={p.line?.workDir ?? p.doc?.root} after={(_, i) => anchored.get(i)} />}
             {trailing}
-            {showNextStep && <NextStepCard step={nextStep} busy={p.sending} onStart={() => p.onStartStep(nextStep.prompt)} />}
             {p.questions.map((q) => <QuestionCard key={q.question_id} q={q} onAnswer={(answers, note) => p.onAnswer(q, answers, note)} />)}
             {p.approvals.map((a) => <ApprovalCard key={a.approval_id} a={a} root={p.line?.workDir ?? p.doc?.root} onDecide={(d, scope) => p.onDecide(a, d, scope)} />)}
             <div ref={bottomRef} />
@@ -213,10 +215,9 @@ export function Drawer(p: DrawerProps) {
             })}
           {p.doc && (
             <Backlog
-              doc={p.doc} busy={p.sending || p.activeUserTask !== null} lockReason={p.activeUserTask !== null ? '等手上的事做完或停下后再开始' : undefined}
+              doc={p.doc} busy={p.sending} startLock={startLock}
               onAdd={p.onAddTodo}
-              onStart={(todo) => { void p.onTodoAction(todo, 'start').then((ok) => { if (ok) setTab('chat'); }); }}
-              onDelete={(todo) => { void p.onTodoAction(todo, 'delete'); }}
+              onAction={todoAction}
             />
           )}
         </TabsContent>
@@ -231,7 +232,7 @@ export function Drawer(p: DrawerProps) {
   );
 }
 
-function ClosingCard({ task, onOpenFile }: { task: ContinuoTask; onOpenFile: (path: string) => void }) {
+export function ClosingCard({ task, onOpenFile }: { task: ContinuoTask; onOpenFile: (path: string) => void }) {
   const deliverables = task.report?.deliverables ?? [];
   const nextStep = task.report?.nextStep;
   const unresolved = (task.report?.unresolved ?? []).filter((item) => nextStep === undefined || !coveredBy(item, nextStep));
@@ -272,16 +273,10 @@ function coveredBy(item: string, step: { title: string; reason: string }): boole
   return text.includes(key) || step.reason.replaceAll(/[\s，。、]/g, '').includes(text);
 }
 
-function NextStepCard({ step, busy, onStart }: { step: { title: string; reason: string; prompt: string }; busy: boolean; onStart: () => void }) {
+export function NextStepCard({ todos, busy, startLock, onAction, onShowTodos }: { todos: readonly ContinuoTodo[]; busy: boolean; startLock: string | undefined; onAction: (todo: ContinuoTodo, action: TodoAction) => void; onShowTodos: () => void }) {
   return (
     <div className="next-step fade-in">
-      <div className="next-step-head"><Sparkles size={15} />接下来，也许值得做这一步</div>
-      <div className="next-step-title">{step.title}</div>
-      <div className="t2 sm">{step.reason}</div>
-      <div className="flex">
-        <span className="flex-1" />
-        <Button variant="default" size="sm" disabled={busy} onClick={onStart}>开始这一步<ArrowRight size={13} /></Button>
-      </div>
+      <SuggestedTodos todos={todos} busy={busy} startLock={startLock} onAction={onAction} onShowTodos={onShowTodos} />
     </div>
   );
 }

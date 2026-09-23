@@ -1,29 +1,28 @@
 import { useEffect, useRef, useState } from 'react';
-import { BookOpen, CornerDownRight, FileText, GitBranch, GitFork, Maximize2, Minus, Plus, RotateCcw, Shuffle } from 'lucide-react';
+import { ArrowRight, BookOpen, CornerDownRight, FileText, GitBranch, GitFork, RotateCcw } from 'lucide-react';
 import type { ContinuoDoc, ContinuoTask, Decision, Trajectory } from '#/lib/api';
-import { buildTrunk, choiceOn, isExploring, isOpen, lastTurnOf, localDay, localTime, planState, taskLabel, type LineStub } from '#/lib/trajectory';
+import { buildTrunk, choiceOn, isEmptyFolder, isExploring, isOpen, lastTurnOf, localDay, localTime, orderedPlans, planState, planTitle, stanceTag, taskLabel, type LineStub } from '#/lib/trajectory';
 import { Button } from '#/components/ui/button';
-import { Hint, PlanList, type PlanActions } from './PlanList';
+import { Hint } from './Hint';
+import { PlanDeck, type PlanActions } from './PlanDeck';
 
-type Tier = 'compact' | 'mid' | 'detail';
+type Tier = 'mid' | 'detail';
 
-const ZOOM_KEY = 'continuo.treeZoom';
-const MIN = 0.45;
-const MAX = 1.4;
-const OVERVIEW = 0.5;
+const VIEW_KEY = 'continuo.treeView';
+const VIEWS: ReadonlyArray<{ tier: Tier; label: string; hint: string }> = [
+  { tier: 'mid', label: '概览', hint: '每个节点一行，看整条轨迹和分叉；点节点单独展开' },
+  { tier: 'detail', label: '详情', hint: '每个节点都展开：读过什么、做了什么、结果和方案' },
+];
 
-function tierOf(zoom: number): Tier {
-  return zoom < 0.62 ? 'compact' : zoom < 1 ? 'mid' : 'detail';
-}
-
-function readZoom(): number {
+function readView(): Tier {
   try {
-    const stored = Number(localStorage.getItem(ZOOM_KEY));
-    return stored >= MIN && stored <= MAX ? stored : 0.8;
+    return localStorage.getItem(VIEW_KEY) === 'detail' ? 'detail' : 'mid';
   } catch {
-    return 0.8;
+    return 'mid';
   }
 }
+
+const SWITCH_LOCK = '等这件事做完或停下后再切换';
 
 const STATUS: Record<string, string> = { queued: '排队中', running: '进行中', verifying: '核对产物', awaiting_user: '等你', completed: '已完成', needs_review: '还差一点', paused: '已暂停', failed: '没做完', interrupted: '被打断了' };
 
@@ -46,26 +45,14 @@ export interface TreeActions extends PlanActions {
 }
 
 export function TrajectoryTree({ doc, line, locked, actions }: { doc: ContinuoDoc; line: Trajectory | undefined; locked: boolean; actions: TreeActions }) {
-  const [zoom, setZoom] = useState(readZoom);
+  const [tier, setTier] = useState<Tier>(readView);
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
   const scroller = useRef<HTMLDivElement | null>(null);
   const drag = useRef<{ x: number; y: number; left: number; top: number } | null>(null);
 
-  useEffect(() => { try { localStorage.setItem(ZOOM_KEY, String(zoom)); } catch {} }, [zoom]);
-  useEffect(() => {
-    const node = scroller.current;
-    if (node === null) return;
-    const onWheel = (event: WheelEvent) => {
-      if (!event.ctrlKey && !event.metaKey) return;
-      event.preventDefault();
-      setZoom((current) => clamp(current * Math.exp(-event.deltaY * 0.004)));
-    };
-    node.addEventListener('wheel', onWheel, { passive: false });
-    return () => node.removeEventListener('wheel', onWheel);
-  }, []);
+  useEffect(() => { try { localStorage.setItem(VIEW_KEY, tier); } catch {} }, [tier]);
 
   const trunk = line === undefined ? [] : buildTrunk(doc, line);
-  const tier = tierOf(zoom);
   const toggle = (id: string) => {
     if (tier === 'detail') return;
     setExpanded((current) => {
@@ -97,9 +84,15 @@ export function TrajectoryTree({ doc, line, locked, actions }: { doc: ContinuoDo
 
   return (
     <div className="tree">
-      <div className="tree-strip"><span>{tasks} 个事项</span><span>·</span><span>{decisions} 个决策点</span><span>·</span><span>{lines} 条轨迹</span></div>
+      <div className="tree-strip">
+        <span>{tasks} 个事项</span><span>·</span><span>{decisions} 个决策点</span><span>·</span><span>{lines} 条轨迹</span>
+        <span className="flex-1" />
+        <div className="tree-views" role="tablist" aria-label="视图">
+          {VIEWS.map((view) => <button key={view.tier} role="tab" aria-selected={tier === view.tier} className={tier === view.tier ? 'is-on' : ''} title={view.hint} onClick={() => { setTier(view.tier); setExpanded(new Set()); }}>{view.label}</button>)}
+        </div>
+      </div>
       <div ref={scroller} className="tree-scroll" onPointerDown={startDrag} onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={endDrag}>
-        <div className={`trunk tier-${tier}`} style={{ zoom: Math.max(zoom, 0.8) }}>
+        <div className={`trunk tier-${tier}`}>
           <RootNode doc={doc} tier={tierFor('root')} collapsible={tier !== 'detail'} onToggle={() => toggle('root')} locked={locked} actions={actions} />
           {trunk.map((item) => {
             if (item.kind === 'day') return <div key={`day-${item.day}`} className="t-day">{item.day}</div>;
@@ -108,21 +101,11 @@ export function TrajectoryTree({ doc, line, locked, actions }: { doc: ContinuoDo
           })}
         </div>
       </div>
-      <div className="tree-zoom">
-        <span className="tree-scale">{Math.round(zoom * 100)}%</span>
-        <button title="放大" onClick={() => setZoom((current) => clamp(current * 1.25))}><Plus size={14} /></button>
-        <button title="缩小" onClick={() => setZoom((current) => clamp(current / 1.25))}><Minus size={14} /></button>
-        <button title="全景" onClick={() => { setZoom(OVERVIEW); scroller.current?.scrollTo({ top: 0, left: 0 }); }}><Maximize2 size={13} /></button>
-      </div>
     </div>
   );
 }
 
-function clamp(value: number): number {
-  return Math.min(MAX, Math.max(MIN, value));
-}
-
-function TaskNode({ doc, task, stubs, tier, collapsible, onToggle, locked, actions }: { doc: ContinuoDoc; task: ContinuoTask; stubs: LineStub[]; tier: Tier; collapsible: boolean; onToggle: () => void; locked: boolean; actions: TreeActions }) {
+export function TaskNode({ doc, task, stubs, tier, collapsible, onToggle, locked, actions }: { doc: ContinuoDoc; task: ContinuoTask; stubs: LineStub[]; tier: Tier; collapsible: boolean; onToggle: () => void; locked: boolean; actions: TreeActions }) {
   const deliverables = (task.report?.deliverables ?? []).filter((item) => item.exists !== false);
   const settled = !['queued', 'running', 'verifying'].includes(task.status);
   const canFork = settled && lastTurnOf(task) !== undefined;
@@ -133,8 +116,8 @@ function TaskNode({ doc, task, stubs, tier, collapsible, onToggle, locked, actio
       <div className={`t-card ${tier === 'detail' ? 'is-detail' : ''}`}>
         <div className={`t-head ${collapsible ? 'is-toggle' : ''}`} onClick={collapsible ? onToggle : undefined} title={collapsible ? (tier === 'detail' ? '收起' : '展开') : undefined}>
           <span className="t-name">{taskLabel(task)}</span>
-          {task.branch !== undefined && <span className="t-tag">{task.branch.label}</span>}
-          {tier !== 'compact' && task.category !== undefined && <span className="t-tag is-muted">{task.category}</span>}
+          {task.branch !== undefined && <span className="t-tag is-plan" title="这条轨迹采用的方案">{planTitle(doc, task.branch.decisionId, task.branch.planId) ?? task.branch.label}</span>}
+          {task.category !== undefined && <span className="t-tag is-muted">{task.category}</span>}
           <span className="t-time">{time}</span>
         </div>
         {tier === 'mid' && <div className="t-sub">{deliverables[0]?.path ?? statusText(task)}</div>}
@@ -152,8 +135,8 @@ function TaskNode({ doc, task, stubs, tier, collapsible, onToggle, locked, actio
         <div key={stub.line.trajectoryId} className="t-stub">
           <CornerDownRight size={13} className="t-stub-icon" />
           <span className="t-stub-label">{stub.label}</span>
-          {tier !== 'compact' && <span className="t-stub-meta">{stub.tasks > 0 ? `${stub.tasks} 件事` : stub.label === '原来的轨迹' ? '之后没有新事项' : '还没开始'}</span>}
-          {tier !== 'compact' && <Hint title={locked ? '等这件事做完或停下后再切换' : undefined}><Button variant="ghost" size="sm" disabled={locked} onClick={() => actions.onSwitch(stub.line)}><Shuffle size={12} />切换</Button></Hint>}
+          <span className="t-stub-meta">{stub.tasks > 0 ? `${stub.tasks} 件事` : stub.label === '原来的轨迹' ? '之后没有新事项' : '还没开始'}</span>
+          <Hint title={locked ? SWITCH_LOCK : '切换到这条轨迹'}><button className="icon-btn t-go" aria-label="切换到这条轨迹" disabled={locked} onClick={() => actions.onSwitch(stub.line)}><ArrowRight size={13} /></button></Hint>
         </div>
       ))}
     </div>
@@ -162,10 +145,10 @@ function TaskNode({ doc, task, stubs, tier, collapsible, onToggle, locked, actio
 
 const INIT_STATUS: Record<string, string> = { running: '正在了解', completed: '已了解', partial: '只看了一部分', failed: '没有完成', stopped: '被打断了' };
 
-function RootNode({ doc, tier, collapsible, onToggle, locked, actions }: { doc: ContinuoDoc; tier: Tier; collapsible: boolean; onToggle: () => void; locked: boolean; actions: TreeActions }) {
+export function RootNode({ doc, tier, collapsible, onToggle, locked, actions }: { doc: ContinuoDoc; tier: Tier; collapsible: boolean; onToggle: () => void; locked: boolean; actions: TreeActions }) {
   const init = doc.init;
   const task = init.taskId === undefined ? undefined : doc.tasks.find((candidate) => candidate.taskId === init.taskId);
-  const status = INIT_STATUS[init.status] ?? (doc.understanding === undefined ? '还没了解' : '文件夹是空的');
+  const status = doc.understanding !== undefined && isEmptyFolder(doc) ? '空文件夹' : INIT_STATUS[init.status] ?? '还没了解';
   const dot = init.status === 'running' ? 'is-running' : init.status === 'failed' || init.status === 'stopped' ? 'is-failed' : init.status === 'partial' ? 'is-partial' : doc.understanding === undefined ? 'is-root' : 'is-done';
   const at = init.startedAt;
   const sources = task?.sources ?? [...new Set([...(doc.understanding?.sourceRefs ?? []), ...doc.context.flatMap((entry) => entry.sourceRefs)])];
@@ -177,26 +160,19 @@ function RootNode({ doc, tier, collapsible, onToggle, locked, actions }: { doc: 
         <div className={`t-head ${collapsible ? 'is-toggle' : ''}`} onClick={collapsible ? onToggle : undefined} title={collapsible ? (tier === 'detail' ? '收起' : '展开') : undefined}>
           <BookOpen size={13} className="t-root-icon" />
           <span className="t-name">了解这个文件夹</span>
-          {tier !== 'compact' && <span className="t-tag is-muted">{status}</span>}
-          {at !== undefined && <span className="t-time">{tier === 'compact' ? localTime(at) : `${localDay(at).slice(5)} ${localTime(at)}`}</span>}
+          <span className="t-tag is-muted">{status}</span>
+          {at !== undefined && <span className="t-time">{`${localDay(at).slice(5)} ${localTime(at)}`}</span>}
         </div>
         {tier === 'mid' && <div className="t-sub">{doc.understanding?.text.split(/[。\n]/)[0] ?? status}</div>}
         {tier === 'detail' && (
           <div className="t-detail">
-            <section>
-              <div className="t-sec">读过</div>
-              <div className="t-line">{sources.length === 0 ? '没有读文件，只看了目录结构' : sources.join('、')}</div>
-            </section>
-            <section>
-              <div className="t-sec">理解</div>
-              <div className="t-line">{doc.understanding?.text ?? (retryable ? (task?.lastError ?? '没有完成') : '还没有结论')}</div>
-            </section>
+            <Field label="理解" primary><div className="t-line">{doc.understanding?.text ?? (retryable ? (task?.lastError ?? '没有完成') : '还没有结论')}</div></Field>
+            <Field label="读过">{sources.length === 0 ? <div className="t-line">没有读文件，只看了目录结构</div> : <Paths paths={sources} />}</Field>
             {doc.context.length > 0 && (
-              <section>
-                <div className="t-sec">要点</div>
-                {doc.context.slice(0, 5).map((entry) => <div key={entry.id} className="t-line">· {entry.text}</div>)}
-                {doc.context.length > 5 && <div className="t-line t3">还有 {doc.context.length - 5} 条</div>}
-              </section>
+              <Field label="要点">
+                {doc.context.slice(0, 5).map((entry) => <div key={entry.id} className="t-line t-bullet">{entry.text}</div>)}
+                {doc.context.length > 5 && <div className="t-line t-more">还有 {doc.context.length - 5} 条</div>}
+              </Field>
             )}
           </div>
         )}
@@ -211,6 +187,19 @@ function RootNode({ doc, tier, collapsible, onToggle, locked, actions }: { doc: 
   );
 }
 
+function Field({ label, primary, children }: { label: string; primary?: boolean; children: React.ReactNode }) {
+  return (
+    <div className={`t-field ${primary ? 'is-primary' : ''}`}>
+      <div className="t-sec">{label}</div>
+      <div className="t-body">{children}</div>
+    </div>
+  );
+}
+
+function Paths({ paths }: { paths: readonly string[] }) {
+  return <div className="t-paths">{paths.map((path) => <span key={path} className="t-path">{path}</span>)}</div>;
+}
+
 function TaskDetail({ doc, task }: { doc: ContinuoDoc; task: ContinuoTask }) {
   const rounds = task.rounds ?? [];
   const sources = task.sources ?? [];
@@ -218,42 +207,37 @@ function TaskDetail({ doc, task }: { doc: ContinuoDoc; task: ContinuoTask }) {
   const branchDecision = task.branch === undefined ? undefined : doc.decisions.find((decision) => decision.decisionId === task.branch?.decisionId);
   return (
     <div className="t-detail">
-      <section>
-        <div className="t-sec">背景</div>
-        {branchDecision !== undefined && <div className="t-line">在「{branchDecision.question}」选了{task.branch?.label}</div>}
-        <div className="t-line">{sources.length === 0 ? '没有读项目里的文件' : `读过 ${sources.join('、')}`}</div>
-      </section>
-      <section>
-        <div className="t-sec">任务</div>
-        <div className="t-line t-clamp">{rounds[0]?.prompt ?? task.title}</div>
-      </section>
-      <section>
-        <div className="t-sec">过程</div>
+      <Field label="任务" primary><div className="t-line t-clamp">{rounds[0]?.prompt ?? task.title}</div></Field>
+      {branchDecision !== undefined && <Field label="背景"><div className="t-line">在「{branchDecision.question}」采用了「{planTitle(doc, task.branch?.decisionId, task.branch?.planId) ?? '一个方案'}」</div></Field>}
+      <Field label="读过">{sources.length === 0 ? <div className="t-line">没有读项目里的文件</div> : <Paths paths={sources} />}</Field>
+      <Field label="过程">
         {rounds.length === 0 ? <div className="t-line">还没有完成的一轮</div> : rounds.map((round, index) => (
-          <div key={round.at + index} className="t-line">
-            <span className="t-mono">{localTime(round.at)}</span> 对话 {index + 1}
-            {index > 0 && round.prompt !== '' && <> · {round.prompt.split('\n')[0]!.slice(0, 18)}</>}
-            {round.reads.length > 0 && <> · 读 {round.reads.length}</>}
-            {round.writes.length > 0 && <> · 写 {round.writes.length}</>}
+          <div key={round.at + index} className="t-line t-round">
+            <span className="t-at">{localTime(round.at)}</span>
+            <span className="min-w-0">
+              对话 {index + 1}
+              {index > 0 && round.prompt !== '' && <> · {round.prompt.split('\n')[0]!.slice(0, 18)}</>}
+              {round.reads.length > 0 && <span className="t-count"> · 读 {round.reads.length}</span>}
+              {round.writes.length > 0 && <span className="t-count"> · 写 {round.writes.length}</span>}
+            </span>
           </div>
         ))}
-      </section>
-      <section>
-        <div className="t-sec">结果</div>
+      </Field>
+      <Field label="结果" primary>
         {deliverables.length === 0 && (task.report?.unresolved ?? []).length === 0 && <div className="t-line">{statusText(task)}</div>}
-        {deliverables.map((item) => <div key={item.path} className="t-line"><span className={item.exists === false ? 't-miss' : 't-ok'}>{item.exists === false ? '!' : '✓'}</span> <span className="t-mono">{item.path}</span></div>)}
+        {deliverables.map((item) => <div key={item.path} className={`t-line t-file ${item.exists === false ? 'is-miss' : ''}`}><span className="t-file-mark">{item.exists === false ? '!' : '✓'}</span><span className="t-path">{item.path}</span></div>)}
         {(task.report?.unresolved ?? []).map((item) => <div key={item} className="t-line t-warn">还没做到：{item}</div>)}
-        {task.report?.nextStep !== undefined && <div className="t-line">下一步建议：{task.report.nextStep.title}</div>}
-      </section>
+        {task.report?.nextStep !== undefined && <div className="t-line t-next">下一步：{task.report.nextStep.title}</div>}
+      </Field>
     </div>
   );
 }
 
-function DecisionNode({ doc, line, decision, tier, collapsible, onToggle, locked, actions }: { doc: ContinuoDoc; line: Trajectory; decision: Decision; tier: Tier; collapsible: boolean; onToggle: () => void; locked: boolean; actions: TreeActions }) {
+export function DecisionNode({ doc, line, decision, tier, collapsible, onToggle, locked, actions }: { doc: ContinuoDoc; line: Trajectory; decision: Decision; tier: Tier; collapsible: boolean; onToggle: () => void; locked: boolean; actions: TreeActions }) {
   const choice = choiceOn(line, decision.decisionId);
   const open = isOpen(line, decision);
   const current = choice?.planId === undefined ? undefined : decision.plans.find((plan) => plan.planId === choice.planId);
-  const summary = open ? '等你选' : current !== undefined ? `当前 ${current.planId} ${current.title}` : '自定义方向';
+  const summary = open ? '等你选' : current !== undefined ? `当前：${current.title}` : `当前：自定义方向`;
   return (
     <div className="t-item is-decision">
       <span className="t-dot is-decision" />
@@ -264,33 +248,28 @@ function DecisionNode({ doc, line, decision, tier, collapsible, onToggle, locked
           <span className="t-tag is-muted">{isExploring(decision) ? `正在写 ${decision.exploration!.angles.length} 个方案` : `${decision.plans.length} 个方案`}</span>
         </div>
         {tier === 'mid' && <div className="t-sub">{summary}</div>}
-        {tier === 'compact' && decision.plans.some((plan) => planState(doc, line, decision, plan).kind === 'elsewhere') && (
-          <div className="t-plans">
-            {decision.plans.filter((plan) => planState(doc, line, decision, plan).kind === 'elsewhere').map((plan) => (
-              <div key={plan.planId} className="t-stub is-plan is-elsewhere">
-                <CornerDownRight size={13} className="t-stub-icon" />
-                <span className="t-stub-label">{plan.planId} {plan.title}</span>
-              </div>
-            ))}
-          </div>
-        )}
         {tier === 'mid' && (
           <div className="t-plans">
-            {decision.plans.filter((plan) => plan.planId !== choice?.planId).map((plan) => {
+            {orderedPlans(decision).filter((plan) => plan.planId !== choice?.planId).map((plan) => {
               const state = planState(doc, line, decision, plan);
+              const tag = stanceTag(decision, plan);
+              const where = state.kind === 'open' ? '备选' : state.kind === 'abandoned' ? '已放弃' : state.kind === 'elsewhere' ? '另一条轨迹' : '当前';
               return (
                 <div key={plan.planId} className={`t-stub is-plan is-${state.kind}`}>
                   <CornerDownRight size={13} className="t-stub-icon" />
-                  <span className="t-stub-label">{plan.planId} {plan.title}</span>
-                  <span className="t-stub-meta">{state.kind === 'open' ? '备选' : state.kind === 'abandoned' ? '已放弃' : state.kind === 'elsewhere' ? '另一条轨迹' : '当前'}</span>
-                  {state.kind === 'open' && <Hint title={locked ? '等这件事做完或停下后再切换' : undefined}><Button variant="ghost" size="sm" disabled={locked} onClick={() => actions.onChoose(decision, plan)}>走这条</Button></Hint>}
-                  {state.kind === 'elsewhere' && <Hint title={locked ? '等这件事做完或停下后再切换' : undefined}><Button variant="ghost" size="sm" disabled={locked} onClick={() => actions.onSwitch(state.line)}><Shuffle size={12} />切换</Button></Hint>}
+                  <span className="t-stub-label">{plan.title}</span>
+                  <span className="t-stub-meta">{tag === undefined ? where : `${tag} · ${where}`}</span>
+                  {(state.kind === 'open' || state.kind === 'elsewhere') && (
+                    <Hint title={locked || isExploring(decision) ? (isExploring(decision) ? '方案都写完后再选' : SWITCH_LOCK) : state.kind === 'elsewhere' ? '切换到这条轨迹' : '采用这个方案'}>
+                      <button className="icon-btn t-go" aria-label={state.kind === 'elsewhere' ? '切换到这条轨迹' : '采用这个方案'} disabled={locked || isExploring(decision)} onClick={() => (state.kind === 'elsewhere' ? actions.onSwitch(state.line) : actions.onChoose(decision, plan))}><ArrowRight size={13} /></button>
+                    </Hint>
+                  )}
                 </div>
               );
             })}
           </div>
         )}
-        {tier === 'detail' && <PlanList doc={doc} line={line} decision={decision} locked={locked} actions={actions} />}
+        {tier === 'detail' && <PlanDeck doc={doc} line={line} decision={decision} locked={locked} actions={actions} />}
       </div>
     </div>
   );

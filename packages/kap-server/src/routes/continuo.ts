@@ -297,19 +297,25 @@ export function registerContinuoRoutes(app: ContinuoRouteHost, core: Scope): voi
       params: z.object({ workspace_id: z.string().min(1), tail: z.string().min(1) }),
       success: { data: docSchema },
       errors: CONTINUO_ERRORS,
-      description: 'Backlog item actions: {todo_id}:start starts it now as a task on the current line (a recurring item keeps its schedule); {todo_id}:delete removes it',
+      description: 'Backlog item actions: {todo_id}:start starts it now as a task on the current line (a recurring item keeps its schedule); {todo_id}:accept keeps a suggested item in the backlog for later; {todo_id}:dismiss crosses a suggested item out; {todo_id}:delete removes it',
       tags: ['continuo'],
       operationId: 'continuoTodoAction',
     },
     async (req, reply) => {
       if (!flagGuard(req.id, reply)) return;
-      const parsed = parseActionSuffix({ tail: req.params.tail, allowedActions: ['start', 'delete'] as const, resourceLabel: 'todo' });
+      const parsed = parseActionSuffix({ tail: req.params.tail, allowedActions: ['start', 'accept', 'dismiss', 'delete'] as const, resourceLabel: 'todo' });
       if (parsed.kind !== 'action') {
-        reply.send(errEnvelope(ErrorCode.VALIDATION_FAILED, parsed.kind === 'invalid' ? parsed.reason : 'expected {todo_id}:start or :delete', req.id));
+        reply.send(errEnvelope(ErrorCode.VALIDATION_FAILED, parsed.kind === 'invalid' ? parsed.reason : 'expected {todo_id}:start, :accept, :dismiss or :delete', req.id));
         return;
       }
       try {
-        const doc = parsed.action === 'start' ? await manager.startTodo(req.params.workspace_id, parsed.id) : await manager.removeTodo(req.params.workspace_id, parsed.id);
+        const doc = parsed.action === 'start'
+          ? await manager.startTodo(req.params.workspace_id, parsed.id)
+          : parsed.action === 'accept'
+            ? await manager.acceptTodo(req.params.workspace_id, parsed.id)
+            : parsed.action === 'dismiss'
+              ? await manager.dismissTodo(req.params.workspace_id, parsed.id)
+              : await manager.removeTodo(req.params.workspace_id, parsed.id);
         reply.send(okEnvelope(doc, req.id));
       } catch (error) {
         sendError(reply, req.id, error);

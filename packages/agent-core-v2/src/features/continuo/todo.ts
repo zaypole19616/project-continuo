@@ -39,7 +39,7 @@ export function nextRunAt(schedule: TodoSchedule, fromMs: number): string | unde
 }
 
 export function dueTodo(doc: ContinuoWorkspaceDoc, nowMs: number): ContinuoTodo | undefined {
-  return (doc.todos ?? []).filter((todo) => todo.nextAt !== undefined && Date.parse(todo.nextAt) <= nowMs).toSorted((a, b) => Date.parse(a.nextAt!) - Date.parse(b.nextAt!))[0];
+  return (doc.todos ?? []).filter((todo) => todo.state === undefined && todo.nextAt !== undefined && Date.parse(todo.nextAt) <= nowMs).toSorted((a, b) => Date.parse(a.nextAt!) - Date.parse(b.nextAt!))[0];
 }
 
 export function afterRun(todo: ContinuoTodo, nowMs: number): ContinuoTodo | undefined {
