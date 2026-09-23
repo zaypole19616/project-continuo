@@ -1,4 +1,4 @@
-import { join } from 'node:path';
+import { extname, isAbsolute, join } from 'node:path';
 
 import { isWithinDirectory } from '#/tool/path-access';
 
@@ -124,7 +124,34 @@ export interface GuardedAccess {
   readonly path: string;
 }
 
-export function guardAccesses(doc: ContinuoWorkspaceDoc, sessionId: string, accesses: readonly GuardedAccess[]): string | undefined {
+export function writtenPaths(doc: ContinuoWorkspaceDoc, task: ContinuoTask): string[] {
+  const root = rootOfTask(doc, task);
+  const paths = [...(task.report?.deliverables ?? []).map((item) => item.path), ...(task.rounds ?? []).flatMap((round) => round.writes)];
+  return [...new Set(paths.map((path) => (isAbsolute(path) ? path : join(root, path))))];
+}
+
+export function lineSuffix(doc: ContinuoWorkspaceDoc, line: Trajectory): string {
+  if (line.origin === undefined) return '原轨迹';
+  if (line.origin.planId !== undefined) return `方案${line.origin.planId}`;
+  return `分支${doc.trajectories.findIndex((candidate) => candidate.trajectoryId === line.trajectoryId) + 1}`;
+}
+
+export function variantPath(path: string, suffix: string): string {
+  const ext = extname(path);
+  return `${path.slice(0, path.length - ext.length)}-${suffix}${ext}`;
+}
+
+function sharedWithOtherLine(doc: ContinuoWorkspaceDoc, line: Trajectory, path: string, exists: boolean): boolean {
+  const writers = doc.tasks.filter((task) => task.kind === 'user' && writtenPaths(doc, task).includes(path));
+  if (writers.length === 0) return exists && doc.trajectories.some((other) => other.trajectoryId !== line.trajectoryId && other.status !== 'abandoned');
+  return writers.some((task) => {
+    const holders = doc.trajectories.filter((other) => other.taskIds.includes(task.taskId));
+    if (!holders.some((other) => other.trajectoryId === line.trajectoryId)) return true;
+    return holders.some((other) => other.trajectoryId !== line.trajectoryId && other.status !== 'abandoned');
+  });
+}
+
+export function guardAccesses(doc: ContinuoWorkspaceDoc, sessionId: string, accesses: readonly GuardedAccess[], existing: ReadonlySet<string>): string | undefined {
   const explorer = explorerOf(doc, sessionId);
   const line = explorer === undefined ? trajectoryOfSession(doc, sessionId) : lineById(doc, explorer.decision.trajectoryId);
   if (line === undefined) return undefined;
@@ -141,16 +168,16 @@ export function guardAccesses(doc: ContinuoWorkspaceDoc, sessionId: string, acce
     if (!isWithinDirectory(access.path, doc.root)) return false;
     return root === doc.root ? inHidden : !inLine;
   });
-  if (line.workDir === undefined) {
-    const own = new Set(line.taskIds);
-    const others = new Set(doc.tasks
-      .filter((task) => task.kind === 'user' && !own.has(task.taskId) && rootOfTask(doc, task) === doc.root)
-      .flatMap((task) => (task.report?.deliverables ?? []).map((item) => join(doc.root, item.path))));
-    for (const access of accesses) if (isWrite(access) && others.has(access.path) && !blocked.includes(access)) blocked.push(access);
+  if (blocked.length === 0 && line.workDir === undefined) {
+    const shared = accesses.find((access) => isWrite(access) && sharedWithOtherLine(doc, line, access.path, existing.has(access.path)));
+    if (shared === undefined) return undefined;
+    const suffix = lineSuffix(doc, line);
+    return `${shared.path} is shared with another line of this project, so it stays as it is. Write this line's version next to it as ${variantPath(shared.path, suffix)} (the same name plus "-${suffix}") and report that path.`;
   }
   if (blocked.length === 0) return undefined;
   const paths = [...new Set(blocked.map((access) => access.path))].join(', ');
-  if (root === doc.root) return `Files under ${hidden} belong to other lines of this project and stay as they are. Denied: ${paths}.`;
+  if (root === doc.root && blocked.some((access) => isWithinDirectory(access.path, hidden))) return `${hidden} holds Continuo's own records and stays as it is. Denied: ${paths}.`;
+  if (root === doc.root) return `Work on this project stays inside its folder, ${doc.root}; files outside it are not changed. Denied: ${paths}.`;
   return `This line works in its own directory: ${root}, a copy of the project made when it branched off. Nothing here is ever merged back into other lines, and this line can never change their files. Read and write only inside it, with absolute paths under it; if the user asked for a file elsewhere in the project, tell them plainly that this line cannot write there and where the file is in this line. Denied: ${paths}.`;
 }
 

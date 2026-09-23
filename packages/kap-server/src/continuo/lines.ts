@@ -16,7 +16,6 @@ interface Repo {
 }
 
 const IDENTITY = { GIT_AUTHOR_NAME: 'Continuo', GIT_AUTHOR_EMAIL: 'continuo@localhost', GIT_COMMITTER_NAME: 'Continuo', GIT_COMMITTER_EMAIL: 'continuo@localhost' };
-const PRIVATE_EXCLUDES = ['node_modules/', '.venv/', '__pycache__/', '.DS_Store', '*.swp'];
 const WALK_SKIP = new Set(['.continuo', '.git', 'node_modules', '.venv', '__pycache__']);
 const EMPTY_PREFIX = 'empty: ';
 const queues = new Map<string, Promise<unknown>>();
@@ -37,38 +36,22 @@ async function git(repo: Repo, args: readonly string[], env: Record<string, stri
   return stdout.trim();
 }
 
-async function hideContinuoDir(projectRoot: string): Promise<void> {
-  const marker = join(projectRoot, CONTINUO_DIR, '.gitignore');
-  if (existsSync(marker)) return;
-  await mkdir(dirname(marker), { recursive: true });
-  await writeFile(marker, '*\n', 'utf8');
-}
-
-async function ownRepo(dir: string, lineDir: boolean): Promise<Repo | undefined> {
+async function repoAt(dir: string, ours: boolean): Promise<Repo | undefined> {
   try {
     const { stdout: top } = await run('git', ['-C', dir, 'rev-parse', '--show-toplevel']);
     if (await realpath(top.trim()) !== await realpath(dir)) return undefined;
     const { stdout: gitDir } = await run('git', ['-C', dir, 'rev-parse', '--absolute-git-dir']);
-    return { gitDir: gitDir.trim(), workTree: dir, ours: lineDir };
+    return { gitDir: gitDir.trim(), workTree: dir, ours };
   } catch {
     return undefined;
   }
 }
 
-async function repoOf(projectRoot: string, dir: string): Promise<Repo> {
-  await hideContinuoDir(projectRoot);
-  const lineDir = resolve(dir) !== resolve(projectRoot);
-  const own = await ownRepo(dir, lineDir);
-  if (own !== undefined) return own;
-  if (lineDir) throw new Error(`${dir} is not a working tree of this project`);
-  const gitDir = join(projectRoot, CONTINUO_DIR, 'git');
-  if (!existsSync(join(gitDir, 'HEAD'))) {
-    await mkdir(gitDir, { recursive: true });
-    await run('git', ['init', '--quiet', '--bare', gitDir]);
-    await mkdir(join(gitDir, 'info'), { recursive: true });
-    await writeFile(join(gitDir, 'info', 'exclude'), `${PRIVATE_EXCLUDES.join('\n')}\n`, 'utf8');
-  }
-  return { gitDir, workTree: projectRoot, ours: true };
+async function hideContinuoDir(projectRoot: string): Promise<void> {
+  const marker = join(projectRoot, CONTINUO_DIR, '.gitignore');
+  if (existsSync(marker)) return;
+  await mkdir(dirname(marker), { recursive: true });
+  await writeFile(marker, '*\n', 'utf8');
 }
 
 async function emptyDirs(root: string): Promise<string[]> {
@@ -88,17 +71,12 @@ async function emptyDirs(root: string): Promise<string[]> {
   return found;
 }
 
-async function dropEmptyPrivateRepo(projectRoot: string): Promise<void> {
-  const gitDir = join(projectRoot, CONTINUO_DIR, 'git');
-  if (!existsSync(join(gitDir, 'HEAD'))) return;
-  const refs = await run('git', ['--git-dir', gitDir, 'for-each-ref', 'refs/continuo']).then(({ stdout }) => stdout.trim(), () => 'unknown');
-  if (refs === '') await rm(gitDir, { recursive: true, force: true });
-}
-
 export function snapshotDir(projectRoot: string, dir: string, label: string): Promise<string | undefined> {
   return serialized(projectRoot, async () => {
+    const repo = await repoAt(dir, resolve(dir) !== resolve(projectRoot));
+    if (repo === undefined) return undefined;
     try {
-      const repo = await repoOf(projectRoot, dir);
+      await hideContinuoDir(projectRoot);
       const index = join(repo.gitDir, `continuo-index-${randomUUID().slice(0, 8)}`);
       const seed = join(repo.gitDir, 'index');
       try {
@@ -115,7 +93,6 @@ export function snapshotDir(projectRoot: string, dir: string, label: string): Pr
         await rm(index, { force: true });
       }
     } catch {
-      await dropEmptyPrivateRepo(projectRoot).catch(() => undefined);
       return undefined;
     }
   });
@@ -123,8 +100,9 @@ export function snapshotDir(projectRoot: string, dir: string, label: string): Pr
 
 export function createLineDir(projectRoot: string, commit: string, trajectoryId: string): Promise<string | undefined> {
   return serialized(projectRoot, async () => {
+    const repo = await repoAt(projectRoot, false);
+    if (repo === undefined) return undefined;
     try {
-      const repo = await repoOf(projectRoot, projectRoot);
       const dir = join(projectRoot, LINES_DIR, trajectoryId);
       await mkdir(dirname(dir), { recursive: true });
       await run('git', ['--git-dir', repo.gitDir, 'worktree', 'add', '--detach', '--force', dir, commit], { cwd: projectRoot, env: { ...process.env, ...IDENTITY } });
