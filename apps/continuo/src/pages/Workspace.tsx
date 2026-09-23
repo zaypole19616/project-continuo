@@ -42,7 +42,7 @@ export function WorkspaceView({ workspace, onClose, themePref, onTheme }: { work
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const searchRef = useRef<HTMLInputElement | null>(null);
   const pendingUser = useRef<{ sessionId: string; text: string } | null>(null);
-  const dragging = useRef(false);
+  const [dragging, setDragging] = useState(false);
   const [drawerWidth, setDrawerWidth] = useState(readDrawerWidth);
 
   const refresh = useCallback(async () => {
@@ -161,16 +161,16 @@ export function WorkspaceView({ workspace, onClose, themePref, onTheme }: { work
   const startDrag = (e: React.PointerEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.currentTarget.setPointerCapture(e.pointerId);
-    dragging.current = true;
+    setDragging(true);
   };
   const onDrag = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!dragging.current) return;
+    if (!dragging) return;
     setDrawerWidth(Math.min(760, Math.max(320, window.innerWidth - e.clientX)));
   };
   const endDrag = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!dragging.current) return;
-    dragging.current = false;
-    e.currentTarget.releasePointerCapture(e.pointerId);
+    if (!dragging) return;
+    setDragging(false);
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
     try { localStorage.setItem(DRAWER_KEY, String(drawerWidth)); } catch {}
   };
 
@@ -188,7 +188,7 @@ export function WorkspaceView({ workspace, onClose, themePref, onTheme }: { work
       <div className="project-body" style={{ '--drawer-w': `${drawerWidth}px` } as React.CSSProperties}>
         <Finder workspaceId={workspaceId} root={workspace.root} doc={doc} target={target} onNavigate={setTarget} onError={setError} searchRef={searchRef} />
         <div
-          className={`drawer-resizer ${dragging.current ? 'is-dragging' : ''}`}
+          className={`drawer-resizer ${dragging ? 'is-dragging' : ''}`}
           role="separator"
           aria-orientation="vertical"
           aria-label="调整对话框宽度"
@@ -196,6 +196,7 @@ export function WorkspaceView({ workspace, onClose, themePref, onTheme }: { work
           onPointerMove={onDrag}
           onPointerUp={endDrag}
           onPointerCancel={endDrag}
+          onLostPointerCapture={() => setDragging(false)}
           onDoubleClick={() => setDrawerWidth(DRAWER_DEFAULT)}
         />
         <Drawer
