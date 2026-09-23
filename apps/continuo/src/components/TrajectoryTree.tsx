@@ -85,7 +85,7 @@ export function TrajectoryTree({ doc, line, locked, actions }: { doc: ContinuoDo
   return (
     <div className="tree">
       <div className="tree-strip">
-        <span>{tasks} 个事项</span><span>·</span><span>{decisions} 个决策点</span><span>·</span><span>{lines} 条轨迹</span>
+        <span>{tasks} 个事项</span><span>·</span><span>{decisions} 个决策</span><span>·</span><span>{lines} 条轨迹</span>
         <span className="flex-1" />
         <div className="tree-views" role="tablist" aria-label="视图">
           {VIEWS.map((view) => <button key={view.tier} role="tab" aria-selected={tier === view.tier} className={tier === view.tier ? 'is-on' : ''} title={view.hint} onClick={() => { setTier(view.tier); setExpanded(new Set()); }}>{view.label}</button>)}

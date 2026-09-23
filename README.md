@@ -16,20 +16,20 @@ Continuo，通奏低音：巴洛克音乐里贯穿全曲、从不中断的低音
 
 | | |
 |---|---|
-| 说明文档（产品判断、产品功能、如何体验） | [docs/continuo/submission.md](docs/continuo/submission.md) |
+| 产品介绍（产品判断、产品功能、如何体验） | [docs/continuo/2026-09-21-continuo-产品介绍.md](docs/continuo/2026-09-21-continuo-产品介绍.md) |
 | 这个原型实现到哪、边界在哪、怎么跑 | [docs/continuo/README.md](docs/continuo/README.md) |
 | Kimi Code's original README | [README.kimi-code.md](README.kimi-code.md) · [中文](README.kimi-code.zh-CN.md) |
 
-## 文档里的判断在产品里哪里看
+## 功能在产品里哪里看
 
-| 判断 | 在哪里看 |
-|---|---|
-| Orderliness · 有条理 | 对话开头「我已经了解了这个项目」（读过的文件、带来源的要点）；项目里的 `work-log/` |
-| Proactiveness · 有分寸 | 了解完主动发来的建议、每件事收尾时的「建议的下一步事项」（✓ / ✗ / ≡+）；右上角「事项」；三档权限 |
-| Clarity · 坦诚清晰 | 首次启动引导（启动页可重看）；每件事后面的收尾卡；文件预览与对比 |
-| 判断留给人，也被记下来 | 对话里的方案卡；右上角「轨迹」；导出接口 |
+| 功能 | 在产品里哪里看 | 对应文档 |
+|---|---|---|
+| 工作记录 | 项目里的 `work-log/`；对话开头 Agent 发来的「我已经了解了这个项目」（读过的文件、带来源的要点） | Orderliness、Clarity |
+| 事项 | 了解完和每件事做完时的建议（✓ 立即执行 / ✗ 划掉 / ≡+ 加入待办）；右上角「事项」；输入框旁的权限 | Proactiveness |
+| 决策 | 对话里的决策卡：选择取决于什么，每个方案的依据、风险和适合情况；可以要更多方向，或自己写 | 1.2 第一点 |
+| 轨迹 | 右上角「轨迹」：回看执行过程，回到当时的决策换一条路，在轨迹之间切换；导出接口 | Clarity；1.2 第二点 |
 
-每一行怎么试，见 [说明文档 §3 如何体验](docs/continuo/submission.md#3-如何体验)。
+首次打开有三页引导，启动页的「使用引导」可以重看。每一行怎么试，见 [产品介绍 §3 如何体验](docs/continuo/2026-09-21-continuo-产品介绍.md#3-如何体验)。
 
 ## Run
 
