@@ -30,11 +30,12 @@ const FEATURES: Array<{ tag: string; icon: LucideIcon; title: string; text: stri
 const noop = () => undefined;
 const PLAN_ACTIONS = { onChoose: noop, onSwitch: noop, onAbandon: noop, onExpand: noop, onCustom: noop, onOpenFile: noop };
 
-function Foot({ step, onNext }: { step: number; onNext: () => void }) {
+function Foot({ step, onNext, onPrev }: { step: number; onNext: () => void; onPrev?: () => void }) {
   return (
     <div className="ob-foot">
       <span className="ob-dots">{Array.from({ length: TOTAL }, (_, i) => <i key={i} className={i === step ? 'is-on' : ''} />)}</span>
       <span className="flex-1" />
+      {onPrev !== undefined && <Button variant="outline" onClick={onPrev}>上一步</Button>}
       <Button variant="default" autoFocus onClick={onNext}>{step === TOTAL - 1 ? '开始使用' : '下一步'}</Button>
     </div>
   );
@@ -99,7 +100,7 @@ function LinesStage() {
   );
 }
 
-function FeaturePage({ step, onNext }: { step: number; onNext: () => void }) {
+function FeaturePage({ step, onNext, onPrev }: { step: number; onNext: () => void; onPrev: () => void }) {
   const feature = FEATURES[step - 1]!;
   const Icon = feature.icon;
   return (
@@ -108,7 +109,7 @@ function FeaturePage({ step, onNext }: { step: number; onNext: () => void }) {
         <span className="ob-eyebrow"><span className="ob-eyebrow-icon"><Icon size={15} strokeWidth={2.2} /></span>{feature.tag}</span>
         <DialogTitle className="ob-title">{feature.title}</DialogTitle>
         <DialogDescription className="ob-lede">{feature.text.split(/(?<=[，；。])/).map((clause) => <span key={clause}>{clause}</span>)}</DialogDescription>
-        <Foot step={step} onNext={onNext} />
+        <Foot step={step} onNext={onNext} onPrev={onPrev} />
       </div>
       <div className={`ob-stage ${step === 2 ? 'is-lines' : ''}`}>
         {step === 1
@@ -124,6 +125,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   const [fit, setFit] = useState(1);
   const last = step === TOTAL - 1;
   const next = () => { if (last) onDone(); else setStep(step + 1); };
+  const prev = () => { if (step > 0) setStep(step - 1); };
   useEffect(() => {
     const measure = () => setFit(Math.min(1, (window.innerWidth - 48) / CARD.w, (window.innerHeight - 48) / CARD.h));
     measure();
@@ -131,7 +133,11 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
     return () => window.removeEventListener('resize', measure);
   }, []);
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Enter' || e.key === 'ArrowRight') { e.preventDefault(); next(); } };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Enter' && (e.target as HTMLElement).closest('button, input, textarea')) return;
+      if (e.key === 'Enter' || e.key === 'ArrowRight') { e.preventDefault(); next(); }
+      if (e.key === 'ArrowLeft') { e.preventDefault(); prev(); }
+    };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   });
@@ -139,7 +145,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
     <Dialog open onOpenChange={noop}>
       <DialogContent onEscapeKeyDown={(e) => { e.preventDefault(); }} onInteractOutside={(e) => { e.preventDefault(); }} className="ob-dialog w-auto max-w-none rounded-[22px] border-0 bg-transparent p-0 shadow-none">
         <div className="ob-card" style={{ zoom: fit }}>
-          {step === 0 ? <TraitsPage onNext={next} /> : <FeaturePage key={step} step={step} onNext={next} />}
+          {step === 0 ? <TraitsPage onNext={next} /> : <FeaturePage key={step} step={step} onNext={next} onPrev={prev} />}
         </div>
       </DialogContent>
     </Dialog>
