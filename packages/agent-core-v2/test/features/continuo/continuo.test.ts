@@ -153,8 +153,10 @@ describe('trajectory', () => {
     const main = line({ trajectoryId: 'main', taskIds: ['task_1'], choices: [{ decisionId: 'dec_1', planId: 'A', turnIndex: 3, at: NOW }] });
     const doc = { ...docWith([], { understanding: { text: 'Q4 planning', sourceRefs: [], updatedAt: NOW } }), trajectories: [main], decisions: [decision()] };
     const text = bundleFor(doc, task())!.text;
-    expect(text).toContain('Following plan A: grow 10%. Basis: basis A Risk: risk A');
-    expect(text).toContain('Plan B: keep budget — not taken. work-log/plan-B.md');
+    expect(text).toContain('Following 「grow 10%」 (id A). Basis: basis A Risk: risk A');
+    expect(text).toContain('「keep budget」 (id B) — not taken. work-log/plan-B.md');
+    expect(text).toContain('Call plans by their titles when you talk to the user');
+    expect(text).not.toMatch(/\bPlan [A-Z]\b/);
     expect(text).not.toContain('basis B');
   });
 
@@ -375,7 +377,7 @@ describe('branch context (phase four)', () => {
     const text = bundleFor(doc, task())!.text;
     expect(text).toContain('Done on this line');
     expect(text).toContain('- 复盘 → drafts/r.md');
-    expect(text).toContain('Plan B: keep budget — followed on another line: 1 task, 2 rounds, produced drafts/b.md.');
+    expect(text).toContain('「keep budget」 (id B) — followed on another line: 1 task, 2 rounds, produced drafts/b.md.');
   });
 
   it('tells a branched line where its directory is', () => {
