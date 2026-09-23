@@ -5,7 +5,7 @@ import { CreateProjectDialog } from '#/components/CreateProjectDialog';
 import { ThemeToggle } from '#/components/ThemeToggle';
 import type { ThemePref } from '#/lib/theme';
 
-export function Launcher({ onOpen, themePref, onTheme }: { onOpen: (w: Workspace) => void; themePref: ThemePref; onTheme: (pref: ThemePref) => void }) {
+export function Launcher({ onOpen, themePref, onTheme, onGuide }: { onOpen: (w: Workspace) => void; themePref: ThemePref; onTheme: (pref: ThemePref) => void; onGuide: () => void }) {
   const [recent, setRecent] = useState<Workspace[]>([]);
   const [creating, setCreating] = useState(false);
   const [browsing, setBrowsing] = useState(false);
@@ -45,7 +45,7 @@ export function Launcher({ onOpen, themePref, onTheme }: { onOpen: (w: Workspace
       <div className="launcher">
         <span className="launcher-mark" aria-hidden="true" />
         <h1>Continuo</h1>
-        <p className="ver">基于 Kimi Code · {DEFAULT_MODEL.split('/').pop()}</p>
+        <p className="ver">基于 Kimi Code · {DEFAULT_MODEL.split('/').pop()} · <button className="link launch-guide" onClick={onGuide}>使用引导</button></p>
         {error !== null && <div className="banner banner-err launch-error">{error}</div>}
         <div className="launch-card">
           <div className="launch-pair">

@@ -61,7 +61,7 @@ export function App() {
     <>
       {workspace
         ? <WorkspaceView workspace={workspace} onClose={() => setWorkspace(null)} themePref={themePref} onTheme={setThemePref} />
-        : <Launcher onOpen={open} themePref={themePref} onTheme={setThemePref} />}
+        : <Launcher onOpen={open} themePref={themePref} onTheme={setThemePref} onGuide={() => setIntro(true)} />}
       {intro && <Onboarding onDone={finishIntro} />}
     </>
   );

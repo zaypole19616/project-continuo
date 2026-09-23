@@ -14,6 +14,17 @@ Built on [Kimi Code](https://github.com/MoonshotAI/kimi-code): the engine, sessi
 | 这个原型实现到哪、边界在哪、怎么跑 | [docs/continuo/README.md](docs/continuo/README.md) |
 | Kimi Code's original README | [README.kimi-code.md](README.kimi-code.md) · [中文](README.kimi-code.zh-CN.md) |
 
+## 文档里的判断在产品里哪里看
+
+| 判断 | 在哪里看 |
+|---|---|
+| Orderliness · 有条理 | 对话顶部「了解这个文件夹」；项目里的 `work-log/` |
+| Proactiveness · 有分寸 | 「建议的下一步事项」（✓ / ✗ / ≡+）；右上角「事项」；三档权限 |
+| Clarity · 坦诚清晰 | 首次启动引导（启动页可重看）；每件事后面的收尾卡；文件预览与对比 |
+| 判断留给人，也被记下来 | 对话里的方案卡；右上角「轨迹」；导出接口 |
+
+每一行怎么试，见 [说明文档 §3](docs/continuo/submission.md#3-文档里的判断在产品里对应哪里)。
+
 ## Run
 
 ```bash
@@ -29,7 +40,7 @@ In a second terminal:
 KIMI_PORT=58627 pnpm dev:continuo
 ```
 
-Open `http://127.0.0.1:5180/#token=<token printed by kimi web>`, then create a project or open a folder of your own.
+Open `http://127.0.0.1:5180/#token=<token printed by kimi web>`, then open the sample folder `examples/q4-plan` (synthetic materials for a Q4 campaign; the agent writes its logs and outputs into it, so copy it elsewhere first if you want the checkout clean), create a project, or open a folder of your own.
 
 ## Where the code is
 
