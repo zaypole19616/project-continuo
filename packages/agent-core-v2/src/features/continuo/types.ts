@@ -56,6 +56,8 @@ export interface TrajectoryPlan {
   readonly basis: string;
   readonly risk: string;
   readonly prompt: string;
+  readonly fit?: string;
+  readonly caution?: string;
   readonly detail?: string;
   readonly path: string;
   readonly abandoned?: { readonly reason?: string; readonly at: string };
@@ -101,8 +103,16 @@ export interface Decision {
   readonly plans: readonly TrajectoryPlan[];
   readonly exhausted?: { readonly reason: string; readonly ask: string; readonly at: string };
   readonly exploration?: Exploration;
+  readonly stance?: DecisionStance;
   readonly snapshot?: string;
   readonly createdAt: string;
+}
+
+export interface DecisionStance {
+  readonly pick?: string;
+  readonly why?: string;
+  readonly dependsOn?: string;
+  readonly at: string;
 }
 
 export interface TrajectoryChoice {
@@ -154,6 +164,30 @@ export interface TaskError {
   readonly at: string;
 }
 
+export type ContinuoPermissionMode = 'manual' | 'yolo' | 'auto';
+
+export interface TodoSchedule {
+  readonly cron: string;
+  readonly recurring: boolean;
+  readonly label: string;
+}
+
+export type TodoState = 'suggested' | 'started' | 'dismissed';
+
+export interface ContinuoTodo {
+  readonly todoId: string;
+  readonly text: string;
+  readonly title?: string;
+  readonly reason?: string;
+  readonly fromTaskId?: string;
+  readonly state?: TodoState;
+  readonly taskId?: string;
+  readonly schedule?: TodoSchedule;
+  readonly nextAt?: string;
+  readonly lastRunAt?: string;
+  readonly createdAt: string;
+}
+
 export interface ContinuoTask {
   readonly taskId: string;
   readonly kind: TaskKind;
@@ -203,9 +237,16 @@ export interface WorkspaceScan {
 
 export type InitStatus = 'pending' | 'running' | 'completed' | 'partial' | 'failed' | 'stopped';
 
+export interface InitSuggestion {
+  readonly title: string;
+  readonly reason: string;
+  readonly prompt: string;
+}
+
 export interface WorkspaceUnderstanding {
   readonly text: string;
   readonly sourceRefs: readonly string[];
+  readonly suggestions?: readonly InitSuggestion[];
   readonly updatedAt: string;
 }
 
@@ -224,6 +265,8 @@ export interface ContinuoWorkspaceDoc {
   readonly tasks: readonly ContinuoTask[];
   readonly trajectories: readonly Trajectory[];
   readonly decisions: readonly Decision[];
+  readonly todos?: readonly ContinuoTodo[];
+  readonly permissionMode?: ContinuoPermissionMode;
 }
 
 export function currentTaskOf(doc: ContinuoWorkspaceDoc, sessionId: string): ContinuoTask | undefined {
@@ -248,5 +291,6 @@ export function newWorkspaceDoc(workspaceId: string, root: string): ContinuoWork
     tasks: [],
     trajectories: [],
     decisions: [],
+    todos: [],
   };
 }

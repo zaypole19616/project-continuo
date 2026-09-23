@@ -87,17 +87,23 @@ export const kimi = {
 };
 
 export interface TaskRound { at: string; prompt: string; reads: string[]; writes: string[]; reply: string; turnIndex?: number }
-export interface TrajectoryPlan { planId: string; title: string; basis: string; risk: string; prompt: string; detail?: string; path: string; abandoned?: { reason?: string; at: string }; createdAt: string }
+export interface TrajectoryPlan { planId: string; title: string; basis: string; risk: string; prompt: string; fit?: string; caution?: string; detail?: string; path: string; abandoned?: { reason?: string; at: string }; createdAt: string }
 export interface ExplorationAngle { key: string; title: string; angle: string; status: 'queued' | 'running' | 'submitted' | 'withdrawn' | 'failed'; planId?: string; note?: string; steps: number }
 export interface Exploration { reason: string; angles: ExplorationAngle[]; maxSteps: number; startedAt: string; endedAt?: string }
-export interface Decision { decisionId: string; taskId: string; trajectoryId: string; question: string; turnIndex: number; plans: TrajectoryPlan[]; exhausted?: { reason: string; ask: string; at: string }; exploration?: Exploration; createdAt: string }
+export interface Decision { decisionId: string; taskId: string; trajectoryId: string; question: string; turnIndex: number; plans: TrajectoryPlan[]; exhausted?: { reason: string; ask: string; at: string }; exploration?: Exploration; stance?: { pick?: string; why?: string; dependsOn?: string; at: string }; createdAt: string }
 export interface TrajectoryChoice { decisionId: string; planId?: string; text?: string; turnIndex: number; at: string }
 export interface Trajectory { trajectoryId: string; label: string; sessionId: string; status: 'current' | 'alternative' | 'abandoned'; taskIds: string[]; choices: TrajectoryChoice[]; turnCount: number; origin?: { fromTrajectoryId: string; turnIndex: number; decisionId?: string; planId?: string; afterTaskId?: string }; abandonReason?: string; workDir?: string; createdAt: string }
+export interface InitSuggestion { title: string; reason: string; prompt: string }
+export interface TodoSchedule { cron: string; recurring: boolean; label: string }
+export type TodoAction = 'start' | 'accept' | 'dismiss' | 'delete';
+export interface ContinuoTodo { todoId: string; text: string; title?: string; reason?: string; fromTaskId?: string; state?: 'suggested' | 'started' | 'dismissed'; taskId?: string; schedule?: TodoSchedule; nextAt?: string; lastRunAt?: string; createdAt: string }
+export type TodoTiming = { kind: 'once'; at: string } | { kind: 'daily'; time: string } | { kind: 'weekly'; day: number; time: string };
+export type PermissionMode = 'manual' | 'yolo' | 'auto';
 export interface TaskError { code: string; message: string; status?: number; requestId?: string; traceId?: string; at: string }
 export type PlanUsage = { kind: 'ok'; quota: { usages: Record<string, { usedRatio: number; resetAt?: string }> } } | { kind: 'error'; message: string } | { kind: string };
 export type TaskStatus = 'queued' | 'running' | 'awaiting_user' | 'verifying' | 'completed' | 'needs_review' | 'paused' | 'failed' | 'interrupted';
 export interface ContinuoTask { taskId: string; kind: 'init' | 'user'; title: string; name?: string; category?: string; trigger: string; sessionId: string; promptIds: string[]; status: TaskStatus; phase?: string; pauseRequested: boolean; pendingInteraction?: 'question' | 'approval' | 'reply' | 'choice' | 'none'; lastReply?: string; report?: { summary: string; deliverables: Array<{ path: string; note?: string; exists?: boolean; turnId?: number }>; unresolved: string[]; nextStep?: { title: string; reason: string; prompt: string }; reportedAt: string }; verification?: string[]; supplements?: string[]; sources?: string[]; rounds?: TaskRound[]; logPath?: string; branch?: { decisionId: string; planId: string; label: string }; usage: { steps: number; inputTokens: number; cacheReadTokens: number; outputTokens: number }; lastError?: string; error?: TaskError; createdAt: string; updatedAt: string; endedAt?: string }
-export interface ContinuoDoc { workspaceId: string; root: string; revision: number; openCount: number; init: { status: 'pending' | 'running' | 'completed' | 'partial' | 'failed' | 'stopped'; taskId?: string; startedAt?: string; endedAt?: string }; scan?: { counts: { dirs: number; files: number; byExt: Record<string, number> }; guideFiles: string[]; truncated: boolean; unscanned: string[] }; understanding?: { text: string; sourceRefs: string[]; updatedAt: string }; context: Array<{ id: string; text: string; sourceRefs: string[] }>; tasks: ContinuoTask[]; trajectories: Trajectory[]; decisions: Decision[] }
+export interface ContinuoDoc { workspaceId: string; root: string; revision: number; openCount: number; init: { status: 'pending' | 'running' | 'completed' | 'partial' | 'failed' | 'stopped'; taskId?: string; startedAt?: string; endedAt?: string }; scan?: { counts: { dirs: number; files: number; byExt: Record<string, number> }; guideFiles: string[]; truncated: boolean; unscanned: string[] }; understanding?: { text: string; sourceRefs: string[]; suggestions?: InitSuggestion[]; updatedAt: string }; context: Array<{ id: string; text: string; sourceRefs: string[] }>; tasks: ContinuoTask[]; trajectories: Trajectory[]; decisions: Decision[]; todos?: ContinuoTodo[]; permissionMode?: PermissionMode }
 
 export const continuo = {
   open: (workspaceId: string, clientRequestId: string) => api.post<ContinuoDoc>(`/workspaces/${workspaceId}/continuo:open`, { client_request_id: clientRequestId }),
@@ -105,6 +111,11 @@ export const continuo = {
   createTask: (workspaceId: string, text: string, clientRequestId: string) => api.post<{ task: ContinuoTask; doc: ContinuoDoc }>(`/workspaces/${workspaceId}/continuo/tasks`, { text, client_request_id: clientRequestId }),
   taskAction: (workspaceId: string, taskId: string, action: 'pause' | 'resume' | 'reply' | 'fork', body: { text?: string } = {}) => api.post<ContinuoDoc>(`/workspaces/${workspaceId}/continuo/tasks/${taskId}:${action}`, body),
   decisionAction: (workspaceId: string, decisionId: string, action: 'choose' | 'expand' | 'abandon', body: { plan_id?: string; reason?: string } = {}) => api.post<ContinuoDoc>(`/workspaces/${workspaceId}/continuo/decisions/${decisionId}:${action}`, body),
+  addTodo: (workspaceId: string, text: string, timing?: TodoTiming) => api.post<ContinuoDoc>(`/workspaces/${workspaceId}/continuo/todos`, { text, timing }),
+  todoAction: (workspaceId: string, todoId: string, action: TodoAction) => api.post<ContinuoDoc>(`/workspaces/${workspaceId}/continuo/todos/${todoId}:${action}`, {}),
+  retryInit: (workspaceId: string) => api.post<ContinuoDoc>(`/workspaces/${workspaceId}/continuo/init:retry`, {}),
+  chooseFolder: (prompt: string, defaultPath?: string) => api.post<{ path: string | null }>('/continuo/choose-folder', { prompt, default_path: defaultPath }),
+  setPermission: (workspaceId: string, mode: PermissionMode) => api.post<ContinuoDoc>(`/workspaces/${workspaceId}/continuo/permission`, { mode }),
   activateLine: (workspaceId: string, trajectoryId: string) => api.post<ContinuoDoc>(`/workspaces/${workspaceId}/continuo/trajectories/${trajectoryId}:activate`, {}),
 };
 

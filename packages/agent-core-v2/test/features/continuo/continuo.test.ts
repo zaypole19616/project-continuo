@@ -5,7 +5,8 @@ import { compileContextBundle, CONTEXT_BUNDLE_MAX_CHARS } from '#/features/conti
 import { ContinuoStoreService } from '#/features/continuo/store';
 import { buildTrajectoryExport } from '#/features/continuo/export';
 import { migrateWorkspaceDoc } from '#/features/continuo/migrate';
-import { doneOnLine, guardAccesses, guardTool, inheritedChoices, otherLineNote, planPath, planStatusOn, tasksThrough } from '#/features/continuo/trajectory';
+import { afterRun, dueTodo, nextRunAt, scheduleOf } from '#/features/continuo/todo';
+import { doneOnLine, guardAccesses, guardTool, inheritedChoices, otherLineNote, decisionStance, planPath, planStatusOn, tasksThrough } from '#/features/continuo/trajectory';
 import {
   CONTINUO_STORE_SCOPE,
   currentTaskOf,
@@ -415,5 +416,50 @@ describe('trajectory export (phase five)', () => {
     expect(out.samples.find((item) => item.trajectoryId === 'b')!.branchedFrom).toMatchObject({ kind: 'plan', planId: 'B' });
     expect(out.preferences.map((pair) => `${pair.preferred.planId}>${pair.other.planId}:${pair.signal}`)).toEqual(['A>C:abandoned', 'A>B:switched_away']);
     expect(out.preferences[0]!.reason).toBe('too late');
+  });
+});
+
+describe('where the agent stands on the plans', () => {
+  it('always records what the choice comes down to, and a recommendation only with its reason', () => {
+    expect(decisionStance([], undefined, 'reading speed or per-city ownership', NOW)).toEqual({ dependsOn: 'reading speed or per-city ownership', at: NOW });
+    expect(decisionStance(['B'], 'the guide asks for conclusions first', 'reading speed or per-city ownership', NOW)).toEqual({ dependsOn: 'reading speed or per-city ownership', pick: 'B', why: 'the guide asks for conclusions first', at: NOW });
+    expect(decisionStance(['B'], 'why', undefined, NOW)).toMatch(/Always give dependsOn/);
+    expect(decisionStance(['A', 'B'], 'both', 'd', NOW)).toMatch(/at most one/);
+    expect(decisionStance(['A'], undefined, 'd', NOW)).toMatch(/needs why/);
+  });
+});
+
+describe('backlog timing (built on the cron scheduler)', () => {
+  const local = (y: number, m: number, d: number, h: number, min: number) => new Date(y, m - 1, d, h, min).getTime();
+
+  it('turns a time picked in the product into a cron schedule with a plain label', () => {
+    expect(scheduleOf({ kind: 'daily', time: '9:05' })).toEqual({ cron: '5 9 * * *', recurring: true, label: '每天 09:05' });
+    expect(scheduleOf({ kind: 'weekly', day: 1, time: '18:30' })).toEqual({ cron: '30 18 * * 1', recurring: true, label: '每周一 18:30' });
+    expect(scheduleOf({ kind: 'once', at: new Date(local(2026, 9, 24, 14, 0)).toISOString() })).toEqual({ cron: '0 14 24 9 *', recurring: false, label: '9月24日 14:00' });
+    expect(scheduleOf({ kind: 'daily', time: '25:00' })).toBeUndefined();
+    expect(scheduleOf({ kind: 'weekly', day: 9, time: '09:00' })).toBeUndefined();
+  });
+
+  it('finds the next run and the todo that is due first', () => {
+    const daily = scheduleOf({ kind: 'daily', time: '09:00' })!;
+    expect(nextRunAt(daily, local(2026, 9, 23, 13, 0))).toBe(new Date(local(2026, 9, 24, 9, 0)).toISOString());
+    const now = local(2026, 9, 24, 9, 1);
+    const doc = { ...newWorkspaceDoc('wd_t', '/p'), todos: [
+      { todoId: 'later', text: 'b', schedule: daily, nextAt: new Date(local(2026, 9, 25, 9, 0)).toISOString(), createdAt: NOW },
+      { todoId: 'due', text: 'a', schedule: daily, nextAt: new Date(local(2026, 9, 24, 9, 0)).toISOString(), createdAt: NOW },
+      { todoId: 'manual', text: 'c', createdAt: NOW },
+    ] };
+    expect(dueTodo(doc, now)?.todoId).toBe('due');
+    const handled = { ...doc, todos: doc.todos.map((todo) => (todo.todoId === 'due' ? { ...todo, state: 'dismissed' as const } : todo)) };
+    expect(dueTodo(handled, now)).toBeUndefined();
+  });
+
+  it('moves a recurring todo to its next run after missed ones, and drops a one-off', () => {
+    const daily = scheduleOf({ kind: 'daily', time: '09:00' })!;
+    const late = local(2026, 9, 27, 10, 0);
+    const recurring = afterRun({ todoId: 'd', text: 'a', schedule: daily, nextAt: new Date(local(2026, 9, 24, 9, 0)).toISOString(), createdAt: NOW }, late);
+    expect(recurring?.nextAt).toBe(new Date(local(2026, 9, 28, 9, 0)).toISOString());
+    expect(afterRun({ todoId: 'o', text: 'a', schedule: scheduleOf({ kind: 'once', at: new Date(late).toISOString() })!, createdAt: NOW }, late)).toBeUndefined();
+    expect(afterRun({ todoId: 'm', text: 'a', createdAt: NOW }, late)).toBeUndefined();
   });
 });

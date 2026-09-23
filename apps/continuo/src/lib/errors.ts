@@ -1,4 +1,4 @@
-import type { PlanUsage, TaskError } from './api';
+import type { ContinuoTask, PlanUsage, TaskError } from './api';
 
 const TITLES: Record<string, string> = {
   'provider.connection_error': '无法连接模型服务',
@@ -45,4 +45,10 @@ export function untilText(iso: string, now: number): string {
   if (days > 0) return hours > 0 ? `${days} 天 ${hours} 小时` : `${days} 天`;
   if (hours > 0) return rest > 0 ? `${hours} 小时 ${rest} 分钟` : `${hours} 小时`;
   return `${rest} 分钟`;
+}
+
+export function failureReason(task: ContinuoTask): string | undefined {
+  if (task.error !== undefined) return errorTitle(task.error);
+  if (task.lastError === undefined) return undefined;
+  return /usage limit|quota/i.test(task.lastError) ? '已达到用量上限' : task.lastError.slice(0, 80);
 }

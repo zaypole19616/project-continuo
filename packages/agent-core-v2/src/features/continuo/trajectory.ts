@@ -2,7 +2,7 @@ import { extname, isAbsolute, join } from 'node:path';
 
 import { isWithinDirectory } from '#/tool/path-access';
 
-import type { ContinuoTask, ContinuoWorkspaceDoc, Decision, ExplorationAngle, Trajectory, TrajectoryChoice, TrajectoryPlan } from './types';
+import type { ContinuoTask, ContinuoWorkspaceDoc, Decision, DecisionStance, ExplorationAngle, Trajectory, TrajectoryChoice, TrajectoryPlan } from './types';
 
 export const WORK_LOG_DIR = 'work-log';
 export const CONTINUO_DIR = '.continuo';
@@ -47,6 +47,13 @@ export function tasksThrough(doc: ContinuoWorkspaceDoc, parent: Trajectory, pred
 
 export function lastTurnOf(task: ContinuoTask): number | undefined {
   return (task.rounds ?? []).findLast((round) => round.turnIndex !== undefined)?.turnIndex;
+}
+
+export function decisionStance(picks: readonly string[], why: string | undefined, dependsOn: string | undefined, at: string): DecisionStance | string {
+  if (dependsOn === undefined) return 'Always give dependsOn: what the choice comes down to, as one short phrase.';
+  if (picks.length > 1) return 'Recommend at most one plan, or none.';
+  if (picks.length === 0) return { dependsOn, at };
+  return why === undefined ? 'The recommended plan needs why: the fact in the materials that settles it.' : { dependsOn, pick: picks[0], why, at };
 }
 
 export function planLetter(index: number): string {

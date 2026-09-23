@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ContinuoDoc, ContinuoTask, Decision, Trajectory } from './api';
-import { buildTrunk, currentLine, isExploring, lineIsBusy, planState } from './trajectory';
+import { buildTrunk, currentLine, isExploring, lineIsBusy, orderedPlans, planState, stanceTag, todoGroup } from './trajectory';
 import { errorTitle, spentLimit, untilText } from './errors';
 
 const NOW = '2026-09-23T04:00:00.000Z';
@@ -57,6 +57,17 @@ describe('trajectory tree', () => {
   });
 });
 
+describe('where the agent stands', () => {
+  it('puts the recommended plan first and marks only it and the plans it warns against', () => {
+    const picked: Decision = { ...decision, plans: [plan('A'), plan('B'), { ...plan('C'), caution: 'budget missing' }], stance: { pick: 'B', why: 'w', at: NOW } };
+    expect(orderedPlans(picked).map((item) => item.planId)).toEqual(['B', 'A', 'C']);
+    expect(picked.plans.map((item) => stanceTag(picked, item))).toEqual([undefined, '建议', '不建议']);
+    const open: Decision = { ...decision, stance: { dependsOn: 'speed or ownership', at: NOW } };
+    expect(orderedPlans(open).map((item) => item.planId)).toEqual(['A', 'B', 'C']);
+    expect(open.plans.map((item) => stanceTag(open, item))).toEqual([undefined, undefined, undefined]);
+  });
+});
+
 describe('plans written in parallel', () => {
   const exploring: Decision = { ...decision, plans: [plan('A')], exploration: { reason: 'r', angles: [{ key: 'A', title: 'a', angle: 'x', status: 'submitted', planId: 'A', steps: 2 }, { key: 'B', title: 'b', angle: 'y', status: 'running', steps: 1 }], maxSteps: 8, startedAt: NOW } };
 
@@ -84,5 +95,17 @@ describe('failure wording', () => {
     expect(spentLimit({ kind: 'ok', quota: { usages: { limit5h: { usedRatio: 0.5 } } } })).toBeUndefined();
     expect(untilText('2026-09-23T06:58:06Z', Date.parse('2026-09-23T04:27:00Z'))).toBe('2 小时 31 分钟');
     expect(untilText('2026-09-23T04:30:00Z', Date.parse('2026-09-23T04:27:00Z'))).toBe('3 分钟');
+  });
+});
+
+describe('task tab groups', () => {
+  it('puts each unfinished task under doing, waiting or stopped', () => {
+    expect(todoGroup(task('a', { status: 'running' }))).toBe('doing');
+    expect(todoGroup(task('b', { status: 'verifying' }))).toBe('doing');
+    expect(todoGroup(task('c', { status: 'awaiting_user', pendingInteraction: 'approval' }))).toBe('waiting');
+    expect(todoGroup(task('d', { status: 'failed' }))).toBe('stopped');
+    expect(todoGroup(task('e', { status: 'needs_review' }))).toBe('stopped');
+    expect(todoGroup(task('f', { status: 'interrupted' }))).toBe('stopped');
+    expect(todoGroup(task('g'))).toBeUndefined();
   });
 });

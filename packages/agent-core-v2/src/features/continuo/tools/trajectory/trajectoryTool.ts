@@ -5,7 +5,7 @@ import { toInputJsonSchema } from '#/tool/input-schema';
 import { ISessionContext } from '#/session/sessionContext/sessionContext';
 
 import { IContinuoStore } from '../../store';
-import { choiceOn, decisionsOn, EXPLORE_MAX_ANGLES, EXPLORE_MAX_STEPS, explorerOf, openDecisionOf, otherLineNote, planLetter, planPath, planStatusOn, trajectoryOfSession } from '../../trajectory';
+import { choiceOn, decisionsOn, EXPLORE_MAX_ANGLES, EXPLORE_MAX_STEPS, explorerOf, openDecisionOf, otherLineNote, decisionStance, planLetter, planPath, planStatusOn, trajectoryOfSession } from '../../trajectory';
 import { currentTaskOf, type ContinuoWorkspaceDoc, type Decision, type TrajectoryPlan } from '../../types';
 import { ITrajectoryTool, TRAJECTORY_TOOL_NAME, TrajectoryInputSchema, type TrajectoryInput } from './trajectory';
 import DESCRIPTION from './trajectory.md?raw';
@@ -61,9 +61,11 @@ export class TrajectoryTool implements ITrajectoryTool {
       const base = { decisionId: `dec_${randomUUID().slice(0, 8)}`, taskId: task.taskId, trajectoryId: trajectory.trajectoryId, question: args.question, turnIndex: Math.max(0, trajectory.turnCount - 1), createdAt: now };
       if (args.action === 'propose') {
         if (args.plans === undefined || args.plans.length < 2) return { isError: true, output: 'propose needs at least two plans.' };
-        const plans: TrajectoryPlan[] = args.plans.map((plan, index) => ({ ...plan, planId: planLetter(index), path: planPath(named, planLetter(index), now), createdAt: now }));
-        await saveNew({ ...base, plans });
-        return { isError: false, output: `Decision point recorded with ${plans.length} plans:\n${plans.map((plan) => `- ${plan.planId} ${plan.title} (${plan.path})`).join('\n')}\nEnd your turn now with one short line; the user picks a plan.` };
+        const plans: TrajectoryPlan[] = args.plans.map(({ recommended: _recommended, ...plan }, index) => ({ ...plan, planId: planLetter(index), path: planPath(named, planLetter(index), now), createdAt: now }));
+        const stance = decisionStance(plans.filter((_, index) => args.plans![index]!.recommended === true).map((plan) => plan.planId), args.why, args.dependsOn, now);
+        if (typeof stance === 'string') return { isError: true, output: `Nothing recorded. ${stance}` };
+        await saveNew({ ...base, plans, stance });
+        return { isError: false, output: `Decision point recorded with ${plans.length} plans:\n${plans.map((plan) => `- ${plan.planId} ${plan.title} (${plan.path})`).join('\n')}\nEnd your turn now with one short line; name plans by title, not by letter. The user picks a plan.` };
       }
       const angles = args.angles ?? [];
       if (angles.length < 2 || angles.length > EXPLORE_MAX_ANGLES) return { isError: true, output: `explore needs two to ${EXPLORE_MAX_ANGLES} angles.` };
@@ -82,22 +84,32 @@ export class TrajectoryTool implements ITrajectoryTool {
       return { isError: false, output: `Exploration recorded with ${angles.length} angles. End your turn now with one short line; one author per angle writes a plan in parallel and the plans go to the user.` };
     }
     const open = openDecisionOf(doc, trajectory, task.taskId);
-    if (open === undefined) return { isError: true, output: 'There is no open decision point on this task to expand.' };
+    if (open === undefined) return { isError: true, output: `There is no open decision point on this task to ${args.action}.` };
+    if (args.action === 'recommend') {
+      if (args.pick !== undefined && !open.plans.some((plan) => plan.planId === args.pick)) return { isError: true, output: `Unknown plan ${args.pick}. Plans: ${open.plans.map((plan) => plan.planId).join(', ')}.` };
+      const stance = decisionStance(args.pick === undefined ? [] : [args.pick], args.why, args.dependsOn ?? open.stance?.dependsOn, now);
+      if (typeof stance === 'string') return { isError: true, output: stance };
+      await this.patch(doc, open.decisionId, (current) => ({ ...current, stance }));
+      return { isError: false, output: `Recorded that the choice comes down to: ${stance.dependsOn}${stance.pick === undefined ? '' : `, and that you recommend ${stance.pick}`}. End your turn now with one short line; name plans by title, not by letter. The user picks a plan.` };
+    }
     if (args.exhausted !== undefined) {
       const exhausted = { ...args.exhausted, at: now };
       await this.store.update(doc.workspaceId, (current) => ({ ...current, decisions: current.decisions.map((decision) => (decision.decisionId === open.decisionId ? { ...decision, exhausted } : decision)) }));
       return { isError: false, output: 'Recorded that no meaningfully different plan is left. End your turn with the question the user needs to decide.' };
     }
     if (args.plans === undefined || args.plans.length === 0) return { isError: true, output: 'expand needs plans, or exhausted when nothing different is left.' };
-    const added: TrajectoryPlan[] = args.plans.map((plan, index) => {
+    const added: TrajectoryPlan[] = args.plans.map(({ recommended: _recommended, ...plan }, index) => {
       const planId = planLetter(open.plans.length + index);
       return { ...plan, planId, path: planPath(task, planId, now), createdAt: now };
     });
+    const picks = added.filter((_, index) => args.plans![index]!.recommended === true).map((plan) => plan.planId);
+    const changed = picks.length > 0 || args.dependsOn !== undefined ? decisionStance(picks, args.why, args.dependsOn ?? open.stance?.dependsOn, now) : open.stance;
+    if (typeof changed === 'string') return { isError: true, output: `Nothing added. ${changed}` };
     await this.store.update(doc.workspaceId, (current) => ({
       ...current,
-      decisions: current.decisions.map((decision) => (decision.decisionId === open.decisionId ? { ...decision, plans: [...decision.plans, ...added], turnIndex: Math.max(decision.turnIndex, trajectory.turnCount - 1) } : decision)),
+      decisions: current.decisions.map((decision) => (decision.decisionId === open.decisionId ? { ...decision, plans: [...decision.plans, ...added], stance: changed, turnIndex: Math.max(decision.turnIndex, trajectory.turnCount - 1) } : decision)),
     }));
-    return { isError: false, output: `Added ${added.length} plans:\n${added.map((plan) => `- ${plan.planId} ${plan.title} (${plan.path})`).join('\n')}\nEnd your turn now with one short line.` };
+    return { isError: false, output: `Added ${added.length} plans:\n${added.map((plan) => `- ${plan.planId} ${plan.title} (${plan.path})`).join('\n')}\nIf the new plans change where you stand, call recommend before ending your turn; otherwise end your turn now with one short line.` };
   }
 
   private async author(doc: ContinuoWorkspaceDoc, decision: Decision, key: string, args: TrajectoryInput): Promise<ToolResult> {
@@ -129,7 +141,8 @@ export class TrajectoryTool implements ITrajectoryTool {
     let planId = '';
     await this.patch(doc, decision.decisionId, (current) => {
       planId = planLetter(current.plans.length);
-      const plan: TrajectoryPlan = { ...args.plan!, planId, path: task === undefined ? `work-log/plan-${planId}.md` : planPath(task, planId, now), createdAt: now };
+      const { recommended: _recommended, ...submitted } = args.plan!;
+      const plan: TrajectoryPlan = { ...submitted, planId, path: task === undefined ? `work-log/plan-${planId}.md` : planPath(task, planId, now), createdAt: now };
       return {
         ...current,
         plans: [...current.plans, plan],
@@ -149,6 +162,7 @@ function describe(args: TrajectoryInput): string {
     case 'propose': return 'Proposing plans';
     case 'expand': return 'Adding plans';
     case 'explore': return 'Exploring angles in parallel';
+    case 'recommend': return 'Saying where it stands on the plans';
     case 'submit': return 'Submitting a plan';
     case 'ask': return `Asking ${args.to ?? 'another author'}`;
     case 'withdraw': return 'Withdrawing a plan';
@@ -166,7 +180,8 @@ function renderList(doc: ContinuoWorkspaceDoc, trajectoryId: string): string {
     const lines = [`${decision.question}${choice?.text === undefined ? '' : ` — the user gave their own direction: ${choice.text}`}`];
     for (const plan of decision.plans) {
       const status = planStatusOn(doc, trajectory, decision, plan);
-      lines.push(`- ${plan.planId} ${plan.title} (${status.kind === 'current' ? 'followed on this line' : otherLineNote(doc, trajectory, decision, plan)}) — ${plan.path}`);
+      const stance = decision.stance?.pick === plan.planId ? ', you recommended it' : plan.caution === undefined ? '' : ', you warned against it';
+      lines.push(`- ${plan.planId} ${plan.title} (${status.kind === 'current' ? 'followed on this line' : otherLineNote(doc, trajectory, decision, plan)}${stance}) — ${plan.path}`);
     }
     return lines.join('\n');
   }).join('\n\n');

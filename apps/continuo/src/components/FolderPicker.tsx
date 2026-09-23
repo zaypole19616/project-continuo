@@ -1,43 +1,26 @@
 import { useEffect, useState } from 'react';
 import { ChevronRight, Folder, Loader2 } from 'lucide-react';
-import { kimi, type FsBrowse, type Workspace } from '#/lib/api';
+import { kimi, type FsBrowse } from '#/lib/api';
 import { Button } from '#/components/ui/button';
-import { Input } from '#/components/ui/input';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '#/components/ui/dialog';
 
-export function FolderPicker({ mode, open, onOpenChange, onPick }: { mode: 'open' | 'create'; open: boolean; onOpenChange: (open: boolean) => void; onPick: (w: Workspace) => void }) {
+export function FolderPicker({ title, confirmLabel, start, open, onOpenChange, onPick }: { title: string; confirmLabel: string; start?: string; open: boolean; onOpenChange: (open: boolean) => void; onPick: (path: string) => void }) {
   const [browse, setBrowse] = useState<FsBrowse | null>(null);
-  const [name, setName] = useState('');
-  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!open) { setError(null); setName(''); return; }
-    if (browse !== null) return;
-    void kimi.fsHome().then((h) => kimi.fsBrowse(h.home)).then(setBrowse).catch((error: Error) => { setError(error.message); });
-  }, [open, browse]);
+    if (!open) { setError(null); setBrowse(null); return; }
+    const first = start === undefined ? kimi.fsHome().then((h) => kimi.fsBrowse(h.home)) : kimi.fsBrowse(start).catch(() => kimi.fsHome().then((h) => kimi.fsBrowse(h.home)));
+    void first.then(setBrowse).catch((error: Error) => { setError(error.message); });
+  }, [open, start]);
 
   const go = (path: string) => { void kimi.fsBrowse(path).then(setBrowse).catch((error: Error) => { setError(error.message); }); };
-  const run = async (work: () => Promise<Workspace>) => {
-    setBusy(true);
-    setError(null);
-    try { onPick(await work()); } catch (error) { setError((error as Error).message); } finally { setBusy(false); }
-  };
-  const confirm = () => {
-    if (browse === null) return;
-    if (mode === 'open') { void run(() => kimi.createWorkspace(browse.path)); return; }
-    if (name.trim().length === 0) return;
-    void run(async () => {
-      const made = await kimi.fsMkdir(`${browse.path.replace(/\/$/, '')}/${name.trim()}`);
-      return kimi.createWorkspace(made.path);
-    });
-  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-w-lg flex-col gap-3 p-6 text-left">
-        <DialogTitle className="text-lg">{mode === 'create' ? '新建项目' : '打开已有项目'}</DialogTitle>
-        <DialogDescription className="text-sm">{mode === 'create' ? '选一个位置，给项目起个名字。' : '选一个本地文件夹，作为项目打开。'}</DialogDescription>
+        <DialogTitle className="text-lg">{title}</DialogTitle>
+        <DialogDescription className="text-sm">这台机器打不开系统的文件夹窗口，在这里选。</DialogDescription>
         {error !== null && <div className="banner banner-err">{error}</div>}
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="sm" disabled={!browse?.parent} onClick={() => { if (browse?.parent) go(browse.parent); }}>上一级</Button>
@@ -52,14 +35,9 @@ export function FolderPicker({ mode, open, onOpenChange, onPick }: { mode: 'open
           ))}
           {browse !== null && browse.entries.length === 0 && <div className="p-3 text-sm text-muted-foreground">这里没有子文件夹</div>}
         </div>
-        {mode === 'create' && (
-          <Input autoFocus placeholder="项目名称" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') confirm(); }} />
-        )}
         <div className="flex justify-end gap-2 pt-1">
           <Button variant="ghost" onClick={() => onOpenChange(false)}>取消</Button>
-          <Button variant="default" disabled={busy || browse === null || (mode === 'create' && name.trim().length === 0)} onClick={confirm}>
-            {busy && <Loader2 className="animate-spin" />}{mode === 'create' ? '新建并打开' : '打开这个文件夹'}
-          </Button>
+          <Button variant="default" disabled={browse === null} onClick={() => { if (browse !== null) onPick(browse.path); }}>{confirmLabel}</Button>
         </div>
       </DialogContent>
     </Dialog>

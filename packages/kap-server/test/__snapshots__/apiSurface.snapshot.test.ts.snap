@@ -354,6 +354,10 @@ exports[`API surface snapshot > matches the documented v2 route table and meta e
     ],
     [
       "POST",
+      "/api/v1/continuo/choose-folder",
+    ],
+    [
+      "POST",
       "/api/v1/debug/{service}/{method}",
     ],
     [
@@ -534,11 +538,27 @@ exports[`API surface snapshot > matches the documented v2 route table and meta e
     ],
     [
       "POST",
+      "/api/v1/workspaces/{workspace_id}/continuo/init:retry",
+    ],
+    [
+      "POST",
+      "/api/v1/workspaces/{workspace_id}/continuo/permission",
+    ],
+    [
+      "POST",
       "/api/v1/workspaces/{workspace_id}/continuo/tasks",
     ],
     [
       "POST",
       "/api/v1/workspaces/{workspace_id}/continuo/tasks/{tail}",
+    ],
+    [
+      "POST",
+      "/api/v1/workspaces/{workspace_id}/continuo/todos",
+    ],
+    [
+      "POST",
+      "/api/v1/workspaces/{workspace_id}/continuo/todos/{tail}",
     ],
     [
       "POST",

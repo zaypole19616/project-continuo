@@ -10,15 +10,21 @@ const planSchema = z.object({
   basis: z.string().min(1).max(300).describe('Which material or fact makes this plan reasonable.'),
   risk: z.string().min(1).max(300).describe('The main way this plan could go wrong or what it gives up.'),
   prompt: z.string().min(1).max(800).describe('The instruction that starts this plan if the user picks it, written as the user would say it.'),
+  fit: z.string().min(1).max(80).describe('One line in the language of the folder on the situation this plan suits: what would make someone pick it.'),
+  caution: z.string().min(1).max(200).optional().describe('Only when this plan has a concrete problem worth warning the user about: the problem and what it rests on, in one line.'),
   detail: z.string().max(4000).optional().describe('The fuller plan in Markdown: steps, what gets produced, open points. Written into the plan file.'),
+  recommended: z.boolean().optional().describe('propose / expand: true on the one plan you would pick, only when a fact in the materials settles the choice.'),
 });
 
 export const TrajectoryInputSchema = z.object({
   action: z
-    .enum(['propose', 'expand', 'explore', 'list', 'submit', 'ask', 'withdraw'])
-    .describe('Main agent: propose opens a decision point with plans you write yourself; expand adds plans to the open one or says nothing different is left; explore opens a decision point whose plans are written in parallel, one per angle; list shows the decision points on this line. Plan author: submit hands in your plan; ask sends a question to another author; withdraw drops your plan because it is the same as another one.'),
+    .enum(['propose', 'expand', 'explore', 'recommend', 'list', 'submit', 'ask', 'withdraw'])
+    .describe('Main agent: propose opens a decision point with plans you write yourself; expand adds plans to the open one or says nothing different is left; explore opens a decision point whose plans are written in parallel, one per angle; recommend states where you stand on the open one; list shows the decision points on this line. Plan author: submit hands in your plan; ask sends a question to another author; withdraw drops your plan because it is the same as another one.'),
   question: z.string().min(1).max(120).optional().describe('propose / explore: the decision the user has to make, as a short question.'),
   plans: z.array(planSchema).max(12).optional().describe('propose / expand: the plans. Each must differ from the others in approach, not in wording.'),
+  pick: z.string().min(1).max(8).optional().describe('recommend: the id of the plan you would pick; leave it out when none is clearly better.'),
+  why: z.string().min(1).max(300).optional().describe('propose / expand / recommend: one short sentence, about 40 Chinese characters, naming the fact in the materials that makes the plan you recommend the better choice; the user reads it on the card.'),
+  dependsOn: z.string().min(1).max(200).optional().describe('propose / recommend: always; expand: when it changes. What the choice comes down to, as one short phrase in the language of the folder.'),
   exhausted: z
     .object({
       reason: z.string().min(1).max(300).describe('Why no meaningfully different plan is left: which directions the existing plans already cover.'),

@@ -38,6 +38,29 @@ export function planState(doc: ContinuoDoc, line: Trajectory, decision: Decision
   return { kind: 'elsewhere', line: elsewhere, tasks: elsewhere.taskIds.filter((taskId) => !own.has(taskId)).length };
 }
 
+export function planTitle(doc: ContinuoDoc, decisionId: string | undefined, planId: string | undefined): string | undefined {
+  if (decisionId === undefined || planId === undefined) return undefined;
+  return doc.decisions.find((decision) => decision.decisionId === decisionId)?.plans.find((plan) => plan.planId === planId)?.title;
+}
+
+export function lineName(doc: ContinuoDoc, line: Trajectory): string {
+  return planTitle(doc, line.origin?.decisionId, line.origin?.planId) ?? line.label;
+}
+
+export function orderedPlans(decision: Decision): TrajectoryPlan[] {
+  const pick = decision.stance?.pick;
+  return [...decision.plans.filter((plan) => plan.planId === pick), ...decision.plans.filter((plan) => plan.planId !== pick)];
+}
+
+export function stanceTag(decision: Decision, plan: TrajectoryPlan): string | undefined {
+  if (decision.stance?.pick === plan.planId) return '建议';
+  return plan.caution === undefined ? undefined : '不建议';
+}
+
+export function isEmptyFolder(doc: ContinuoDoc): boolean {
+  return doc.init.status === 'pending' || (doc.scan !== undefined && doc.scan.counts.files + doc.scan.counts.dirs === 0);
+}
+
 export function isExploring(decision: Decision): boolean {
   return decision.exploration !== undefined && decision.exploration.endedAt === undefined;
 }
@@ -48,6 +71,21 @@ export function isOpen(line: Trajectory, decision: Decision): boolean {
 
 export function lineIsBusy(doc: ContinuoDoc, line: Trajectory | undefined): boolean {
   return tasksOn(doc, line).some((task) => BUSY.has(task.status) || (task.status === 'awaiting_user' && (task.pendingInteraction === 'question' || task.pendingInteraction === 'approval')));
+}
+
+export type TodoGroup = 'doing' | 'waiting' | 'stopped';
+
+export const TODO_GROUPS: ReadonlyArray<{ key: TodoGroup; title: string }> = [
+  { key: 'doing', title: '正在做' },
+  { key: 'waiting', title: '等你' },
+  { key: 'stopped', title: '停下来' },
+];
+
+export function todoGroup(task: ContinuoTask): TodoGroup | undefined {
+  if (task.status === 'completed') return undefined;
+  if (BUSY.has(task.status)) return 'doing';
+  if (task.status === 'awaiting_user') return 'waiting';
+  return 'stopped';
 }
 
 export function taskLabel(task: ContinuoTask): string {
@@ -83,7 +121,7 @@ function lineStubsAt(doc: ContinuoDoc, line: Trajectory, taskId: string): LineSt
   }
   for (const other of doc.trajectories) {
     if (other.trajectoryId === line.trajectoryId || other.status === 'abandoned' || other.origin?.afterTaskId !== taskId || other === parent) continue;
-    stubs.push({ line: other, label: other.label, tasks: Math.max(0, other.taskIds.length - at - 1) });
+    stubs.push({ line: other, label: lineName(doc, other), tasks: Math.max(0, other.taskIds.length - at - 1) });
   }
   return stubs;
 }
