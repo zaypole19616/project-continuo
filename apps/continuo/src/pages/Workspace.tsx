@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ChevronLeft, Moon, Sun } from 'lucide-react';
+import { ChevronLeft } from 'lucide-react';
 import { continuo, isOffline, kimi, type ApprovalRequest, type ContinuoDoc, type ContinuoTask, type ContinuoTodo, type PermissionMode, type TodoTiming, type Decision, type QuestionRequest, type Trajectory, type TrajectoryPlan, type Workspace } from '#/lib/api';
 import { currentLine, tasksOn } from '#/lib/trajectory';
 import { SessionStream } from '#/lib/ws';
 import { applyEvent, emptyTimeline, fromMessages, withUserMessage, type TimelineState } from '#/lib/timeline';
-import { resolveTheme, type ThemePref } from '#/lib/theme';
+import type { ThemePref } from '#/lib/theme';
+import { ThemeToggle } from '#/components/ThemeToggle';
 import type { NavTarget } from '#/components/FileBrowser';
 import { Finder } from '#/components/Finder';
 import { Drawer } from '#/components/Drawer';
@@ -161,7 +162,6 @@ export function WorkspaceView({ workspace, onClose, themePref, onTheme }: { work
   const todoAction = (todo: ContinuoTodo, action: 'start' | 'delete') => run(() => continuo.todoAction(workspaceId, todo.todoId, action));
   const setPermission = (mode: PermissionMode) => { void run(() => continuo.setPermission(workspaceId, mode)); };
 
-  const dark = resolveTheme(themePref) === 'dark';
   const startDrag = (e: React.PointerEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.currentTarget.setPointerCapture(e.pointerId);
@@ -187,7 +187,7 @@ export function WorkspaceView({ workspace, onClose, themePref, onTheme }: { work
         {line?.origin !== undefined && <span className="line-chip" title={line.workDir === undefined ? '这条轨迹和原来的轨迹共用项目文件夹' : `这条轨迹的文件在 ${line.workDir}`}>{line.label}</span>}
         <span className="project-path" title={workspace.root}>{workspace.root}</span>
         <span className="flex-1" />
-        <button className="icon-btn" title={dark ? '切换到浅色' : '切换到深色'} onClick={() => onTheme(dark ? 'light' : 'dark')}>{dark ? <Sun size={16} /> : <Moon size={16} />}</button>
+        <ThemeToggle themePref={themePref} onTheme={onTheme} />
       </div>
       <div className="project-body" style={{ '--drawer-w': `${drawerWidth}px` } as React.CSSProperties}>
         <Finder workspaceId={workspaceId} root={workspace.root} doc={doc} target={target} onNavigate={setTarget} onError={setError} searchRef={searchRef} />

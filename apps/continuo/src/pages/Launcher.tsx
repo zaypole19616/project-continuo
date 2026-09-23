@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import { DEFAULT_MODEL, kimi, readRecent, type Workspace } from '#/lib/api';
 import { FolderPicker } from '#/components/FolderPicker';
+import { ThemeToggle } from '#/components/ThemeToggle';
+import type { ThemePref } from '#/lib/theme';
 
-export function Launcher({ onOpen }: { onOpen: (w: Workspace) => void }) {
+export function Launcher({ onOpen, themePref, onTheme }: { onOpen: (w: Workspace) => void; themePref: ThemePref; onTheme: (pref: ThemePref) => void }) {
   const [recent, setRecent] = useState<Workspace[]>([]);
   const [picker, setPicker] = useState<'open' | 'create' | null>(null);
 
@@ -26,6 +28,7 @@ export function Launcher({ onOpen }: { onOpen: (w: Workspace) => void }) {
 
   return (
     <div className="launcher-stage">
+      <ThemeToggle themePref={themePref} onTheme={onTheme} className="launcher-theme" />
       <div className="launcher">
         <span className="launcher-mark" aria-hidden="true" />
         <h1>Continuo</h1>
