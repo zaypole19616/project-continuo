@@ -6,11 +6,17 @@ Built on [Kimi Code](https://github.com/MoonshotAI/kimi-code): the engine, sessi
 
 **一个住在本地文件夹里、把工作持续接住的 Agent。** 第一次打开先读懂这个文件夹再动手；每件事做完核对产物、在 `work-log/` 留一份日志；下次接着干靠的是文件夹本身，不是另一份看不见的记忆。
 
+## Why the name · 名字的由来
+
+*Continuo* (basso continuo) is the continuous bass line in Baroque music: it runs under the whole piece without stopping and lets the soloists come and go on top of it. Here the folder and the person's judgment are that bass line; the lines of work that different plans lead to are the solos, and switching to another one never breaks the line underneath.
+
+Continuo，通奏低音：巴洛克音乐里贯穿全曲、从不中断的低音声部，在下面托住整首曲子，让上面的独奏来来去去。在这里，文件夹和人的判断是那条不断的低音；不同方案走出的轨迹是上面来来去去的独奏，换一条，底下的线不断。
+
 ## Read first
 
 | | |
 |---|---|
-| 说明文档（产品判断、功能点、Harness 改动） | [docs/continuo/submission.md](docs/continuo/submission.md) |
+| 说明文档（产品判断、产品功能、如何体验） | [docs/continuo/submission.md](docs/continuo/submission.md) |
 | 这个原型实现到哪、边界在哪、怎么跑 | [docs/continuo/README.md](docs/continuo/README.md) |
 | Kimi Code's original README | [README.kimi-code.md](README.kimi-code.md) · [中文](README.kimi-code.zh-CN.md) |
 
@@ -18,12 +24,12 @@ Built on [Kimi Code](https://github.com/MoonshotAI/kimi-code): the engine, sessi
 
 | 判断 | 在哪里看 |
 |---|---|
-| Orderliness · 有条理 | 对话顶部「了解这个文件夹」；项目里的 `work-log/` |
-| Proactiveness · 有分寸 | 「建议的下一步事项」（✓ / ✗ / ≡+）；右上角「事项」；三档权限 |
+| Orderliness · 有条理 | 对话开头「我已经了解了这个项目」（读过的文件、带来源的要点）；项目里的 `work-log/` |
+| Proactiveness · 有分寸 | 了解完主动发来的建议、每件事收尾时的「建议的下一步事项」（✓ / ✗ / ≡+）；右上角「事项」；三档权限 |
 | Clarity · 坦诚清晰 | 首次启动引导（启动页可重看）；每件事后面的收尾卡；文件预览与对比 |
 | 判断留给人，也被记下来 | 对话里的方案卡；右上角「轨迹」；导出接口 |
 
-每一行怎么试，见 [说明文档 §3](docs/continuo/submission.md#3-文档里的判断在产品里对应哪里)。
+每一行怎么试，见 [说明文档 §3 如何体验](docs/continuo/submission.md#3-如何体验)。
 
 ## Run
 
