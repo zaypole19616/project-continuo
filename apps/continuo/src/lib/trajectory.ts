@@ -38,6 +38,10 @@ export function planState(doc: ContinuoDoc, line: Trajectory, decision: Decision
   return { kind: 'elsewhere', line: elsewhere, tasks: elsewhere.taskIds.filter((taskId) => !own.has(taskId)).length };
 }
 
+export function isExploring(decision: Decision): boolean {
+  return decision.exploration !== undefined && decision.exploration.endedAt === undefined;
+}
+
 export function isOpen(line: Trajectory, decision: Decision): boolean {
   return decision.trajectoryId === line.trajectoryId && choiceOn(line, decision.decisionId) === undefined;
 }

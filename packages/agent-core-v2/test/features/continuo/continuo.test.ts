@@ -3,7 +3,8 @@ import { describe, expect, it } from 'vitest';
 import type { IDisposable } from '#/_base/di/lifecycle';
 import { compileContextBundle, CONTEXT_BUNDLE_MAX_CHARS } from '#/features/continuo/contextBundle';
 import { ContinuoStoreService } from '#/features/continuo/store';
-import { inheritedChoices, planPath, planStatusOn, tasksThrough } from '#/features/continuo/trajectory';
+import { buildTrajectoryExport } from '#/features/continuo/export';
+import { doneOnLine, guardAccesses, guardTool, inheritedChoices, otherLineNote, planPath, planStatusOn, tasksThrough } from '#/features/continuo/trajectory';
 import {
   CONTINUO_STORE_SCOPE,
   currentTaskOf,
@@ -106,6 +107,10 @@ function decision(overrides: Partial<Decision> = {}): Decision {
   return { decisionId: 'dec_1', taskId: 'task_1', trajectoryId: 'main', question: 'Which target?', turnIndex: 2, plans: [plan('A', 'grow 10%'), plan('B', 'keep budget'), plan('C', 'wait')], createdAt: NOW, ...overrides };
 }
 
+function bundleFor(doc: ContinuoWorkspaceDoc, current: ContinuoTask) {
+  return compileContextBundle({ ...doc, tasks: [...doc.tasks.filter((candidate) => candidate.taskId !== current.taskId), current] }, current.sessionId);
+}
+
 describe('trajectory', () => {
   it('tells each plan apart on the line being viewed', () => {
     const dec = decision({ plans: decision().plans.map((plan) => (plan.planId === 'C' ? { ...plan, abandoned: { reason: 'too late', at: NOW } } : plan)) });
@@ -145,7 +150,7 @@ describe('trajectory', () => {
   it('injects the plan being followed and points at the files of the others', () => {
     const main = line({ trajectoryId: 'main', taskIds: ['task_1'], choices: [{ decisionId: 'dec_1', planId: 'A', turnIndex: 3, at: NOW }] });
     const doc = { ...docWith([], { understanding: { text: 'Q4 planning', sourceRefs: [], updatedAt: NOW } }), trajectories: [main], decisions: [decision()] };
-    const text = compileContextBundle(doc, task())!.text;
+    const text = bundleFor(doc, task())!.text;
     expect(text).toContain('Following plan A: grow 10%. Basis: basis A Risk: risk A');
     expect(text).toContain('Plan B: keep budget — not taken. work-log/plan-B.md');
     expect(text).not.toContain('basis B');
@@ -154,13 +159,13 @@ describe('trajectory', () => {
   it('marks a decision that is still open so the agent waits for the user', () => {
     const main = line({ trajectoryId: 'main', taskIds: ['task_1'] });
     const doc = { ...docWith([], { understanding: { text: 'Q4 planning', sourceRefs: [], updatedAt: NOW } }), trajectories: [main], decisions: [decision()] };
-    expect(compileContextBundle(doc, task())!.text).toContain('Still open: wait for the user');
+    expect(bundleFor(doc, task())!.text).toContain('Still open: wait for the user');
   });
 });
 
 describe('compileContextBundle', () => {
   it('returns nothing when the folder has neither an understanding nor any points', () => {
-    expect(compileContextBundle(docWith([]), task())).toBeUndefined();
+    expect(bundleFor(docWith([]), task())).toBeUndefined();
   });
 
   it('injects the understanding, the points with their sources and the current task', () => {
@@ -168,7 +173,7 @@ describe('compileContextBundle', () => {
       entry({ id: 'conv', text: 'deliverables go in drafts/', sourceRefs: ['README.md'] }),
       entry({ id: 'bg', text: 'materials/ is read-only', sourceRefs: ['AGENTS.md'] }),
     ], { understanding: { text: 'A folder for the Q2 review.', sourceRefs: ['README.md'], updatedAt: NOW } });
-    const bundle = compileContextBundle(doc, task({ supplements: ['keep it under 150 words'] }));
+    const bundle = bundleFor(doc, task({ supplements: ['keep it under 150 words'] }));
     expect(bundle).toBeDefined();
     expect(bundle!.revision).toBe(7);
     expect(bundle!.entryIds).toEqual(['conv', 'bg']);
@@ -181,12 +186,12 @@ describe('compileContextBundle', () => {
 
   it('points the agent at the folder and its work logs instead of a remembered ledger', () => {
     const doc = docWith([], { understanding: { text: 'Q2 review folder', sourceRefs: [], updatedAt: NOW } });
-    expect(compileContextBundle(doc, task())!.text).toContain('work-log/');
+    expect(bundleFor(doc, task())!.text).toContain('work-log/');
   });
 
   it('stays within the character budget', () => {
     const filler = Array.from({ length: 40 }, (_, index) => entry({ id: `m${index}`, text: 'm'.repeat(400) }));
-    const bundle = compileContextBundle(docWith(filler), task())!;
+    const bundle = bundleFor(docWith(filler), task())!;
     expect(bundle.entryIds.length).toBeLessThanOrEqual(30);
     expect(bundle.text.length).toBeLessThanOrEqual(CONTEXT_BUNDLE_MAX_CHARS + 600);
   });
@@ -227,10 +232,113 @@ describe('ContinuoStoreService', () => {
 
   it('ignores stored documents from another schema version', async () => {
     const documents = new MemoryDocumentStore();
-    await documents.set(CONTINUO_STORE_SCOPE, 'wd_old', { ...newWorkspaceDoc('wd_old', '/tmp/old'), schemaVersion: 2 });
+    await documents.set(CONTINUO_STORE_SCOPE, 'wd_old', { ...newWorkspaceDoc('wd_old', '/tmp/old'), schemaVersion: 3 });
     const store = new ContinuoStoreService(documents);
     expect(await store.load('wd_old')).toBeUndefined();
     const fresh = await store.ensure('wd_old', '/tmp/old');
-    expect(fresh.schemaVersion).toBe(3);
+    expect(fresh.schemaVersion).toBe(4);
+  });
+});
+
+describe('line isolation guard', () => {
+  const root = '/p';
+  const main = line({ trajectoryId: 'main', sessionId: 's_main', taskIds: ['t1'] });
+  const branch = line({ trajectoryId: 'b', sessionId: 's_b', status: 'alternative', workDir: '/p/.continuo/lines/b', taskIds: ['t1', 't2'] });
+  const doc = { ...newWorkspaceDoc('wd_1', root), trajectories: [main, branch], tasks: [task({ taskId: 't1', sessionId: 's_main' }), task({ taskId: 't2', sessionId: 's_b' })] };
+
+  it('keeps a branched line inside its own directory', () => {
+    expect(guardAccesses(doc, 's_b', [{ operation: 'write', path: '/p/.continuo/lines/b/drafts/x.md' }])).toBeUndefined();
+    expect(guardAccesses(doc, 's_b', [{ operation: 'read', path: '/p/.continuo/lines/b/materials/a.md' }])).toBeUndefined();
+    expect(guardAccesses(doc, 's_b', [{ operation: 'write', path: '/p/drafts/x.md' }])).toContain('/p/.continuo/lines/b');
+    expect(guardAccesses(doc, 's_b', [{ operation: 'read', path: '/p/drafts/x.md' }])).toContain('Denied: /p/drafts/x.md');
+    expect(guardAccesses(doc, 's_b', [{ operation: 'read', path: '/elsewhere/notes.md' }])).toBeUndefined();
+  });
+
+  it('keeps the main line out of the other lines', () => {
+    expect(guardAccesses(doc, 's_main', [{ operation: 'write', path: '/p/drafts/x.md' }])).toBeUndefined();
+    expect(guardAccesses(doc, 's_main', [{ operation: 'read', path: '/p/.continuo/lines/b/drafts/x.md' }])).toContain('belong to other lines');
+    expect(guardAccesses(doc, 's_main', [{ operation: 'write', path: '/p/.continuo/git/config' }])).toBeDefined();
+  });
+
+  it('protects another line\'s files when a line could not get its own directory', () => {
+    const shared = line({ trajectoryId: 'c', sessionId: 's_c', status: 'alternative', taskIds: ['t1', 't3'] });
+    const withShared = { ...doc, trajectories: [main, shared], tasks: [...doc.tasks, task({ taskId: 't3', sessionId: 's_c', report: { summary: 's', deliverables: [{ path: 'drafts/c.md' }], unresolved: [], reportedAt: NOW } })] };
+    expect(guardAccesses(withShared, 's_main', [{ operation: 'write', path: '/p/drafts/c.md' }])).toContain('Denied: /p/drafts/c.md');
+    expect(guardAccesses(withShared, 's_c', [{ operation: 'write', path: '/p/drafts/c.md' }])).toBeUndefined();
+  });
+
+  it('lets a plan author read but never write', () => {
+    const exploring = { ...decision(), plans: [], exploration: { reason: 'r', angles: [{ key: 'A', title: 'a', angle: 'look at x', status: 'running' as const, sessionId: 's_author', steps: 0 }], messages: [], maxSteps: 8, startedAt: NOW } };
+    const withAuthor = { ...doc, decisions: [exploring] };
+    expect(guardAccesses(withAuthor, 's_author', [{ operation: 'read', path: '/p/materials/a.md' }])).toBeUndefined();
+    expect(guardAccesses(withAuthor, 's_author', [{ operation: 'write', path: '/p/drafts/a.md' }])).toContain('Trajectory submit');
+    expect(guardTool(withAuthor, 's_author', 'Bash', '/p')).toContain('Read, Grep and Glob');
+    expect(guardTool(withAuthor, 's_author', 'AskUserQuestion', undefined)).toContain('Trajectory ask');
+    expect(guardTool(withAuthor, 's_author', 'Grep', undefined)).toBeUndefined();
+  });
+
+  it('runs shell commands of a branched line inside its directory', () => {
+    expect(guardTool(doc, 's_b', 'Bash', '/p/.continuo/lines/b')).toBeUndefined();
+    expect(guardTool(doc, 's_b', 'Bash', '/p/.continuo/lines/b/drafts')).toBeUndefined();
+    expect(guardTool(doc, 's_b', 'Bash', undefined)).toContain('cwd set to that directory');
+    expect(guardTool(doc, 's_b', 'Bash', '/p')).toContain('/p/.continuo/lines/b');
+    expect(guardTool(doc, 's_main', 'Bash', undefined)).toBeUndefined();
+    expect(guardTool(doc, 's_main', 'AskUserQuestion', undefined)).toBeUndefined();
+  });
+});
+
+describe('branch context (phase four)', () => {
+  it('lists what is done on the line and sums up what another line did with a plan', () => {
+    const done = task({ taskId: 't0', name: '复盘', status: 'completed', report: { summary: 's', deliverables: [{ path: 'drafts/r.md', exists: true }], unresolved: [], reportedAt: NOW } });
+    const other = task({ taskId: 't3b', sessionId: 's_b', rounds: [{ at: NOW, prompt: 'p', reads: [], writes: ['drafts/b.md'], reply: '' }, { at: NOW, prompt: 'q', reads: [], writes: [], reply: '' }], report: { summary: 's', deliverables: [{ path: 'drafts/b.md' }], unresolved: [], reportedAt: NOW } });
+    const main = line({ trajectoryId: 'main', taskIds: ['t0', 'task_1'], choices: [{ decisionId: 'dec_1', planId: 'A', turnIndex: 3, at: NOW }] });
+    const b = line({ trajectoryId: 'b', sessionId: 's_b', status: 'alternative', taskIds: ['t0', 't3b'], choices: [{ decisionId: 'dec_1', planId: 'B', turnIndex: 3, at: NOW }] });
+    const doc = { ...docWith([], { understanding: { text: 'Q4', sourceRefs: [], updatedAt: NOW } }), tasks: [done, other], trajectories: [main, b], decisions: [decision()] };
+    expect(doneOnLine({ ...doc, tasks: [done, other, task()] }, main, 'task_1')).toEqual([{ name: '复盘', deliverables: ['drafts/r.md'] }]);
+    expect(otherLineNote(doc, main, decision(), decision().plans[1]!)).toBe('followed on another line: 1 task, 2 rounds, produced drafts/b.md');
+    const text = bundleFor(doc, task())!.text;
+    expect(text).toContain('Done on this line');
+    expect(text).toContain('- 复盘 → drafts/r.md');
+    expect(text).toContain('Plan B: keep budget — followed on another line: 1 task, 2 rounds, produced drafts/b.md.');
+  });
+
+  it('tells a branched line where its directory is', () => {
+    const b = line({ trajectoryId: 'b', workDir: '/tmp/ws/.continuo/lines/b' });
+    const doc = { ...docWith([], { understanding: { text: 'Q4', sourceRefs: [], updatedAt: NOW } }), trajectories: [b] };
+    expect(bundleFor(doc, task())!.text).toContain('Working directory of this line: /tmp/ws/.continuo/lines/b');
+  });
+
+  it('briefs a plan author on its angle, the other authors and its messages only', () => {
+    const exploring = { ...decision(), plans: [], exploration: { reason: 'r', angles: [
+      { key: 'A', title: 'top down', angle: 'start from the budget', status: 'running' as const, sessionId: 's_a', steps: 0 },
+      { key: 'B', title: 'bottom up', angle: 'start from delivery capacity', status: 'running' as const, sessionId: 's_b', steps: 0 },
+    ], messages: [{ from: 'B', to: 'A', text: 'which budget file?', at: NOW }, { from: 'A', to: 'B', text: 'budget-2026.md', at: NOW }], maxSteps: 8, startedAt: NOW } };
+    const doc = { ...docWith([], { understanding: { text: 'Q4', sourceRefs: [], updatedAt: NOW } }), trajectories: [line({ trajectoryId: 'main', taskIds: ['task_1'] })], tasks: [task()], decisions: [exploring] };
+    const text = compileContextBundle(doc, 's_a')!.text;
+    expect(text).toContain('You are the author of plan A');
+    expect(text).toContain('Your angle: top down — start from the budget');
+    expect(text).toContain('- B bottom up — start from delivery capacity');
+    expect(text).toContain('from B: which budget file?');
+    expect(text).not.toContain('budget-2026.md');
+    expect(text).not.toContain('Current task');
+  });
+});
+
+describe('trajectory export (phase five)', () => {
+  it('turns every line into a sample and every decision into preference pairs, strongest signal first', () => {
+    const dec = { ...decision(), plans: decision().plans.map((plan) => (plan.planId === 'C' ? { ...plan, abandoned: { reason: 'too late', at: NOW } } : plan)) };
+    const t1 = task({ taskId: 'task_1', status: 'completed', rounds: [{ at: NOW, prompt: 'split Q4', reads: ['m.md'], writes: ['d.md'], reply: 'ok' }], report: { summary: 's', deliverables: [{ path: 'd.md', exists: true }], unresolved: [], reportedAt: NOW } });
+    const main = line({ trajectoryId: 'main', taskIds: ['task_1'], choices: [{ decisionId: 'dec_1', planId: 'A', turnIndex: 3, at: NOW }] });
+    const b = line({ trajectoryId: 'b', sessionId: 's_b', status: 'alternative', taskIds: [], choices: [{ decisionId: 'dec_1', planId: 'B', turnIndex: 3, at: NOW }], origin: { fromTrajectoryId: 'main', turnIndex: 2, decisionId: 'dec_1', planId: 'B' } });
+    const doc = { ...docWith([]), tasks: [t1], trajectories: [main, b], decisions: [dec] };
+    const out = buildTrajectoryExport(doc, new Map([['task_1:d.md', { exists: true, modifiedAfter: true }]]), NOW);
+    expect(out.samples).toHaveLength(2);
+    const sample = out.samples.find((item) => item.trajectoryId === 'main')!;
+    expect(sample.current).toBe(true);
+    expect(sample.tasks[0]).toMatchObject({ request: 'split Q4', deliverables: [{ path: 'd.md', modifiedAfter: true, usedLater: false }] });
+    expect(sample.decisions[0]!.plans.map((plan) => plan.fate)).toEqual(['chosen', 'taken_elsewhere', 'abandoned']);
+    expect(out.samples.find((item) => item.trajectoryId === 'b')!.branchedFrom).toMatchObject({ kind: 'plan', planId: 'B' });
+    expect(out.preferences.map((pair) => `${pair.preferred.planId}>${pair.other.planId}:${pair.signal}`)).toEqual(['A>C:abandoned', 'A>B:switched_away']);
+    expect(out.preferences[0]!.reason).toBe('too late');
   });
 });

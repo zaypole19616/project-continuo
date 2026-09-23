@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ChevronLeft, Moon, Sun } from 'lucide-react';
-import { continuo, kimi, type ApprovalRequest, type ContinuoDoc, type ContinuoTask, type Decision, type QuestionRequest, type Trajectory, type TrajectoryPlan, type Workspace } from '#/lib/api';
+import { continuo, isOffline, kimi, type ApprovalRequest, type ContinuoDoc, type ContinuoTask, type Decision, type QuestionRequest, type Trajectory, type TrajectoryPlan, type Workspace } from '#/lib/api';
 import { currentLine, tasksOn } from '#/lib/trajectory';
 import { SessionStream } from '#/lib/ws';
 import { applyEvent, emptyTimeline, fromMessages, withUserMessage, type TimelineState } from '#/lib/timeline';
@@ -33,6 +33,7 @@ export function WorkspaceView({ workspace, onClose, themePref, onTheme }: { work
   const [doc, setDoc] = useState<ContinuoDoc | null>(null);
   const [target, setTarget] = useState<NavTarget>({ kind: 'folder', path: '' });
   const [error, setError] = useState<string | null>(null);
+  const [offline, setOffline] = useState(false);
   const [state, setState] = useState<TimelineState>(emptyTimeline());
   const [questions, setQuestions] = useState<QuestionRequest[]>([]);
   const [approvals, setApprovals] = useState<ApprovalRequest[]>([]);
@@ -45,29 +46,32 @@ export function WorkspaceView({ workspace, onClose, themePref, onTheme }: { work
   const [drawerWidth, setDrawerWidth] = useState(readDrawerWidth);
 
   const refresh = useCallback(async () => {
-    try { const d = await continuo.get(workspaceId); setDoc(d); return d; } catch (error) { setError((error as Error).message); return null; }
+    try { const d = await continuo.get(workspaceId); setDoc(d); setOffline(false); return d; } catch (error) { if (isOffline(error)) setOffline(true); else setError((error as Error).message); return null; }
   }, [workspaceId]);
 
   useEffect(() => {
     let cancelled = false;
     setDoc(null); setTarget({ kind: 'folder', path: '' }); setError(null);
     void (async () => {
-      try { const d = await continuo.open(workspaceId, newRequestId()); if (!cancelled) setDoc(d); } catch (error) { if (!cancelled) setError((error as Error).message); }
+      try { const d = await continuo.open(workspaceId, newRequestId()); if (!cancelled) setDoc(d); } catch (error) { if (!cancelled) { if (isOffline(error)) setOffline(true); else setError((error as Error).message); } }
     })();
     return () => { cancelled = true; };
   }, [workspaceId]);
 
   useEffect(() => {
-    if (!doc) return;
-    const anyActive = doc.tasks.some(isActive) || doc.init.status === 'running';
+    if (!doc && !offline) return;
+    const anyActive = offline || doc === null || doc.tasks.some(isActive) || doc.init.status === 'running';
     const timer = window.setInterval(() => { void refresh(); }, anyActive ? 1500 : 6000);
     return () => window.clearInterval(timer);
-  }, [doc, refresh]);
+  }, [doc, offline, refresh]);
 
   const line = doc === null ? undefined : currentLine(doc);
   const lineTasks = doc === null ? [] : tasksOn(doc, line);
   const latest = lineTasks.at(-1) ?? null;
   const sessionId = line?.sessionId ?? null;
+  const lineId = line?.trajectoryId;
+
+  useEffect(() => { setTarget({ kind: 'folder', path: '' }); }, [lineId]);
 
   const refreshPending = useCallback(async (sid: string) => {
     const [q, a] = await Promise.all([kimi.pendingQuestions(sid), kimi.pendingApprovals(sid)]);
@@ -101,7 +105,7 @@ export function WorkspaceView({ workspace, onClose, themePref, onTheme }: { work
             }).catch(() => undefined);
           }
         });
-      } catch (error) { if (!cancelled) setError((error as Error).message); }
+      } catch (error) { if (!cancelled) { if (isOffline(error)) setOffline(true); else setError((error as Error).message); } }
     })();
     return () => { cancelled = true; streamRef.current?.close(); streamRef.current = null; };
   }, [sessionId, refreshPending, refresh]);
@@ -176,6 +180,7 @@ export function WorkspaceView({ workspace, onClose, themePref, onTheme }: { work
         <Button variant="ghost" size="sm" onClick={onClose} title="回到项目列表"><ChevronLeft size={15} />项目</Button>
         <span className="sep">/</span>
         <span className="project-name">{workspace.name}</span>
+        {line?.origin !== undefined && <span className="line-chip" title={line.workDir === undefined ? '这条轨迹和原来的轨迹共用项目文件夹' : `这条轨迹的文件在 ${line.workDir}`}>{line.label}</span>}
         <span className="project-path" title={workspace.root}>{workspace.root}</span>
         <span className="flex-1" />
         <button className="icon-btn" title={dark ? '切换到浅色' : '切换到深色'} onClick={() => onTheme(dark ? 'light' : 'dark')}>{dark ? <Sun size={16} /> : <Moon size={16} />}</button>
@@ -194,7 +199,7 @@ export function WorkspaceView({ workspace, onClose, themePref, onTheme }: { work
           onDoubleClick={() => setDrawerWidth(DRAWER_DEFAULT)}
         />
         <Drawer
-          workspace={workspace} doc={doc} line={line} latest={latest} state={state} questions={questions} approvals={approvals} error={error}
+          workspace={workspace} doc={doc} line={line} latest={latest} state={state} questions={questions} approvals={approvals} error={error ?? (offline ? '连不上本地服务，正在重试…' : null)}
           activeUserTask={activeUserTask} replyTarget={replyTarget} composerRef={composerRef} sending={sending}
           onSend={send}
           onAnswer={async (q, answers, note) => { if (!sessionId) return; await kimi.resolveQuestion(sessionId, q.question_id, answers, note); await refreshPending(sessionId); void refresh(); }}

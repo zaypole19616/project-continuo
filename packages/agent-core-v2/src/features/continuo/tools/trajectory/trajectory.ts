@@ -14,8 +14,10 @@ const planSchema = z.object({
 });
 
 export const TrajectoryInputSchema = z.object({
-  action: z.enum(['propose', 'expand', 'list']).describe('propose opens a decision point with plans; expand adds plans to the open one or says nothing different is left; list shows the decision points on this line.'),
-  question: z.string().min(1).max(120).optional().describe('propose: the decision the user has to make, as a short question.'),
+  action: z
+    .enum(['propose', 'expand', 'explore', 'list', 'submit', 'ask', 'withdraw'])
+    .describe('Main agent: propose opens a decision point with plans you write yourself; expand adds plans to the open one or says nothing different is left; explore opens a decision point whose plans are written in parallel, one per angle; list shows the decision points on this line. Plan author: submit hands in your plan; ask sends a question to another author; withdraw drops your plan because it is the same as another one.'),
+  question: z.string().min(1).max(120).optional().describe('propose / explore: the decision the user has to make, as a short question.'),
   plans: z.array(planSchema).max(12).optional().describe('propose / expand: the plans. Each must differ from the others in approach, not in wording.'),
   exhausted: z
     .object({
@@ -24,8 +26,18 @@ export const TrajectoryInputSchema = z.object({
     })
     .optional()
     .describe('expand: use instead of plans when another plan would only restate an existing one.'),
-  name: z.string().min(1).max(12).optional().describe('propose: the task name, two to six characters, if you have not reported it yet.'),
-  category: z.string().min(1).max(24).regex(/^[a-z][a-z0-9-]*$/).optional().describe('propose: the task category as a lowercase ASCII word.'),
+  angles: z
+    .array(z.object({ title: z.string().min(1).max(40).describe('The angle in a few words.'), angle: z.string().min(1).max(400).describe('What this author should look into and argue for.') }))
+    .max(6)
+    .optional()
+    .describe('explore: two to four clearly different angles, one author each.'),
+  reason: z.string().min(1).max(300).optional().describe('explore: why each plan needs its own investigation instead of you writing them in one go. withdraw: why your plan is the same as the other one.'),
+  plan: planSchema.optional().describe('submit: your plan.'),
+  to: z.string().min(1).max(8).optional().describe('ask: the key of the author you ask (for example B), or all.'),
+  text: z.string().min(1).max(600).optional().describe('ask: the question or answer.'),
+  sameAs: z.string().min(1).max(8).optional().describe('withdraw: the key of the author whose plan yours duplicates.'),
+  name: z.string().min(1).max(12).optional().describe('propose / explore: the task name, two to six characters, if you have not reported it yet.'),
+  category: z.string().min(1).max(24).regex(/^[a-z][a-z0-9-]*$/).optional().describe('propose / explore: the task category as a lowercase ASCII word.'),
 });
 
 export type TrajectoryInput = z.infer<typeof TrajectoryInputSchema>;

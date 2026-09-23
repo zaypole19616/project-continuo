@@ -1,6 +1,6 @@
-import { ArrowRight, FileText, Plus, Shuffle } from 'lucide-react';
+import { ArrowRight, FileText, Loader2, Plus, Shuffle } from 'lucide-react';
 import type { ContinuoDoc, Decision, Trajectory, TrajectoryPlan } from '#/lib/api';
-import { choiceOn, isOpen, planState, type PlanState } from '#/lib/trajectory';
+import { choiceOn, isExploring, isOpen, planState, type PlanState } from '#/lib/trajectory';
 import { Button } from '#/components/ui/button';
 
 export interface PlanActions {
@@ -20,7 +20,10 @@ const TAG: Record<PlanState['kind'], string> = { current: '当前', open: '备�
 export function PlanList({ doc, line, decision, locked, actions }: { doc: ContinuoDoc; line: Trajectory; decision: Decision; locked: boolean; actions: PlanActions }) {
   const choice = choiceOn(line, decision.decisionId);
   const open = isOpen(line, decision);
-  const lockTitle = locked ? '等这件事做完或停下后再切换' : undefined;
+  const writing = isExploring(decision);
+  const lockTitle = writing ? '方案都写完后再选' : locked ? '等这件事做完或停下后再切换' : undefined;
+  const pending = (decision.exploration?.angles ?? []).filter((angle) => angle.status === 'queued' || angle.status === 'running');
+  const skipped = writing ? [] : (decision.exploration?.angles ?? []).filter((angle) => angle.status === 'withdrawn' || angle.status === 'failed');
   return (
     <div className="plan-list">
       {decision.plans.map((plan) => {
@@ -35,7 +38,7 @@ export function PlanList({ doc, line, decision, locked, actions }: { doc: Contin
               {state.kind === 'abandoned' && plan.abandoned?.reason !== undefined && <div className="plan-field"><em>放弃原因</em>{plan.abandoned.reason}</div>}
               {state.kind === 'elsewhere' && <div className="plan-field"><em>进展</em>{state.tasks > 0 ? `那条轨迹上做了 ${state.tasks} 件事` : '那条轨迹刚开始'}</div>}
               <div className="plan-actions">
-                {state.kind === 'open' && <Hint title={lockTitle}><Button variant={open ? 'default' : 'outline'} size="sm" disabled={locked} onClick={() => actions.onChoose(decision, plan)}>走这条<ArrowRight size={12} /></Button></Hint>}
+                {state.kind === 'open' && <Hint title={lockTitle}><Button variant={open ? 'default' : 'outline'} size="sm" disabled={locked || writing} onClick={() => actions.onChoose(decision, plan)}>走这条<ArrowRight size={12} /></Button></Hint>}
                 {state.kind === 'elsewhere' && <Hint title={lockTitle}><Button variant="outline" size="sm" disabled={locked} onClick={() => actions.onSwitch(state.line)}><Shuffle size={12} />切换</Button></Hint>}
                 <button className="link plan-file" onClick={() => actions.onOpenFile(plan.path)} title={plan.path}><FileText size={12} />方案文件</button>
                 {(state.kind === 'open' || state.kind === 'elsewhere') && !open && <Hint title={lockTitle}><button className="link plan-drop" disabled={locked} onClick={() => actions.onAbandon(decision, plan)}>放弃</button></Hint>}
@@ -44,6 +47,20 @@ export function PlanList({ doc, line, decision, locked, actions }: { doc: Contin
           </div>
         );
       })}
+      {pending.map((angle) => (
+        <div key={angle.key} className="plan-row is-writing">
+          <span className="plan-key"><Loader2 size={12} className="spin" /></span>
+          <div className="plan-body">
+            <div className="plan-title"><span>{angle.title}</span><span className="plan-tag is-open">{angle.status === 'queued' ? '等待开始' : '正在写'}</span></div>
+            <div className="plan-field">{angle.angle}</div>
+          </div>
+        </div>
+      ))}
+      {skipped.length > 0 && (
+        <div className="plan-skipped">
+          {skipped.map((angle) => <div key={angle.key}><em>{angle.title}</em>{angle.status === 'withdrawn' ? `已合并，${angle.note ?? ''}` : `没写完，${angle.note ?? ''}`}</div>)}
+        </div>
+      )}
       {choice !== undefined && choice.planId === undefined && (
         <div className="plan-row is-current">
           <span className="plan-key">·</span>
@@ -59,7 +76,7 @@ export function PlanList({ doc, line, decision, locked, actions }: { doc: Contin
           <div><em>需要你定</em>{decision.exhausted.ask}</div>
         </div>
       )}
-      {open && decision.exhausted === undefined && (
+      {open && !writing && decision.exhausted === undefined && (
         <div className="plan-more">
           <Hint title={lockTitle}><Button variant="ghost" size="sm" disabled={locked} onClick={() => actions.onExpand(decision)}><Plus size={12} />再来几个</Button></Hint>
         </div>

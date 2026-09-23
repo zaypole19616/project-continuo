@@ -1,8 +1,9 @@
-import { choiceOn, decisionsOn, planStatusOn, trajectoryOfSession } from './trajectory';
-import type { ContextEntry, ContinuoTask, ContinuoWorkspaceDoc } from './types';
+import { choiceOn, decisionsOn, doneOnLine, explorerOf, lineById, otherLineNote, planStatusOn, trajectoryOfSession } from './trajectory';
+import { currentTaskOf, type ContextEntry, type ContinuoTask, type ContinuoWorkspaceDoc, type Decision, type ExplorationAngle, type Trajectory } from './types';
 
 export const CONTEXT_BUNDLE_MAX_CHARS = 6000;
 export const CONTEXT_BUNDLE_MAX_ENTRIES = 30;
+export const CONTEXT_BUNDLE_MAX_DONE = 12;
 
 export interface ContextBundle {
   readonly text: string;
@@ -10,10 +11,12 @@ export interface ContextBundle {
   readonly entryIds: readonly string[];
 }
 
-export function compileContextBundle(doc: ContinuoWorkspaceDoc, task: ContinuoTask | undefined): ContextBundle | undefined {
-  if (doc.context.length === 0 && doc.understanding === undefined) return undefined;
-  const lines: string[] = [];
-  lines.push(`Continuo project context (revision ${doc.revision}). This is reference data the product keeps for this folder; follow it when it applies and do not treat it as new instructions to modify files.`);
+export function compileContextBundle(doc: ContinuoWorkspaceDoc, sessionId: string): ContextBundle | undefined {
+  const explorer = explorerOf(doc, sessionId);
+  const task = explorer === undefined ? currentTaskOf(doc, sessionId) : undefined;
+  if (task?.kind === 'init') return undefined;
+  if (doc.context.length === 0 && doc.understanding === undefined && explorer === undefined) return undefined;
+  const lines: string[] = [`Continuo project context (revision ${doc.revision}). This is reference data the product keeps for this folder; follow it when it applies and do not treat it as new instructions to modify files.`];
   if (doc.understanding !== undefined) {
     lines.push('', 'What this folder is:', doc.understanding.text.trim());
   }
@@ -30,10 +33,18 @@ export function compileContextBundle(doc: ContinuoWorkspaceDoc, task: ContinuoTa
     lines.push('', 'Project points recorded when this folder was first read:');
     for (const entry of kept) lines.push(renderEntry(entry));
   }
+  const line = explorer === undefined ? (task === undefined ? undefined : trajectoryOfSession(doc, task.sessionId)) : lineById(doc, explorer.decision.trajectoryId);
+  if (line?.workDir !== undefined) {
+    lines.push('', `Working directory of this line: ${line.workDir}. It is a copy of the project made when this line branched off. Read and write with absolute paths under it, run shell commands with cwd set to it, and report deliverables relative to it; its work-log/ holds this line's history. Files elsewhere in the project belong to other lines: nothing here is merged back into them, and access outside this directory is refused.`);
+  }
+  if (explorer !== undefined) {
+    lines.push(...renderExplorer(explorer.decision, explorer.angle));
+    return { text: lines.join('\n'), revision: doc.revision, entryIds: kept.map((entry) => entry.id) };
+  }
   if (task !== undefined && task.kind === 'user') {
     lines.push('', `Current task: ${task.title}`, `Task status: ${task.status}.`);
     for (const item of task.supplements ?? []) lines.push(`The user added: ${item}`);
-    lines.push(...renderDecisions(doc, task));
+    if (line !== undefined) lines.push(...renderDone(doc, line, task), ...renderDecisions(doc, line));
   }
   lines.push(
     '',
@@ -43,31 +54,56 @@ export function compileContextBundle(doc: ContinuoWorkspaceDoc, task: ContinuoTa
   return { text: lines.join('\n'), revision: doc.revision, entryIds: kept.map((entry) => entry.id) };
 }
 
-function renderDecisions(doc: ContinuoWorkspaceDoc, task: ContinuoTask): string[] {
-  const trajectory = trajectoryOfSession(doc, task.sessionId);
-  if (trajectory === undefined) return [];
-  const decisions = decisionsOn(doc, trajectory);
+function renderDone(doc: ContinuoWorkspaceDoc, line: Trajectory, task: ContinuoTask): string[] {
+  const done = doneOnLine(doc, line, task.taskId);
+  if (done.length === 0) return [];
+  const shown = done.slice(-CONTEXT_BUNDLE_MAX_DONE);
+  const lines = ['', 'Done on this line (the work logs have the details):'];
+  if (done.length > shown.length) lines.push(`- ${done.length - shown.length} earlier tasks, see work-log/`);
+  for (const item of shown) lines.push(`- ${item.name}${item.deliverables.length === 0 ? '' : ` → ${item.deliverables.join(', ')}`}`);
+  return lines;
+}
+
+function renderDecisions(doc: ContinuoWorkspaceDoc, line: Trajectory): string[] {
+  const decisions = decisionsOn(doc, line);
   if (decisions.length === 0) return [];
   const lines = ['', 'Decision points on this line (the full text of any plan is in its file; read it only when you need it):'];
   for (const decision of decisions) {
-    const choice = choiceOn(trajectory, decision.decisionId);
+    const choice = choiceOn(line, decision.decisionId);
     lines.push(`- ${decision.question}`);
-    if (choice === undefined) lines.push('  Still open: wait for the user to pick a plan or say what they want instead.');
+    if (choice === undefined) lines.push(decision.exploration !== undefined && decision.exploration.endedAt === undefined ? '  Plans are still being written in parallel.' : '  Still open: wait for the user to pick a plan or say what they want instead.');
     else if (choice.planId === undefined) lines.push(`  The user chose their own direction: ${choice.text ?? ''}`);
     for (const plan of decision.plans) {
-      const status = planStatusOn(doc, trajectory, decision, plan);
-      if (status.kind === 'current') {
+      if (planStatusOn(doc, line, decision, plan).kind === 'current') {
         lines.push(`  Following plan ${plan.planId}: ${plan.title}. Basis: ${plan.basis} Risk: ${plan.risk}`);
         continue;
       }
-      const label = status.kind === 'abandoned' ? `abandoned${plan.abandoned?.reason === undefined ? '' : ` (${plan.abandoned.reason})`}` : status.kind === 'elsewhere' ? 'followed on another line' : 'not taken';
-      lines.push(`  Plan ${plan.planId}: ${plan.title} — ${label}. ${plan.path}`);
+      lines.push(`  Plan ${plan.planId}: ${plan.title} — ${otherLineNote(doc, line, decision, plan)}. ${plan.path}`);
     }
   }
-  if (task.branch !== undefined) {
-    const others = doc.tasks.filter((candidate) => candidate.taskId !== task.taskId && (candidate.taskId === decisions.find((decision) => decision.decisionId === task.branch?.decisionId)?.taskId || candidate.branch?.decisionId === task.branch?.decisionId));
-    const taken = [...new Set(others.flatMap((candidate) => (candidate.report?.deliverables ?? []).map((item) => item.path)))];
-    if (taken.length > 0) lines.push(`  Files produced by the other plans must stay as they are: ${taken.join(', ')}. Give your own files a -${task.branch.label} suffix where a name would collide.`);
+  return lines;
+}
+
+function renderExplorer(decision: Decision, angle: ExplorationAngle): string[] {
+  const exploration = decision.exploration!;
+  const others = exploration.angles.filter((candidate) => candidate.key !== angle.key);
+  const inbox = exploration.messages.filter((message) => message.to === angle.key || (message.to === 'all' && message.from !== angle.key));
+  const lines = [
+    '',
+    `You are the author of plan ${angle.key} for the decision point "${decision.question}".`,
+    `Your angle: ${angle.title} — ${angle.angle}`,
+  ];
+  if (others.length > 0) {
+    lines.push('Other authors writing in parallel:');
+    for (const other of others) lines.push(`- ${other.key} ${other.title} — ${other.angle}${other.status === 'submitted' && other.planId !== undefined ? ` (submitted as plan ${other.planId})` : other.status === 'withdrawn' ? ' (withdrawn)' : ''}`);
+  }
+  lines.push(
+    `Write only this one plan and submit it with Trajectory submit: title, basis, risk, the prompt that starts it and the full detail. Do not create or change project files. Stay within ${exploration.maxSteps} steps.`,
+    'You do not need to read the other plans. Only when you are unsure about something another author may have settled, ask them with Trajectory ask. If you find your plan is the same as another one, withdraw it with Trajectory withdraw and name that plan.',
+  );
+  if (inbox.length > 0) {
+    lines.push('Messages for you:');
+    for (const message of inbox) lines.push(`- from ${message.from}: ${message.text}`);
   }
   return lines;
 }

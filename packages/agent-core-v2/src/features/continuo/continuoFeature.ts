@@ -5,6 +5,7 @@ import { Feature } from '#/features/feature';
 import { registerFeature } from '#/features/featureRegistry';
 
 import { AgentContinuoBridgeService, IAgentContinuoBridge } from './bridge';
+import { AgentContinuoGuardService, IAgentContinuoGuard } from './guard';
 import { ContinuoStoreService, IContinuoStore } from './store';
 import { IReportResultTool, REPORT_RESULT_TOOL_NAME } from './tools/report-result/report-result';
 import { ReportResultTool } from './tools/report-result/reportResultTool';
@@ -27,6 +28,9 @@ export class ContinuoFeature extends Feature {
       activation: ScopeActivation.OnDemand,
     });
     this.contributeAgentService(IAgentContinuoBridge, AgentContinuoBridgeService, {
+      activation: ScopeActivation.OnScopeCreated,
+    });
+    this.contributeAgentService(IAgentContinuoGuard, AgentContinuoGuardService, {
       activation: ScopeActivation.OnScopeCreated,
     });
     this.contributeTool(IWorkspaceContextTool, WorkspaceContextTool, {

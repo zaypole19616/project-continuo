@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { CornerDownRight, FileText, GitBranch, GitFork, Maximize2, Minus, Plus, Shuffle } from 'lucide-react';
 import type { ContinuoDoc, ContinuoTask, Decision, Trajectory } from '#/lib/api';
-import { buildTrunk, choiceOn, isOpen, lastTurnOf, localTime, planState, taskLabel, type LineStub } from '#/lib/trajectory';
+import { buildTrunk, choiceOn, isExploring, isOpen, lastTurnOf, localTime, planState, taskLabel, type LineStub } from '#/lib/trajectory';
 import { Button } from '#/components/ui/button';
 import { Hint, PlanList, type PlanActions } from './PlanList';
 
@@ -209,7 +209,7 @@ function DecisionNode({ doc, line, decision, tier, collapsible, onToggle, locked
         <div className={`t-head ${collapsible ? 'is-toggle' : ''}`} onClick={collapsible ? onToggle : undefined} title={collapsible ? (tier === 'detail' ? '收起' : '展开') : undefined}>
           <GitFork size={13} className="t-fork" />
           <span className="t-name">{decision.question}</span>
-          <span className="t-tag is-muted">{decision.plans.length} 个方案</span>
+          <span className="t-tag is-muted">{isExploring(decision) ? `正在写 ${decision.exploration!.angles.length} 个方案` : `${decision.plans.length} 个方案`}</span>
         </div>
         {tier === 'mid' && <div className="t-sub">{summary}</div>}
         {tier === 'compact' && decision.plans.some((plan) => planState(doc, line, decision, plan).kind === 'elsewhere') && (

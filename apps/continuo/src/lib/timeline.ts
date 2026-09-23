@@ -97,3 +97,11 @@ export function applyEvent(state: TimelineState, ev: WsEvent): TimelineState {
       return state;
   }
 }
+
+export function friendlyError(message: string): string {
+  if (/usage limit|quota/i.test(message)) return 'Kimi 的用量额度用完了，额度恢复后再继续';
+  if (/rate limit|429|overloaded|503/i.test(message)) return '模型服务暂时忙不过来，稍后再继续';
+  if (/401|unauthori[sz]ed|not logged in|login/i.test(message)) return 'Kimi 账号需要重新登录';
+  if (/timeout|timed out|ECONNRESET|ENOTFOUND|fetch failed|network/i.test(message)) return '连不上模型服务，稍后再继续';
+  return message.slice(0, 160);
+}
