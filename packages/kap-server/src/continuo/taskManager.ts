@@ -478,7 +478,7 @@ export class ContinuoTaskManager {
     if (status.kind === 'current') return doc;
     if (status.kind === 'elsewhere') return this.activateTrajectory(workspaceId, status.trajectory.trajectoryId);
     const home = doc.trajectories.find((candidate) => candidate.trajectoryId === decision.trajectoryId);
-    if (home === undefined) throw new ContinuoError('invalid_state', '这个决策点所在的轨迹找不到了。');
+    if (home === undefined) throw new ContinuoError('invalid_state', '这个决策所在的轨迹找不到了。');
     const at = new Date().toISOString();
     const roundPrompt = `采用「${plan.title}」`;
     if (home.trajectoryId === line.trajectoryId && choiceOn(home, decisionId) === undefined) {
@@ -541,9 +541,9 @@ export class ContinuoTaskManager {
     const line = this.requireCurrent(doc);
     this.assertIdle(doc, line);
     if (decision.trajectoryId !== line.trajectoryId || choiceOn(line, decisionId) !== undefined) {
-      throw new ContinuoError('invalid_state', '只有还没选定的决策点才能再要方案。');
+      throw new ContinuoError('invalid_state', '只有还没选定的决策才能再要方案。');
     }
-    if (decision.exhausted !== undefined) throw new ContinuoError('invalid_state', '这个决策点已经没有明显不同的方案了。');
+    if (decision.exhausted !== undefined) throw new ContinuoError('invalid_state', '这个决策已经没有明显不同的方案了。');
     const task = this.requireTask(doc, decision.taskId);
     const session = await resumeSessionById(this.core.accessor, task.sessionId);
     if (session === undefined) throw new ContinuoError('invalid_state', '这件事的对话记录找不到了。');
@@ -648,7 +648,7 @@ export class ContinuoTaskManager {
 
   private requireDecision(doc: ContinuoWorkspaceDoc, decisionId: string): Decision {
     const decision = doc.decisions.find((candidate) => candidate.decisionId === decisionId);
-    if (decision === undefined) throw new ContinuoError('invalid_state', '这个决策点找不到了。');
+    if (decision === undefined) throw new ContinuoError('invalid_state', '这个决策找不到了。');
     return decision;
   }
 
@@ -1269,7 +1269,7 @@ function renderPlan(doc: ContinuoWorkspaceDoc, task: ContinuoTask, decision: Dec
     '',
     '| 字段 | 值 |',
     '|------|-----|',
-    `| 决策点 | ${decision.question} |`,
+    `| 决策 | ${decision.question} |`,
     `| 事项 | ${taskName(task)}${category === undefined ? '' : `（${category}）`} |`,
     `| 提出时间 | ${stamp(plan.createdAt)} |`,
     `| 状态 | ${planFileStatus(doc, decision, plan)} |`,

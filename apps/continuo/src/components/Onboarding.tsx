@@ -24,7 +24,7 @@ const TRAITS = [
 
 const FEATURES: Array<{ tag: string; icon: LucideIcon; title: string; text: string }> = [
   { tag: '决策', icon: GitFork, title: '在各个决策的十字路口与人对齐', text: '做法真正不同时，Continuo 不替用户选，而是呈现候选方案及其依据，并说明选择取决于什么。' },
-  { tag: '轨迹', icon: GitBranch, title: '把方向选择和之后发生的事连起来', text: '选择、执行过程和结果连在一条轨迹上，可以随时回看，也可以回到决策点换一条路、在轨迹之间切换。' },
+  { tag: '轨迹', icon: GitBranch, title: '把方向选择和之后发生的事连起来', text: '选择、执行过程和结果连在一条轨迹上，可以随时回看，也可以回到当时的决策换一条路、在轨迹之间切换。' },
 ];
 
 const noop = () => undefined;
