@@ -33,7 +33,7 @@ import { ContinuoError } from './errors';
 import { createLineDir, linesSettled, snapshotDir } from './lines';
 import { MAIN_TURN_MORE_PLANS, hiddenTurnWritePlan, mainTurnAdoptPlan, mainTurnComparePlans } from './prompts';
 import { writePlanFiles, writeWorkLog } from './render';
-import { assertIdle, started, toAwaiting, toEnded, toRunning } from './taskState';
+import { assertIdle, explorationFailure, started, toAwaiting, toEnded, toRunning } from './taskState';
 import type { Workers } from './workers';
 
 interface Explorer {
@@ -319,8 +319,8 @@ export class Decisions {
     });
     if (decision === undefined) return;
     const taskId = decision.taskId;
-    const count = decision.exploration!.angles.length;
-    const started = decision.exploration!.angles.some((angle) => angle.sessionId !== undefined);
+    const angles = decision.exploration!.angles;
+    const started = angles.some((angle) => angle.sessionId !== undefined);
     if (decision.plans.length === 0 && !started) {
       await writeWorkLog(this.store, workspaceId, taskId);
       return;
@@ -334,7 +334,7 @@ export class Decisions {
       await writePlanFiles(this.store, workspaceId, taskId);
     } else {
       const status: TaskStatus = stopped === '已停止' ? 'paused' : stopped === '被打断' ? 'interrupted' : 'failed';
-      await patchTask(this.store, workspaceId, taskId, (current) => ({ ...toEnded(current, status, endedAt), error: { code: 'turn.failed', message: `分头写的 ${count} 个方案都没能完成`, at: endedAt } }));
+      await patchTask(this.store, workspaceId, taskId, (current) => ({ ...toEnded(current, status, endedAt), error: { code: 'turn.failed', message: explorationFailure(angles), at: endedAt } }));
     }
     await writeWorkLog(this.store, workspaceId, taskId);
     await takeSnapshot(this.store, workspaceId, taskId);

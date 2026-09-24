@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { EMPTY_USAGE, type ContinuoTask } from '@moonshot-ai/agent-core-v2';
 
-import { interruptedOnRestart, isBusy, isLiveBusy, started, toAwaiting, toEnded, toRunning } from '../src/continuo/taskState';
+import { explorationFailure, interruptedOnRestart, isBusy, isLiveBusy, started, toAwaiting, toEnded, toRunning } from '../src/continuo/taskState';
 import { TodoRunner } from '../src/continuo/todos';
 
 const NOW = '2026-09-24T00:00:00.000Z';
@@ -38,6 +38,13 @@ describe('isBusy', () => {
 });
 
 describe('task transitions', () => {
+  it('says why every plan author failed, once per reason', () => {
+    const quota = '出错了（403 You\'ve reached your 5-hour usage limit.）';
+    const angle = (key: string, note?: string) => ({ key, title: key, angle: key, status: 'failed' as const, note });
+    expect(explorationFailure([angle('A', quota), angle('B', quota), angle('C', '步数用完了')])).toBe(`分头写的 3 个方案都没能完成：${quota}；步数用完了`);
+    expect(explorationFailure([angle('A'), angle('B')])).toBe('分头写的 2 个方案都没能完成');
+  });
+
   it('starts a queued task with its first prompt and nothing else', () => {
     const after = started(task({ status: 'queued', promptIds: [] }), 'msg_2');
     expect(after).toMatchObject({ status: 'running', promptIds: ['msg_2'], trigger: 'user' });

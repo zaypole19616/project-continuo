@@ -1,6 +1,6 @@
 import { basename } from 'node:path';
 
-import { taskName, type ContinuoTask, type ContinuoWorkspaceDoc, type TaskError, type TaskStatus, type TaskTrigger, type Trajectory } from '@moonshot-ai/agent-core-v2';
+import { taskName, type ContinuoTask, type ContinuoWorkspaceDoc, type ExplorationAngle, type TaskError, type TaskStatus, type TaskTrigger, type Trajectory } from '@moonshot-ai/agent-core-v2';
 
 import { ContinuoError } from './errors';
 
@@ -59,6 +59,11 @@ export function friendlyError(message: string): string {
 
 export function failureText(task: ContinuoTask): string | undefined {
   return task.error === undefined ? undefined : friendlyError(task.error.message);
+}
+
+export function explorationFailure(angles: readonly ExplorationAngle[]): string {
+  const reasons = [...new Set(angles.map((angle) => angle.note).filter((note) => note !== undefined))];
+  return `分头写的 ${angles.length} 个方案都没能完成${reasons.length === 0 ? '' : `：${reasons.join('；')}`}`;
 }
 
 export function phaseOf(tool: string, path: string | undefined): string {
