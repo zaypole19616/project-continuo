@@ -3,9 +3,13 @@ import { continuo, DEFAULT_MODEL, kimi, readRecent, type Workspace } from '#/lib
 import { FolderPicker } from '#/components/FolderPicker';
 import { CreateProjectDialog } from '#/components/CreateProjectDialog';
 import { ThemeToggle } from '#/components/ThemeToggle';
+import { LogIn } from 'lucide-react';
+import { Button } from '#/components/ui/button';
+import { useKimiLogin } from '#/components/LoginDialog';
 import type { ThemePref } from '#/lib/theme';
 
-export function Launcher({ onOpen, themePref, onTheme, onGuide }: { onOpen: (w: Workspace) => void; themePref: ThemePref; onTheme: (pref: ThemePref) => void; onGuide: () => void }) {
+export function Launcher({ onOpen, themePref, onTheme, onGuide, loginNeeded, onLoggedIn }: { onOpen: (w: Workspace) => void; themePref: ThemePref; onTheme: (pref: ThemePref) => void; onGuide: () => void; loginNeeded: boolean; onLoggedIn: () => void }) {
+  const login = useKimiLogin(onLoggedIn);
   const [recent, setRecent] = useState<Workspace[]>([]);
   const [creating, setCreating] = useState(false);
   const [browsing, setBrowsing] = useState(false);
@@ -54,6 +58,9 @@ export function Launcher({ onOpen, themePref, onTheme, onGuide }: { onOpen: (w: 
         <h1>Continuo</h1>
         <p className="ver">基于 Kimi Code · {DEFAULT_MODEL.split('/').pop()} · <button className="link launch-guide" onClick={onGuide}>功能介绍</button></p>
         {error !== null && <div className="banner banner-err launch-error">{error}</div>}
+        {loginNeeded && (
+          <div className="login-bar"><LogIn size={16} /><span className="flex-1"><b>请先用 Kimi 账号登录。</b>登录后 Continuo 才能读你的文件夹、帮你做事。</span><Button size="sm" onClick={login.start}>登录</Button></div>
+        )}
         <div className="launch-card">
           <div className="launch-pair">
             <div className="launch-cell">
@@ -78,6 +85,7 @@ export function Launcher({ onOpen, themePref, onTheme, onGuide }: { onOpen: (w: 
           )}
         </div>
       </div>
+      {login.dialog}
       <CreateProjectDialog open={creating} onOpenChange={setCreating} onCreated={(w) => { setCreating(false); onOpen(w); }} />
       <FolderPicker title="打开已有项目" confirmLabel="打开这个文件夹" open={browsing} onOpenChange={setBrowsing} onPick={(path) => { setBrowsing(false); void kimi.createWorkspace(path).then(onOpen).catch((error: Error) => setError(error.message)); }} />
     </div>

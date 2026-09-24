@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ApiError, kimi, readToken, setToken, touchRecent, type Workspace } from '#/lib/api';
+import { ApiError, kimi, needsLogin, readToken, setToken, touchRecent, type Workspace } from '#/lib/api';
 import { applyTheme, readThemePref, watchSystemTheme, type ThemePref } from '#/lib/theme';
 import { ONBOARDED_KEY, Onboarding } from '#/components/Onboarding';
 import { Launcher } from '#/pages/Launcher';
@@ -12,6 +12,7 @@ export function App() {
   const [checking, setChecking] = useState(true);
   const [serverOk, setServerOk] = useState<string | null>(null);
   const [failure, setFailure] = useState<'auth' | 'network' | null>(null);
+  const [loginNeeded, setLoginNeeded] = useState(false);
   const [intro, setIntro] = useState(() => { try { return localStorage.getItem(ONBOARDED_KEY) !== '1'; } catch { return true; } });
   const [themePref, setThemePref] = useState<ThemePref>(() => readThemePref());
 
@@ -32,6 +33,7 @@ export function App() {
         const meta = await kimi.meta();
         if (cancelled) return;
         setServerOk(meta.server_version);
+        kimi.userInfo().then((info) => { if (!cancelled) setLoginNeeded(needsLogin(info)); }).catch(() => undefined);
       } catch (error) {
         if (cancelled) return;
         setServerOk(null);
@@ -61,7 +63,7 @@ export function App() {
     <>
       {workspace
         ? <WorkspaceView workspace={workspace} onClose={() => setWorkspace(null)} themePref={themePref} onTheme={setThemePref} />
-        : <Launcher onOpen={open} themePref={themePref} onTheme={setThemePref} onGuide={() => setIntro(true)} />}
+        : <Launcher onOpen={open} themePref={themePref} onTheme={setThemePref} onGuide={() => setIntro(true)} loginNeeded={loginNeeded} onLoggedIn={() => setLoginNeeded(false)} />}
       {intro && <Onboarding onDone={finishIntro} />}
     </>
   );

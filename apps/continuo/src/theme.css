@@ -604,3 +604,9 @@ button.deck-option:disabled { opacity: 0.5; cursor: default; }
 .launch-guide:hover { color: var(--text-1); }
 .pick-fallback { margin-top: 6px; font-size: var(--fs-xs); color: var(--text-2); text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--line-strong); }
 .pick-fallback:hover { color: var(--text-1); }
+.login-bar { width: 100%; display: flex; align-items: center; gap: 10px; margin-bottom: 10px; padding: 10px 12px 10px 14px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface); font-size: 13px; color: var(--text-2); }
+.login-bar b { color: var(--text-1); font-weight: 600; }
+.login-wait { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-2); }
+.login-ok { color: var(--ok); }
+.login-fallback { font-size: 12.5px; color: var(--text-3); display: flex; align-items: center; gap: 4px; }
+.login-link { color: var(--text-2); text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--line-strong); display: inline-flex; align-items: center; gap: 4px; }

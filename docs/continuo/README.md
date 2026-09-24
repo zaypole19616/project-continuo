@@ -139,7 +139,7 @@ This repository is a fork of [MoonshotAI/kimi-code](https://github.com/MoonshotA
 ```bash
 pnpm install
 pnpm run build:packages && pnpm -C apps/kimi-code run build
-node apps/kimi-code/dist/main.mjs login            # Kimi 账号设备码登录
+node apps/kimi-code/dist/main.mjs login            # Kimi 账号设备码登录；也可以跳过，在启动页点「登录」
 KIMI_CODE_EXPERIMENTAL_CONTINUO=1 node apps/kimi-code/dist/main.mjs web --no-open --port 58627
 ```
 

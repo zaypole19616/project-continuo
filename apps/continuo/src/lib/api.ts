@@ -46,7 +46,12 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
 export const api = {
   get: <T,>(path: string) => call<T>('GET', path),
   post: <T,>(path: string, body?: unknown) => call<T>('POST', path, body ?? {}),
+  delete: <T,>(path: string) => call<T>('DELETE', path),
 };
+
+export type UserInfo = { kind: 'ok'; userInfo: { email?: string } } | { kind: 'error'; message: string };
+export interface LoginFlow { flow_id: string; status: 'pending' | 'authenticated' | 'denied' | 'expired' | 'cancelled'; verification_uri_complete?: string; interval?: number; error_message?: string }
+export const needsLogin = (info: UserInfo): boolean => info.kind === 'error' && /no token/i.test(info.message);
 
 export interface Workspace { id: string; root: string; name: string; created_at: string; last_opened_at: string; session_count: number }
 export interface Session { id: string; workspace_id?: string; title: string; busy: boolean; pending_interaction?: string; last_turn_reason?: string; agent_config?: { model?: string }; usage?: Record<string, number>; metadata?: { cwd?: string }; created_at: string; updated_at: string }
@@ -65,6 +70,10 @@ export const DEFAULT_MODEL = 'kimi-code/kimi-for-coding';
 export const kimi = {
   meta: () => api.get<{ server_version: string; backend: string }>('/meta'),
   planUsage: () => api.get<PlanUsage>('/oauth/usage'),
+  userInfo: () => api.get<UserInfo>('/oauth/userinfo'),
+  loginStart: () => api.post<LoginFlow>('/oauth/login'),
+  loginPoll: () => api.get<LoginFlow | null>('/oauth/login'),
+  loginCancel: () => api.delete<unknown>('/oauth/login'),
   workspaces: () => api.get<{ items: Workspace[] }>('/workspaces'),
   createWorkspace: (root: string, name?: string) => api.post<Workspace>('/workspaces', { root, name }),
   fsHome: () => api.get<FsHome>('/fs:home'),

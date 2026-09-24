@@ -36,7 +36,7 @@ Continuo，通奏低音：巴洛克音乐里贯穿全曲、从不中断的低音
 ```bash
 pnpm install                       # Node >= 24.15; on newer Node add --config.engine-strict=false
 pnpm run build:packages && pnpm -C apps/kimi-code run build
-node apps/kimi-code/dist/main.mjs login
+node apps/kimi-code/dist/main.mjs login   # optional: you can also sign in from Continuo's launcher
 KIMI_CODE_EXPERIMENTAL_CONTINUO=1 node apps/kimi-code/dist/main.mjs web --no-open --port 58627
 ```
 
