@@ -1,5 +1,5 @@
 import { choiceOn, currentTrajectory, planStatusOn, taskCategory, taskName } from './trajectory';
-import type { ContinuoTask, ContinuoWorkspaceDoc, Decision, Trajectory, TrajectoryPlan } from './types';
+import type { ContinuoTask, ContinuoWorkspaceDoc, Decision, Suggestion, Trajectory, TrajectoryPlan } from './types';
 
 export interface DeliverableFeedback {
   readonly exists: boolean;
@@ -46,7 +46,6 @@ export interface TrajectorySample {
   readonly current: boolean;
   readonly branchedFrom?: { readonly trajectoryId: string; readonly kind: 'plan' | 'task'; readonly decisionId?: string; readonly planId?: string; readonly afterTaskId?: string };
   readonly abandonReason?: string;
-  readonly context: { readonly understanding?: string; readonly points: readonly string[] };
   readonly tasks: readonly SampleTask[];
   readonly decisions: readonly SampleDecision[];
 }
@@ -62,7 +61,7 @@ export interface PreferencePair {
 }
 
 export interface TrajectoryExport {
-  readonly workspace: { readonly name: string; readonly exportedAt: string };
+  readonly workspace: { readonly name: string; readonly exportedAt: string; readonly context: { readonly understanding?: string; readonly points: readonly string[] } };
   readonly samples: readonly TrajectorySample[];
   readonly preferences: readonly PreferencePair[];
 }
@@ -73,7 +72,7 @@ export function buildTrajectoryExport(doc: ContinuoWorkspaceDoc, feedback: Reado
   const current = currentTrajectory(doc);
   const samples = doc.trajectories.map((line) => sampleOf(doc, line, current, feedback));
   return {
-    workspace: { name: doc.root.split('/').filter(Boolean).pop() ?? doc.root, exportedAt },
+    workspace: { name: doc.root.split('/').filter(Boolean).pop() ?? doc.root, exportedAt, context: { understanding: doc.understanding?.text, points: doc.context.map((entry) => entry.text) } },
     samples,
     preferences: doc.decisions.flatMap((decision) => pairsOf(doc, decision, current)).toSorted((a, b) => STRENGTH[a.signal] - STRENGTH[b.signal]),
   };
@@ -95,7 +94,6 @@ function sampleOf(doc: ContinuoWorkspaceDoc, line: Trajectory, current: Trajecto
       afterTaskId: line.origin.afterTaskId,
     },
     abandonReason: line.abandonReason,
-    context: { understanding: doc.understanding?.text, points: doc.context.map((entry) => entry.text) },
     tasks: tasks.map((task, index) => ({
       taskId: task.taskId,
       name: taskName(task),
@@ -114,10 +112,14 @@ function sampleOf(doc: ContinuoWorkspaceDoc, line: Trajectory, current: Trajecto
         };
       }),
       unresolved: task.report?.unresolved ?? [],
-      nextStep: task.report?.nextStep === undefined ? undefined : { title: task.report.nextStep.title, started: later(index).some((next) => next.title === task.report!.nextStep!.prompt.slice(0, 120)) },
+      nextStep: task.report?.nextStep === undefined ? undefined : { title: task.report.nextStep.title, started: nextStepStarted(doc, task, task.report.nextStep) },
     })),
     decisions: decisions.map((decision) => decisionOf(doc, line, decision)),
   };
+}
+
+function nextStepStarted(doc: ContinuoWorkspaceDoc, task: ContinuoTask, nextStep: Suggestion): boolean {
+  return (doc.todos ?? []).some((todo) => todo.state === 'started' && (todo.fromTaskId === task.taskId || todo.text === nextStep.prompt));
 }
 
 function decisionOf(doc: ContinuoWorkspaceDoc, line: Trajectory, decision: Decision): SampleDecision {
@@ -136,7 +138,7 @@ function decisionOf(doc: ContinuoWorkspaceDoc, line: Trajectory, decision: Decis
         risk: plan.risk,
         fate: status.kind === 'current' ? 'chosen' : status.kind === 'elsewhere' ? 'taken_elsewhere' : status.kind === 'abandoned' ? 'abandoned' : 'not_taken',
         abandonReason: plan.abandoned?.reason,
-        author: author === undefined ? undefined : { angle: author.angle, steps: author.steps },
+        author: author === undefined ? undefined : { angle: author.angle, steps: author.usage?.steps ?? 0 },
       };
     }),
     chosen: choice?.planId,

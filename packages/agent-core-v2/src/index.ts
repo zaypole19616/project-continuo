@@ -752,6 +752,7 @@ export { CONTINUO_WORKER_PROFILE } from '#/features/continuo/profile/continuoWor
 export { WORKSPACE_CONTEXT_TOOL_NAME } from '#/features/continuo/tools/workspace-context/workspace-context';
 export { REPORT_RESULT_TOOL_NAME } from '#/features/continuo/tools/report-result/report-result';
 export { TRAJECTORY_TOOL_NAME } from '#/features/continuo/tools/trajectory/trajectory';
+export { SUBMIT_PLAN_TOOL_NAME } from '#/features/continuo/tools/submit-plan/submit-plan';
 import '#/features/continuo/continuoFeature';
 
 export * from '#/features/notify/flag';

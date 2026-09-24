@@ -12,7 +12,15 @@ export function migrateWorkspaceDoc(stored: unknown): ContinuoWorkspaceDoc | und
   let doc = stored as Loose;
   if (version < 2) doc = fromV1(doc);
   if (version < 3) doc = fromV2(doc);
-  return { ...(doc as unknown as ContinuoWorkspaceDoc), schemaVersion: CONTINUO_SCHEMA_VERSION };
+  return { ...(doc as unknown as ContinuoWorkspaceDoc), tasks: withErrorField((doc['tasks'] as Loose[] | undefined) ?? []), schemaVersion: CONTINUO_SCHEMA_VERSION };
+}
+
+function withErrorField(tasks: readonly Loose[]): ContinuoTask[] {
+  return tasks.map((task) => {
+    const { lastError, ...rest } = task;
+    if (rest['error'] !== undefined || typeof lastError !== 'string') return rest as unknown as ContinuoTask;
+    return { ...rest, error: { code: 'turn.failed', message: lastError, at: String(rest['updatedAt']) } } as unknown as ContinuoTask;
+  });
 }
 
 function fromV1(doc: Loose): Loose {

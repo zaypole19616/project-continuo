@@ -111,7 +111,7 @@ export function Drawer(p: DrawerProps) {
     if (suggested.length > 0) extras.push({ at: Date.parse(task.endedAt!), node: <NextStepCard key={`next-${task.taskId}`} todos={suggested} busy={p.sending} startLock={startLock} onAction={todoAction} onShowTodos={() => setTab('todo')} /> });
   }
   for (const task of tasks.filter((t) => t.status === 'failed' && t.endedAt !== undefined)) {
-    const error = task.error ?? { code: 'turn.failed', message: task.lastError ?? '没有完成', at: task.endedAt! };
+    const error = task.error ?? { code: 'turn.failed', message: '没有完成', at: task.endedAt! };
     const retry = task.taskId === p.latest?.taskId ? <Button variant="default" size="sm" disabled={p.sending} onClick={() => p.onAction(task, 'resume')}><RotateCcw size={12} />重试</Button> : undefined;
     extras.push({ at: Date.parse(task.endedAt!), node: <ErrorCard key={`err-${task.taskId}`} kicker={`「${taskLabel(task)}」没有完成`} error={error} action={retry} /> });
   }

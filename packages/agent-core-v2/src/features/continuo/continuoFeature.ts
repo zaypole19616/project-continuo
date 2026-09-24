@@ -9,6 +9,8 @@ import { AgentContinuoGuardService, IAgentContinuoGuard } from './guard';
 import { ContinuoStoreService, IContinuoStore } from './store';
 import { IReportResultTool, REPORT_RESULT_TOOL_NAME } from './tools/report-result/report-result';
 import { ReportResultTool } from './tools/report-result/reportResultTool';
+import { ISubmitPlanTool, SUBMIT_PLAN_TOOL_NAME } from './tools/submit-plan/submit-plan';
+import { SubmitPlanTool } from './tools/submit-plan/submitPlanTool';
 import { ITrajectoryTool, TRAJECTORY_TOOL_NAME } from './tools/trajectory/trajectory';
 import { TrajectoryTool } from './tools/trajectory/trajectoryTool';
 import { IWorkspaceContextTool, WORKSPACE_CONTEXT_TOOL_NAME } from './tools/workspace-context/workspace-context';
@@ -43,6 +45,10 @@ export class ContinuoFeature extends Feature {
     });
     this.contributeTool(ITrajectoryTool, TrajectoryTool, {
       name: TRAJECTORY_TOOL_NAME,
+      domain: 'continuo',
+    });
+    this.contributeTool(ISubmitPlanTool, SubmitPlanTool, {
+      name: SUBMIT_PLAN_TOOL_NAME,
       domain: 'continuo',
     });
   }

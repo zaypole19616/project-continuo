@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { createDecorator } from '#/_base/di/instantiation';
 import { type AgentTool } from '#/tool/toolContract';
 
+import { suggestionSchema } from '../schemas';
+
 export const WORKSPACE_CONTEXT_TOOL_NAME = 'WorkspaceContext';
 
 export const WorkspaceContextInputSchema = z.object({
@@ -26,13 +28,7 @@ export const WorkspaceContextInputSchema = z.object({
     .optional()
     .describe('Project points, each backed by files you actually read.'),
   suggestions: z
-    .array(
-      z.object({
-        title: z.string().min(1).max(40).describe('What to do, as a short task name in the language of the folder.'),
-        reason: z.string().min(1).max(200).describe('Why, with the file or gap that shows it.'),
-        prompt: z.string().min(1).max(600).describe('The request that starts it, written as the user would ask it.'),
-      }),
-    )
+    .array(suggestionSchema)
     .max(3)
     .optional()
     .describe('Up to three tasks you recommend doing next, most valuable first, each shown by what you read. Leave this out when nothing stands out.'),

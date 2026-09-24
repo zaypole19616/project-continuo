@@ -4,13 +4,18 @@ import type { ToolExecution, ToolResult } from '#/tool/toolContract';
 import { toInputJsonSchema } from '#/tool/input-schema';
 import { ISessionContext } from '#/session/sessionContext/sessionContext';
 
-import { IContinuoStore } from '../../store';
-import { choiceOn, decisionsOn, EXPLORE_MAX_ANGLES, EXPLORE_MAX_STEPS, explorerOf, openDecisionOf, otherLineNote, decisionStance, planLetter, planPath, planStatusOn, trajectoryOfSession } from '../../trajectory';
-import { currentTaskOf, type ContinuoWorkspaceDoc, type Decision, type TrajectoryPlan } from '../../types';
+import { IContinuoStore, patchDecision } from '../../store';
+import { decisionStance, EXPLORE_MAX_ANGLES, EXPLORE_MAX_STEPS, explorerOf, openDecisionOf, planFrom, planIds, planLetter, trajectoryOfSession } from '../../trajectory';
+import { currentTaskOf, EMPTY_USAGE, type ContinuoTask, type ContinuoWorkspaceDoc, type Decision, type Trajectory, type TrajectoryPlan } from '../../types';
+import { SUBMIT_PLAN_TOOL_NAME } from '../submit-plan/submit-plan';
 import { ITrajectoryTool, TRAJECTORY_TOOL_NAME, TrajectoryInputSchema, type TrajectoryInput } from './trajectory';
 import DESCRIPTION from './trajectory.md?raw';
 
-const AUTHOR_ACTIONS = new Set(['submit', 'ask', 'withdraw']);
+type PlanInput = NonNullable<TrajectoryInput['plans']>[number];
+
+export function stopsBatch(args: TrajectoryInput): boolean {
+  return args.action !== 'expand' || args.exhausted !== undefined;
+}
 
 export class TrajectoryTool implements ITrajectoryTool {
   declare readonly _serviceBrand: undefined;
@@ -27,134 +32,111 @@ export class TrajectoryTool implements ITrajectoryTool {
     return {
       description: describe(args),
       approvalRule: this.name,
+      stopBatchAfterThis: stopsBatch(args),
       execute: async () => {
         const doc = await this.store.load(this.session.workspaceId);
         if (doc === undefined) return { isError: true, output: 'This workspace has no Continuo state; open it through Continuo first.' };
-        const explorer = explorerOf(doc, this.session.sessionId);
-        if (explorer !== undefined) {
-          if (!AUTHOR_ACTIONS.has(args.action)) return { isError: true, output: 'As a plan author you only submit your plan, ask another author, or withdraw.' };
-          return this.author(doc, explorer.decision, explorer.angle.key, args);
+        if (explorerOf(doc, this.session.sessionId) !== undefined) return { isError: true, output: `As a plan author you use ${SUBMIT_PLAN_TOOL_NAME}: submit your plan, ask another author, or withdraw.` };
+        const trajectory = trajectoryOfSession(doc, this.session.sessionId);
+        const task = currentTaskOf(doc, this.session.sessionId);
+        if (trajectory === undefined || task === undefined || task.kind !== 'user') return { isError: true, output: 'Decision points belong to a user task; there is none running in this session.' };
+        const now = new Date().toISOString();
+        switch (args.action) {
+          case 'propose': return this.propose(doc, trajectory, task, args, now);
+          case 'explore': return this.explore(doc, trajectory, task, args, now);
+          case 'recommend':
+          case 'expand': {
+            const open = openDecisionOf(doc, trajectory, task.taskId);
+            if (open === undefined) return { isError: true, output: `There is no open decision point on this task to ${args.action}.` };
+            return args.action === 'recommend' ? this.recommend(doc, open, args, now) : this.expand(doc, open, trajectory, task, args, now);
+          }
         }
-        if (AUTHOR_ACTIONS.has(args.action)) return { isError: true, output: 'submit, ask and withdraw are for plan authors during an exploration.' };
-        return this.main(doc, args);
       },
     };
   }
 
-  private async main(doc: ContinuoWorkspaceDoc, args: TrajectoryInput): Promise<ToolResult> {
-    const trajectory = trajectoryOfSession(doc, this.session.sessionId);
-    const task = currentTaskOf(doc, this.session.sessionId);
-    if (trajectory === undefined || task === undefined || task.kind !== 'user') return { isError: true, output: 'Decision points belong to a user task; there is none running in this session.' };
-    if (args.action === 'list') return { isError: false, output: renderList(doc, trajectory.trajectoryId) };
-    const now = new Date().toISOString();
-    const named = { ...task, name: task.name ?? args.name, category: task.category ?? args.category };
-    const saveNew = async (decision: Decision) => {
-      await this.store.update(doc.workspaceId, (current) => ({
-        ...current,
-        decisions: [...current.decisions, decision],
-        tasks: current.tasks.map((candidate) => (candidate.taskId === task.taskId ? { ...candidate, name: named.name, category: named.category, updatedAt: now } : candidate)),
-      }));
-    };
-    if (args.action === 'propose' || args.action === 'explore') {
-      if (args.question === undefined) return { isError: true, output: `${args.action} needs a question.` };
-      if (openDecisionOf(doc, trajectory, task.taskId) !== undefined) return { isError: true, output: 'A decision point is already open for this task; use expand to add plans to it.' };
-      const base = { decisionId: `dec_${randomUUID().slice(0, 8)}`, taskId: task.taskId, trajectoryId: trajectory.trajectoryId, question: args.question, turnIndex: Math.max(0, trajectory.turnCount - 1), createdAt: now };
-      if (args.action === 'propose') {
-        if (args.plans === undefined || args.plans.length < 2) return { isError: true, output: 'propose needs at least two plans.' };
-        const plans: TrajectoryPlan[] = args.plans.map(({ recommended: _recommended, ...plan }, index) => ({ ...plan, planId: planLetter(index), path: planPath(named, planLetter(index), now), createdAt: now }));
-        const stance = decisionStance(plans.filter((_, index) => args.plans![index]!.recommended === true).map((plan) => plan.planId), args.why, args.dependsOn, now);
-        if (typeof stance === 'string') return { isError: true, output: `Nothing recorded. ${stance}` };
-        await saveNew({ ...base, plans, stance });
-        return { isError: false, output: `Decision point recorded with ${plans.length} plans:\n${plans.map((plan) => `- ${plan.planId} ${plan.title} (${plan.path})`).join('\n')}\nEnd your turn now with one short line; name plans by title, not by letter. The user picks a plan.` };
-      }
-      const angles = args.angles ?? [];
-      if (angles.length < 2 || angles.length > EXPLORE_MAX_ANGLES) return { isError: true, output: `explore needs two to ${EXPLORE_MAX_ANGLES} angles.` };
-      if (args.reason === undefined) return { isError: true, output: 'explore needs a reason: why each plan needs its own investigation. If it does not, write the plans yourself with propose.' };
-      await saveNew({
-        ...base,
-        plans: [],
-        exploration: {
-          reason: args.reason,
-          angles: angles.map((angle, index) => ({ key: planLetter(index), title: angle.title, angle: angle.angle, status: 'queued', steps: 0 })),
-          messages: [],
-          maxSteps: EXPLORE_MAX_STEPS,
-          startedAt: now,
-        },
-      });
-      return { isError: false, output: `Exploration recorded with ${angles.length} angles. End your turn now with one short line; one author per angle writes a plan in parallel and the plans go to the user.` };
-    }
-    const open = openDecisionOf(doc, trajectory, task.taskId);
-    if (open === undefined) return { isError: true, output: `There is no open decision point on this task to ${args.action}.` };
-    if (args.action === 'recommend') {
-      if (args.pick !== undefined && !open.plans.some((plan) => plan.planId === args.pick)) return { isError: true, output: `Unknown plan ${args.pick}. Plans: ${open.plans.map((plan) => plan.planId).join(', ')}.` };
-      const stance = decisionStance(args.pick === undefined ? [] : [args.pick], args.why, args.dependsOn ?? open.stance?.dependsOn, now);
-      if (typeof stance === 'string') return { isError: true, output: stance };
-      await this.patch(doc, open.decisionId, (current) => ({ ...current, stance }));
-      return { isError: false, output: `Recorded that the choice comes down to: ${stance.dependsOn}${stance.pick === undefined ? '' : `, and that you recommend ${stance.pick}`}. End your turn now with one short line; name plans by title, not by letter. The user picks a plan.` };
-    }
+  private async propose(doc: ContinuoWorkspaceDoc, trajectory: Trajectory, task: ContinuoTask, args: TrajectoryInput, now: string): Promise<ToolResult> {
+    const base = newDecision(doc, trajectory, task, args, now);
+    if (typeof base === 'string') return { isError: true, output: base };
+    if (args.plans === undefined || args.plans.length < 2) return { isError: true, output: 'propose needs at least two plans.' };
+    const named = namedTask(task, args);
+    const nextId = planIds([]);
+    const plans = args.plans.map((input) => planFrom(input, nextId(), named, now));
+    const stance = decisionStance(recommendedOf(args.plans, plans), args.why, args.dependsOn, now);
+    if (typeof stance === 'string') return { isError: true, output: `Nothing recorded. ${stance}` };
+    await this.saveNew(doc, named, { ...base, plans, stance }, now);
+    return { isError: false, output: `Decision point recorded with ${plans.length} plans:\n${listed(plans)}\nEnd your turn now with one short line; name plans by title, not by letter. The user picks a plan.` };
+  }
+
+  private async explore(doc: ContinuoWorkspaceDoc, trajectory: Trajectory, task: ContinuoTask, args: TrajectoryInput, now: string): Promise<ToolResult> {
+    const base = newDecision(doc, trajectory, task, args, now);
+    if (typeof base === 'string') return { isError: true, output: base };
+    if (args.angles === undefined) return { isError: true, output: `explore needs two to ${EXPLORE_MAX_ANGLES} angles.` };
+    if (args.reason === undefined) return { isError: true, output: 'explore needs a reason: why each plan needs its own investigation. If it does not, write the plans yourself with propose.' };
+    const named = namedTask(task, args);
+    await this.saveNew(doc, named, {
+      ...base,
+      plans: [],
+      exploration: {
+        reason: args.reason,
+        angles: args.angles.map((angle, index) => ({ key: planLetter(index), title: angle.title, angle: angle.angle, status: 'queued', usage: EMPTY_USAGE })),
+        messages: [],
+        maxSteps: EXPLORE_MAX_STEPS,
+        startedAt: now,
+      },
+    }, now);
+    return { isError: false, output: `Exploration recorded with ${args.angles.length} angles. End your turn now with one short line; one author per angle writes a plan in parallel and the plans go to the user.` };
+  }
+
+  private async recommend(doc: ContinuoWorkspaceDoc, open: Decision, args: TrajectoryInput, now: string): Promise<ToolResult> {
+    if (args.pick !== undefined && !open.plans.some((plan) => plan.planId === args.pick)) return { isError: true, output: `Unknown plan ${args.pick}. Plans: ${open.plans.map((plan) => plan.planId).join(', ')}.` };
+    const stance = decisionStance(args.pick === undefined ? [] : [args.pick], args.why, args.dependsOn ?? open.stance?.dependsOn, now);
+    if (typeof stance === 'string') return { isError: true, output: stance };
+    await patchDecision(this.store, doc.workspaceId, open.decisionId, (current) => ({ ...current, stance }));
+    return { isError: false, output: `Recorded that the choice comes down to: ${stance.dependsOn}${stance.pick === undefined ? '' : `, and that you recommend ${stance.pick}`}. End your turn now with one short line; name plans by title, not by letter. The user picks a plan.` };
+  }
+
+  private async expand(doc: ContinuoWorkspaceDoc, open: Decision, trajectory: Trajectory, task: ContinuoTask, args: TrajectoryInput, now: string): Promise<ToolResult> {
     if (args.exhausted !== undefined) {
       const exhausted = { ...args.exhausted, at: now };
-      await this.store.update(doc.workspaceId, (current) => ({ ...current, decisions: current.decisions.map((decision) => (decision.decisionId === open.decisionId ? { ...decision, exhausted } : decision)) }));
+      await patchDecision(this.store, doc.workspaceId, open.decisionId, (current) => ({ ...current, exhausted }));
       return { isError: false, output: 'Recorded that no meaningfully different plan is left. End your turn with the question the user needs to decide.' };
     }
     if (args.plans === undefined || args.plans.length === 0) return { isError: true, output: 'expand needs plans, or exhausted when nothing different is left.' };
-    const added: TrajectoryPlan[] = args.plans.map(({ recommended: _recommended, ...plan }, index) => {
-      const planId = planLetter(open.plans.length + index);
-      return { ...plan, planId, path: planPath(task, planId, now), createdAt: now };
-    });
-    const picks = added.filter((_, index) => args.plans![index]!.recommended === true).map((plan) => plan.planId);
+    const nextId = planIds(open.plans.map((plan) => plan.planId));
+    const added = args.plans.map((input) => planFrom(input, nextId(), task, now));
+    const picks = recommendedOf(args.plans, added);
     const changed = picks.length > 0 || args.dependsOn !== undefined ? decisionStance(picks, args.why, args.dependsOn ?? open.stance?.dependsOn, now) : open.stance;
     if (typeof changed === 'string') return { isError: true, output: `Nothing added. ${changed}` };
+    await patchDecision(this.store, doc.workspaceId, open.decisionId, (current) => ({ ...current, plans: [...current.plans, ...added], stance: changed, turnIndex: Math.max(current.turnIndex, trajectory.turnCount - 1) }));
+    return { isError: false, output: `Added ${added.length} plans:\n${listed(added)}\nIf the new plans change where you stand, call recommend before ending your turn; otherwise end your turn now with one short line.` };
+  }
+
+  private async saveNew(doc: ContinuoWorkspaceDoc, task: ContinuoTask, decision: Decision, now: string): Promise<void> {
     await this.store.update(doc.workspaceId, (current) => ({
       ...current,
-      decisions: current.decisions.map((decision) => (decision.decisionId === open.decisionId ? { ...decision, plans: [...decision.plans, ...added], stance: changed, turnIndex: Math.max(decision.turnIndex, trajectory.turnCount - 1) } : decision)),
+      decisions: [...current.decisions, decision],
+      tasks: current.tasks.map((candidate) => (candidate.taskId === task.taskId ? { ...candidate, name: task.name, category: task.category, updatedAt: now } : candidate)),
     }));
-    return { isError: false, output: `Added ${added.length} plans:\n${added.map((plan) => `- ${plan.planId} ${plan.title} (${plan.path})`).join('\n')}\nIf the new plans change where you stand, call recommend before ending your turn; otherwise end your turn now with one short line.` };
   }
+}
 
-  private async author(doc: ContinuoWorkspaceDoc, decision: Decision, key: string, args: TrajectoryInput): Promise<ToolResult> {
-    const exploration = decision.exploration!;
-    const me = exploration.angles.find((angle) => angle.key === key)!;
-    if (me.status === 'submitted' || me.status === 'withdrawn') return { isError: true, output: `Your plan is already ${me.status}; end your turn.` };
-    const now = new Date().toISOString();
-    if (args.action === 'ask') {
-      if (args.to === undefined || args.text === undefined) return { isError: true, output: 'ask needs to and text.' };
-      const target = args.to === 'all' ? undefined : exploration.angles.find((angle) => angle.key === args.to);
-      if (args.to !== 'all' && (target === undefined || target.key === key)) return { isError: true, output: `Unknown author ${args.to}. Authors: ${exploration.angles.filter((angle) => angle.key !== key).map((angle) => angle.key).join(', ')}.` };
-      await this.patch(doc, decision.decisionId, (current) => ({ ...current, exploration: { ...current.exploration!, messages: [...current.exploration!.messages, { from: key, to: args.to!, text: args.text!, at: now }] } }));
-      if (target !== undefined && target.status === 'submitted') {
-        const plan = decision.plans.find((candidate) => candidate.planId === target.planId);
-        return { isError: false, output: `${target.key} has already submitted${plan === undefined ? '' : ` plan ${plan.planId}: ${plan.path}`}. Read it if you need the answer.` };
-      }
-      if (target !== undefined && (target.status === 'withdrawn' || target.status === 'failed')) return { isError: false, output: `${target.key} is no longer writing a plan.` };
-      return { isError: false, output: 'Delivered. A reply, if any, shows up among the messages in your next step; do not wait for it.' };
-    }
-    if (args.action === 'withdraw') {
-      if (args.sameAs === undefined || args.reason === undefined) return { isError: true, output: 'withdraw needs sameAs and reason.' };
-      const target = exploration.angles.find((angle) => angle.key === args.sameAs);
-      if (target === undefined || target.key === key) return { isError: true, output: `Unknown author ${args.sameAs}.` };
-      await this.patch(doc, decision.decisionId, (current) => ({ ...current, exploration: { ...current.exploration!, angles: current.exploration!.angles.map((angle) => (angle.key === key ? { ...angle, status: 'withdrawn', note: `和「${target.title}」重复，${args.reason!}` } : angle)) } }));
-      return { isError: false, output: 'Withdrawn. End your turn.' };
-    }
-    if (args.plan === undefined) return { isError: true, output: 'submit needs your plan.' };
-    const task = doc.tasks.find((candidate) => candidate.taskId === decision.taskId);
-    let planId = '';
-    await this.patch(doc, decision.decisionId, (current) => {
-      planId = planLetter(current.plans.length);
-      const { recommended: _recommended, ...submitted } = args.plan!;
-      const plan: TrajectoryPlan = { ...submitted, planId, path: task === undefined ? `work-log/plan-${planId}.md` : planPath(task, planId, now), createdAt: now };
-      return {
-        ...current,
-        plans: [...current.plans, plan],
-        exploration: { ...current.exploration!, angles: current.exploration!.angles.map((angle) => (angle.key === key ? { ...angle, status: 'submitted', planId } : angle)) },
-      };
-    });
-    return { isError: false, output: `Submitted as plan ${planId}. End your turn now with one short line.` };
-  }
+function newDecision(doc: ContinuoWorkspaceDoc, trajectory: Trajectory, task: ContinuoTask, args: TrajectoryInput, now: string): Omit<Decision, 'plans'> | string {
+  if (args.question === undefined) return `${args.action} needs a question.`;
+  if (openDecisionOf(doc, trajectory, task.taskId) !== undefined) return 'A decision point is already open for this task; use expand to add plans to it.';
+  return { decisionId: `dec_${randomUUID().slice(0, 8)}`, taskId: task.taskId, trajectoryId: trajectory.trajectoryId, question: args.question, turnIndex: Math.max(0, trajectory.turnCount - 1), createdAt: now };
+}
 
-  private async patch(doc: ContinuoWorkspaceDoc, decisionId: string, mutate: (decision: Decision) => Decision): Promise<void> {
-    await this.store.update(doc.workspaceId, (current) => ({ ...current, decisions: current.decisions.map((decision) => (decision.decisionId === decisionId ? mutate(decision) : decision)) }));
-  }
+function namedTask(task: ContinuoTask, args: TrajectoryInput): ContinuoTask {
+  return { ...task, name: task.name ?? args.name, category: task.category ?? args.category };
+}
+
+function recommendedOf(inputs: readonly PlanInput[], plans: readonly TrajectoryPlan[]): string[] {
+  return plans.filter((_, index) => inputs[index]?.recommended === true).map((plan) => plan.planId);
+}
+
+function listed(plans: readonly TrajectoryPlan[]): string {
+  return plans.map((plan) => `- ${plan.planId} ${plan.title} (${plan.path})`).join('\n');
 }
 
 function describe(args: TrajectoryInput): string {
@@ -163,26 +145,5 @@ function describe(args: TrajectoryInput): string {
     case 'expand': return 'Adding plans';
     case 'explore': return 'Exploring angles in parallel';
     case 'recommend': return 'Saying where it stands on the plans';
-    case 'submit': return 'Submitting a plan';
-    case 'ask': return `Asking ${args.to ?? 'another author'}`;
-    case 'withdraw': return 'Withdrawing a plan';
-    default: return 'Listing decision points';
   }
-}
-
-function renderList(doc: ContinuoWorkspaceDoc, trajectoryId: string): string {
-  const trajectory = doc.trajectories.find((candidate) => candidate.trajectoryId === trajectoryId);
-  if (trajectory === undefined) return 'No decision points on this line.';
-  const decisions = decisionsOn(doc, trajectory);
-  if (decisions.length === 0) return 'No decision points on this line.';
-  return decisions.map((decision) => {
-    const choice = choiceOn(trajectory, decision.decisionId);
-    const lines = [`${decision.question}${choice?.text === undefined ? '' : ` — the user gave their own direction: ${choice.text}`}`];
-    for (const plan of decision.plans) {
-      const status = planStatusOn(doc, trajectory, decision, plan);
-      const stance = decision.stance?.pick === plan.planId ? ', you recommended it' : plan.caution === undefined ? '' : ', you warned against it';
-      lines.push(`- ${plan.planId} ${plan.title} (${status.kind === 'current' ? 'followed on this line' : otherLineNote(doc, trajectory, decision, plan)}${stance}) — ${plan.path}`);
-    }
-    return lines.join('\n');
-  }).join('\n\n');
 }
