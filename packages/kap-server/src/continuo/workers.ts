@@ -27,7 +27,7 @@ import { ensureMainAgent } from '../transport/mainAgent';
 import { patchTask, requireDoc, requireTask } from './doc';
 import { ContinuoError } from './errors';
 import type { MainTurn } from './prompts';
-import { toAwaiting } from './taskState';
+import { isNoModel, NO_MODEL, toAwaiting } from './taskState';
 
 export interface Attachment {
   readonly dispose: () => void;
@@ -41,12 +41,11 @@ export interface Attachment {
 
 export type AgentEventHandler = (workspaceId: string, taskId: string, event: Record<string, unknown>) => Promise<void>;
 
-export const NO_MODEL = '请先用 Kimi 账号登录，再回来重试。';
 const MISSING_TASK_SESSION = '这件事的对话记录找不到了。';
 const FORK_RETRIES = 25;
 
 function modelError(error: unknown): unknown {
-  return error instanceof Error && /model is required/i.test(error.message) ? new ContinuoError('invalid_state', NO_MODEL) : error;
+  return error instanceof Error && isNoModel(error.message) ? new ContinuoError('invalid_state', NO_MODEL) : error;
 }
 
 async function mainAgentOf(session: ISessionScopeHandle): Promise<IAgentScopeHandle> {

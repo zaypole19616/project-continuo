@@ -33,9 +33,9 @@ import { ContinuoError } from './errors';
 import { hiddenTurnFirstRead, mainTurnResume, mainTurnUser } from './prompts';
 import { writePlanFiles, writeWorkLog } from './render';
 import { scanWorkspace } from './scan';
-import { asksUser, assertIdle, interruptedOnRestart, isBusy, isLiveBusy, phaseOf, readPath, started, taskErrorOf, toAwaiting, toEnded, toRunning, writtenPath, type TurnError } from './taskState';
+import { NO_MODEL, asksUser, assertIdle, interruptedOnRestart, isBusy, isLiveBusy, phaseOf, readPath, started, taskErrorOf, toAwaiting, toEnded, toRunning, writtenPath, type TurnError } from './taskState';
 import { acceptTodo, addTodo, dismissTodo, finishTodoRun, openTodo, removeTodo, suggestedTodos } from './todos';
-import { NO_MODEL, Workers } from './workers';
+import { Workers } from './workers';
 
 export { ContinuoError } from './errors';
 

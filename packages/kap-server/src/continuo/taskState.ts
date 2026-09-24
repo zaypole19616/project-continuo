@@ -37,11 +37,18 @@ export interface TurnError {
   readonly details?: { readonly statusCode?: unknown; readonly requestId?: unknown; readonly traceId?: unknown };
 }
 
+export const NO_MODEL = '请先用 Kimi 账号登录。';
+
+export function isNoModel(message: string): boolean {
+  return /model is required|is not configured/i.test(message);
+}
+
 export function taskErrorOf(error: TurnError | undefined, reason: string, at: string): TaskError {
   const details = error?.details ?? {};
+  const noModel = isNoModel(error?.message ?? '');
   return {
-    code: error?.code ?? `turn.${reason}`,
-    message: (error?.message ?? reason).slice(0, 2000),
+    code: noModel ? 'model.not_configured' : error?.code ?? `turn.${reason}`,
+    message: noModel ? NO_MODEL : (error?.message ?? reason).slice(0, 2000),
     status: typeof details.statusCode === 'number' ? details.statusCode : undefined,
     requestId: typeof details.requestId === 'string' ? details.requestId : undefined,
     traceId: typeof details.traceId === 'string' ? details.traceId : undefined,
