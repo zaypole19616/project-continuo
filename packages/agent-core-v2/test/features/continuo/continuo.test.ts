@@ -165,7 +165,6 @@ describe('trajectory', () => {
     const text = bundleFor(doc, task())!;
     expect(text).toContain('Following 「grow 10%」 (id A). Basis: basis A Risk: risk A');
     expect(text).toContain('「keep budget」 (id B) — not taken. work-log/plan-B.md');
-    expect(text).toContain('Call plans by their titles when you talk to the user');
     expect(text).not.toMatch(/\bPlan [A-Z]\b/);
     expect(text).not.toContain('basis B');
   });
@@ -173,7 +172,7 @@ describe('trajectory', () => {
   it('marks a decision that is still open so the agent waits for the user', () => {
     const main = line({ trajectoryId: 'main', taskIds: ['task_1'] });
     const doc = { ...docWith([], { understanding: { text: 'Q4 planning', sourceRefs: [], updatedAt: NOW } }), trajectories: [main], decisions: [decision()] };
-    expect(bundleFor(doc, task())!).toContain('Still open: wait for the user');
+    expect(bundleFor(doc, task())!).toContain('Still open: the user has not picked a plan yet.');
   });
 });
 
@@ -195,9 +194,9 @@ describe('compileContextBundle', () => {
     expect(text).toContain('The user added: keep it under 150 words');
   });
 
-  it('points the agent at the folder and its work logs instead of a remembered ledger', () => {
+  it('carries project data only and leaves the working rules to the profile and the tools', () => {
     const doc = docWith([], { understanding: { text: 'Q2 review folder', sourceRefs: [], updatedAt: NOW } });
-    expect(bundleFor(doc, task())!).toContain('work-log/');
+    expect(bundleFor(doc, task())!).not.toMatch(/Trajectory|AskUserQuestion|ReportWorkspaceResult|SubmitPlan/);
   });
 
   it('stays within the character budget', () => {
@@ -425,6 +424,7 @@ describe('branch context (phase four)', () => {
     const text = compileContextBundle(doc, 's_a')!;
     expect(text).toContain('You are the author of plan A');
     expect(text).toContain('Your angle: top down — start from the budget');
+    expect(text).toContain('Step budget: 8 steps.');
     expect(text).toContain('- B bottom up — start from delivery capacity');
     expect(text).toContain('from B: which budget file?');
     expect(text).not.toContain('budget-2026.md');

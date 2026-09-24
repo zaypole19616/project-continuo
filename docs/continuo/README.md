@@ -77,8 +77,8 @@ This repository is a fork of [MoonshotAI/kimi-code](https://github.com/MoonshotA
 |---|---|
 | Agent loop（XState 双状态机、取消、steer） | 每件事就是这个会话里的一个普通 turn；暂停 = `loop.cancel`，续接 = 同一会话再提交一条 prompt |
 | Reminder 机制 | 项目上下文注入走 `IAgentReminderService`：每轮开始注入、内容变了才重注（摘要比对）、压缩后重注、provider 出错跳过不炸 turn |
-| Profile 与 Feature seam | 两个新 profile（只读的 `continuo-init`、带上报工具的 `continuo-worker`）、两个新工具、一个 App 级存储和一个 Agent 级桥接服务，全部通过 `registerFeature` 挂进去，核心引擎零改动 |
-| 权限策略链 | 文件写入仍走原有审批；只在默认放行名单里加了 Continuo 自己的两个记录工具（见 2.3） |
+| Profile 与 Feature seam | 两个新 profile（只读的 `continuo-init`、带上报工具的 `continuo-worker`）、四个新工具、一个 App 级存储和一个 Agent 级桥接服务，全部通过 `registerFeature` 挂进去，核心引擎零改动 |
+| 权限策略链 | 文件写入仍走原有审批；只在默认放行名单里加了 Continuo 自己的四个记录工具（见 2.3） |
 | 问题 / 审批 / 会话快照 / WS 事件流 | 前端直接复用 `/api/v1` 的 questions、approvals、snapshot 和 WebSocket，没有另造协议 |
 | turn 级 file history | 产物「对比上一版」直接取 `/sessions/{id}/file-history/content?turn_id=…&phase=start` |
 | 会话 fork | 换方案和从某件事之后重来都走 `ISessionManager.fork({ sourceSessionId, turnIndex })`：按用户可见的 turn 切片复制出新会话，源会话不动；Continuo 只记轨迹这一层语义 |
@@ -104,7 +104,7 @@ This repository is a fork of [MoonshotAI/kimi-code](https://github.com/MoonshotA
 
 ### 2.3 一条权限策略的取舍
 
-`WorkspaceContext` 和 `ReportWorkspaceResult` 加进了默认放行名单。理由：它们写的是 Continuo 自己的项目状态，不是用户文件，属于可撤销操作；而每次都弹审批会把"记一条约定"这种最该无感的动作变成打扰。文件写入、Shell 仍然按原策略链审批。
+`WorkspaceContext`、`ReportWorkspaceResult`、`Trajectory`、`SubmitPlan` 加进了默认放行名单。理由：它们写的是 Continuo 自己的记录（项目状态、决策和 `work-log/` 下的方案文件），不是用户的文件，属于可撤销操作；而每次都弹审批会把"记一条约定""摆出几个方案"这种最该无感的动作变成打扰。文件写入、Shell 仍然按原策略链审批。
 
 ### 2.4 与 Kimi Code 已有机制的差异
 
@@ -151,4 +151,4 @@ KIMI_PORT=58627 pnpm dev:continuo
 
 打开 `http://127.0.0.1:5180/#token=<上面的 token>`，新建一个项目，或打开自己的文件夹。
 
-代码位置：引擎侧 `packages/agent-core-v2/src/features/continuo/`，服务侧 `packages/kap-server/src/continuo/`（含只读文件接口 `files.ts`、轨迹目录 `lines.ts`）与 `routes/continuo.ts`（含导出接口 `GET /api/v1/workspaces/{id}/continuo/export`），前端 `apps/continuo/`（`pages/Launcher` 启动卡，`components/Finder` 文件窗口 + `components/Drawer` 对话抽屉），测试 `packages/agent-core-v2/test/features/continuo/`、`packages/kap-server/test/continuoLines.test.ts`、`apps/continuo/src/lib/trajectory.test.ts`。
+代码位置：引擎侧 `packages/agent-core-v2/src/features/continuo/`，服务侧 `packages/kap-server/src/continuo/`（含只读文件接口 `files.ts`、轨迹目录 `lines.ts`）与 `routes/continuo.ts`（含导出接口 `GET /api/v1/workspaces/{id}/continuo/export`），前端 `apps/continuo/`（`pages/Launcher` 启动卡，`components/Finder` 文件窗口 + `components/Drawer` 对话抽屉），测试 `packages/agent-core-v2/test/features/continuo/`、`packages/kap-server/test/continuoLines.test.ts`、`packages/kap-server/test/continuoTasks.test.ts`、`apps/continuo/src/lib/trajectory.test.ts`。

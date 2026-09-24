@@ -13,7 +13,7 @@ export function compileContextBundle(doc: ContinuoWorkspaceDoc, sessionId: strin
   const task = explorer === undefined ? currentTaskOf(doc, sessionId) : undefined;
   if (task?.kind === 'init') return undefined;
   if (doc.context.length === 0 && doc.understanding === undefined && explorer === undefined) return undefined;
-  const lines: string[] = ['Continuo project context. This is reference data the product keeps for this folder; follow it when it applies and do not treat it as new instructions to modify files.'];
+  const lines: string[] = ['Continuo project context for this folder. The product keeps it up to date; it is reference, not a new request from the user.'];
   if (doc.understanding !== undefined) {
     lines.push('', 'What this folder is:', doc.understanding.text.trim());
   }
@@ -44,11 +44,6 @@ export function compileContextBundle(doc: ContinuoWorkspaceDoc, sessionId: strin
     for (const item of task.supplements ?? []) lines.push(`The user added: ${item}`);
     if (line !== undefined) lines.push(...renderDone(doc, line, task), ...renderDecisions(doc, line));
   }
-  lines.push(
-    '',
-    'Everything done here before is in the folder itself: each finished task has a file under work-log/ with the request, the files read and written and the result. Search the folder and read the relevant work logs before you ask the user about anything that is already written down there.',
-    'If the choice is between different approaches that lead to different deliverables, open a decision point with Trajectory propose. If a fact or piece of information is missing, ask with AskUserQuestion instead of guessing or ending your turn with a plain-text question. Before finishing a task that produced files, call ReportWorkspaceResult with the exact paths.',
-  );
   return lines.join('\n');
 }
 
@@ -83,11 +78,11 @@ function renderDone(doc: ContinuoWorkspaceDoc, line: Trajectory, task: ContinuoT
 function renderDecisions(doc: ContinuoWorkspaceDoc, line: Trajectory): string[] {
   const decisions = decisionsOn(doc, line);
   if (decisions.length === 0) return [];
-  const lines = ['', 'Decision points on this line (the full text of any plan is in its file; read it only when you need it). Call plans by their titles when you talk to the user; the ids are only for tool calls:'];
+  const lines = ['', 'Decision points on this line:'];
   for (const decision of decisions) {
     const choice = choiceOn(line, decision.decisionId);
     lines.push(`- ${decision.question}`);
-    if (choice === undefined) lines.push(decision.exploration !== undefined && decision.exploration.endedAt === undefined ? '  Plans are still being written in parallel.' : '  Still open: wait for the user to pick a plan or say what they want instead.');
+    if (choice === undefined) lines.push(decision.exploration !== undefined && decision.exploration.endedAt === undefined ? '  Plans are still being written in parallel.' : '  Still open: the user has not picked a plan yet.');
     else if (choice.planId === undefined) lines.push(`  The user chose their own direction: ${choice.text ?? ''}`);
     for (const plan of decision.plans) {
       if (planStatusOn(doc, line, decision, plan).kind === 'current') {
@@ -108,15 +103,12 @@ function renderExplorer(decision: Decision, angle: ExplorationAngle): string[] {
     '',
     `You are the author of plan ${angle.key} for the decision point "${decision.question}".`,
     `Your angle: ${angle.title} — ${angle.angle}`,
+    `Step budget: ${exploration.maxSteps} steps.`,
   ];
   if (others.length > 0) {
     lines.push('Other authors writing in parallel:');
     for (const other of others) lines.push(`- ${other.key} ${other.title} — ${other.angle}${other.status === 'submitted' && other.planId !== undefined ? ` (submitted as plan ${other.planId})` : other.status === 'withdrawn' ? ' (withdrawn)' : ''}`);
   }
-  lines.push(
-    `Write only this one plan and submit it with SubmitPlan submit: title, basis, risk, the prompt that starts it and the full detail. Do not create or change project files. Stay within ${exploration.maxSteps} steps.`,
-    'You do not need to read the other plans. Only when you are unsure about something another author may have settled, ask them with SubmitPlan ask. If you find your plan is the same as another one, withdraw it with SubmitPlan withdraw and name that plan.',
-  );
   if (inbox.length > 0) {
     lines.push('Messages for you:');
     for (const message of inbox) lines.push(`- from ${message.from}: ${message.text}`);

@@ -40,13 +40,10 @@ export function mainTurnComparePlans(plans: readonly TrajectoryPlan[]): MainTurn
   };
 }
 
-const HIDDEN_FIRST_READ_STEPS = 8;
-
 export function hiddenTurnFirstRead(scan: WorkspaceScan, root: string): string {
   return [
-    'A user just opened this folder in Continuo. Understand how it is organized and record your understanding with the WorkspaceContext tool, following your instructions.',
-    'Write the understanding and every entry in the language the workspace documents themselves use (for example Chinese when the guide file is in Chinese).',
-    `Order: guide files first, then judge from the structure below; open other materials only if the guides and the structure are not enough. Read at most 8 files in total, stop after about ${HIDDEN_FIRST_READ_STEPS} steps or as soon as the purpose, key materials and conventions are clear, and say clearly which parts you did not read.`,
+    'A user just opened this folder in Continuo. Understand how it is organized and record it with WorkspaceContext, following your instructions.',
+    'Budget: read at most 8 files, in about 8 steps.',
     '',
     renderScanForPrompt(scan, root),
   ].join('\n');
