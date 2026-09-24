@@ -109,7 +109,7 @@ export const continuo = {
   open: (workspaceId: string, clientRequestId: string) => api.post<ContinuoDoc>(`/workspaces/${workspaceId}/continuo:open`, { client_request_id: clientRequestId }),
   get: (workspaceId: string) => api.get<ContinuoDoc>(`/workspaces/${workspaceId}/continuo`),
   createTask: (workspaceId: string, text: string, clientRequestId: string) => api.post<{ task: ContinuoTask; doc: ContinuoDoc }>(`/workspaces/${workspaceId}/continuo/tasks`, { text, client_request_id: clientRequestId }),
-  taskAction: (workspaceId: string, taskId: string, action: 'pause' | 'resume' | 'reply' | 'fork', body: { text?: string } = {}) => api.post<ContinuoDoc>(`/workspaces/${workspaceId}/continuo/tasks/${taskId}:${action}`, body),
+  taskAction: (workspaceId: string, taskId: string, action: 'pause' | 'resume' | 'reply' | 'steer' | 'complete' | 'fork', body: { text?: string } = {}) => api.post<ContinuoDoc>(`/workspaces/${workspaceId}/continuo/tasks/${taskId}:${action}`, body),
   decisionAction: (workspaceId: string, decisionId: string, action: 'choose' | 'expand' | 'abandon', body: { plan_id?: string; reason?: string } = {}) => api.post<ContinuoDoc>(`/workspaces/${workspaceId}/continuo/decisions/${decisionId}:${action}`, body),
   addTodo: (workspaceId: string, text: string, timing?: TodoTiming) => api.post<ContinuoDoc>(`/workspaces/${workspaceId}/continuo/todos`, { text, timing }),
   todoAction: (workspaceId: string, todoId: string, action: TodoAction) => api.post<ContinuoDoc>(`/workspaces/${workspaceId}/continuo/todos/${todoId}:${action}`, {}),

@@ -190,12 +190,21 @@ export class Workers {
     return this.submit(agent, text);
   }
 
-  submit(agent: IAgentScopeHandle, text: string): string {
+  async steer(sessionId: string, text: string): Promise<boolean> {
+    const session = getLiveSessionById(this.core.accessor, sessionId);
+    if (session === undefined) return false;
+    const agent = await mainAgentOf(session);
+    if (agent.accessor.get(IAgentLoopService).snapshot().state !== 'running') return false;
+    this.submit(agent, text, true);
+    return true;
+  }
+
+  submit(agent: IAgentScopeHandle, text: string, steerIfActive = false): string {
     const promptId = `msg_${ulid()}`;
     agent.accessor.get(IAgentLoopService).submit({
       message: { role: 'user', content: [{ type: 'text', text }] },
       meta: { promptId, origin: { kind: 'user' }, tracked: true },
-    } as Parameters<IAgentLoopService['submit']>[0]);
+    } as Parameters<IAgentLoopService['submit']>[0], { steerIfActive });
     return promptId;
   }
 }

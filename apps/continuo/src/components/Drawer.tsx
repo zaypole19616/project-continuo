@@ -33,7 +33,7 @@ export interface DrawerProps {
   onSend: () => Promise<boolean>;
   onAnswer: (q: QuestionRequest, answers: Record<string, unknown>, note?: string) => Promise<void>;
   onDecide: (a: ApprovalRequest, d: 'approved' | 'rejected', scope?: 'session') => Promise<void>;
-  onAction: (task: ContinuoTask, action: 'pause' | 'resume') => void;
+  onAction: (task: ContinuoTask, action: 'pause' | 'resume' | 'complete') => void;
   onOpenFile: (path: string) => void;
   onRetryInit: () => void;
   onAddTodo: (text: string, timing: TodoTiming | undefined) => Promise<boolean>;
@@ -88,6 +88,7 @@ export function Drawer(p: DrawerProps) {
   const resumable = p.latest !== null && CONTINUABLE.has(p.latest.status) ? p.latest : null;
   const modelName = DEFAULT_MODEL.split('/').pop();
   const answering = p.activeUserTask !== null && p.activeUserTask.status === 'awaiting_user';
+  const steering = p.activeUserTask?.status === 'running';
   const send = () => { const text = draft; setDraft(''); void p.onSend().then((ok) => { if (!ok) setDraft(text); }); };
   const stop = () => { if (p.activeUserTask) p.onAction(p.activeUserTask, 'pause'); };
   const focusComposer = () => { setTab('chat'); setTimeout(() => p.composerRef.current?.focus(), 50); };
@@ -139,20 +140,26 @@ export function Drawer(p: DrawerProps) {
           <Button variant="default" size="sm" disabled={p.sending} onClick={() => p.onAction(resumable, 'resume')}><Play size={12} />继续</Button>
         </div>
       )}
+      {p.replyTarget?.pendingInteraction === 'reply' && (
+        <div className="state-bar chrome">
+          <span className="t2 sm flex-1">已回复，等你确认</span>
+          <Button variant="default" size="sm" disabled={p.sending} onClick={() => p.onAction(p.replyTarget!, 'complete')}><Check size={12} />完成</Button>
+        </div>
+      )}
       <div className="composer">
         <textarea
           ref={p.composerRef}
           rows={2}
-          placeholder={answering ? (p.activeUserTask?.pendingInteraction === 'approval' ? '先在上面批准或拒绝，再继续' : '先回答上面的问题，再继续') : choosing ? '写下你想要的方向' : p.replyTarget ? '回复它…' : '这次想完成什么？'}
+          placeholder={answering ? (p.activeUserTask?.pendingInteraction === 'approval' ? '先在上面批准或拒绝，再继续' : '先回答上面的问题，再继续') : choosing ? '写下你想要的方向' : steering ? '补充要求，下一步会带给它' : p.replyTarget ? '回复它…' : '这次想完成什么？'}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); if (!running && !answering && !p.sending) send(); } }}
+          onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); if ((!running || steering) && !answering && !p.sending) send(); } }}
         />
         <div className="composer-footer chrome">
           <span className="model-chip">✳ {modelName}</span>
           <PermissionPicker mode={p.doc?.permissionMode ?? 'manual'} disabled={!p.doc || p.sending} onChange={p.onPermission} />
           <span className="flex-1" />
-          {running
+          {running && !(steering && draft.trim() !== '')
             ? <button className="send" title="停止" disabled={p.sending} onClick={stop}><Square size={13} fill="currentColor" /></button>
             : <button className="send" title="发送" disabled={!p.doc || p.sending || answering} onClick={send}><ArrowUp size={16} /></button>}
         </div>
@@ -207,6 +214,7 @@ export function Drawer(p: DrawerProps) {
                       <div className="flex shrink-0 gap-1">
                         {(task.status === 'running' || task.status === 'queued') && <Button variant="ghost" size="sm" onClick={() => p.onAction(task, 'pause')}><Square size={11} fill="currentColor" />停止</Button>}
                         {task.status === 'awaiting_user' && <Button variant="ghost" size="sm" onClick={focusComposer}><ArrowRight size={12} />{GO_LABEL[task.pendingInteraction ?? 'reply'] ?? '去回复'}</Button>}
+                        {task.status === 'awaiting_user' && task.pendingInteraction === 'reply' && <Button variant="ghost" size="sm" disabled={p.sending} onClick={() => p.onAction(task, 'complete')}><Check size={12} />完成</Button>}
                         {RESUMABLE.has(task.status) && <Button variant="ghost" size="sm" onClick={() => p.onAction(task, 'resume')}>{task.status === 'failed' ? <><RotateCcw size={12} />重试</> : <><Play size={12} />继续</>}</Button>}
                       </div>
                     </div>

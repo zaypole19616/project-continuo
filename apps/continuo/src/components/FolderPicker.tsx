@@ -20,7 +20,7 @@ export function FolderPicker({ title, confirmLabel, start, open, onOpenChange, o
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-w-lg flex-col gap-3 p-6 text-left">
         <DialogTitle className="text-lg">{title}</DialogTitle>
-        <DialogDescription className="text-sm">这台机器打不开系统的文件夹窗口，在这里选。</DialogDescription>
+        <DialogDescription className="text-sm">直接在这里选一个文件夹。</DialogDescription>
         {error !== null && <div className="banner banner-err">{error}</div>}
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="sm" disabled={!browse?.parent} onClick={() => { if (browse?.parent) go(browse.parent); }}>上一级</Button>

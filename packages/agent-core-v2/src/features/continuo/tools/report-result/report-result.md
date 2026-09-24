@@ -1,4 +1,4 @@
-Report the outcome of the current task so the product can verify it. Call this once, right before your final answer, whenever the task produced or changed files.
+Report the outcome of the current task so the product can verify it. Call this once, right before your final answer, whenever the task is done: with the files it produced or changed, or with an empty `deliverables` when the task only needed an answer. When you end your turn with a question for the user instead, do not call it; the product then waits for their reply.
 
 Name the task first: `name` is two to six characters in the language of the folder, and `category` is a lowercase ASCII word taken from the project's own category list when it has one. The product files the work log as `work-log-<date>-<category>-<name>.md` and shows `name` wherever this task appears, so a vague name makes the record unreadable. Once a task has a name it keeps it; do not put the plan or the version into the name.
 

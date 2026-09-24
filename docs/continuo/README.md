@@ -75,7 +75,7 @@ This repository is a fork of [MoonshotAI/kimi-code](https://github.com/MoonshotA
 
 | 模块 | 用法 |
 |---|---|
-| Agent loop（XState 双状态机、取消、steer） | 每件事就是这个会话里的一个普通 turn；暂停 = `loop.cancel`，续接 = 同一会话再提交一条 prompt |
+| Agent loop（XState 双状态机、取消、steer） | 每件事就是这个会话里的一个普通 turn；暂停 = `loop.cancel`，续接 = 同一会话再提交一条 prompt，做事中途的补充 = 提交时 `steerIfActive`，并进正在跑的这一轮 |
 | Reminder 机制 | 项目上下文注入走 `IAgentReminderService`：每轮开始注入、内容变了才重注（摘要比对）、压缩后重注、provider 出错跳过不炸 turn |
 | Profile 与 Feature seam | 两个新 profile（只读的 `continuo-init`、带上报工具的 `continuo-worker`）、四个新工具、一个 App 级存储和一个 Agent 级桥接服务，全部通过 `registerFeature` 挂进去，核心引擎零改动 |
 | 权限策略链 | 文件写入仍走原有审批；只在默认放行名单里加了 Continuo 自己的四个记录工具（见 2.3） |
@@ -91,7 +91,7 @@ This repository is a fork of [MoonshotAI/kimi-code](https://github.com/MoonshotA
 | 项目上下文（一段理解 + 若干条有来源的要点）与按需注入 | `packages/agent-core-v2/src/features/continuo/` | AGENTS.md 是一份人写的静态文件；这里的上下文是 Agent 读出来的，每条都指向来源文件，纠正它只需要在对话里说一句 |
 | 打开项目时的只读理解任务 | `kap-server/src/continuo/taskManager.ts` `startInit` + `continuo-init` profile | Kimi Code 的 `/init` 是一次性写 AGENTS.md 的子代理；Continuo 的理解有来源，并且不写用户的文件 |
 | 交付核验 | `settleTurn`：上报路径 ∪ 观测到的写入 → 逐个 stat | "模型说完成"不等于完成；Agent 忘了上报也不丢（验证里就出现过一次没上报，靠观测写入兜底） |
-| 「等你回复」状态 | `settleTurn` 无写入无上报的分支 + `:reply` 动作 | 模型有时不用 AskUserQuestion 而是一句话问你，若照常标"完成"界面就撒谎了 |
+| 「等你回复」状态 | `settleTurn` 无写入无上报的分支 + `:reply` / `:complete` 动作：回复的最后一段在问你才等你回复，否则算做完（只需要回答的事）；等你回复时可以直接点「完成」 | 模型有时不用 AskUserQuestion 而是一句话问你，若照常标"完成"界面就撒谎了 |
 | 一个项目一个会话 | `createUserTask` 复用上一件事的 session | 同一个文件夹里的事本来就是连着的；没有"新建对话"，也就不存在"这条信息在哪个对话里"的问题 |
 | 按轮记录 + 工作日志落盘 | `recordRound` / `writeWorkLog` | 过程要留在项目里，而不是留在应用状态里：换台机器、换个人、换个 Agent 打开这个文件夹，`work-log/` 都还在 |
 | 并发打开合并 | `open()` 的 in-flight map | 前端严格模式会把 open 发两次，修之前跑出了两个初始化任务 |

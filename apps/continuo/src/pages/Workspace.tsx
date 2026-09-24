@@ -74,6 +74,15 @@ export function WorkspaceView({ workspace, onClose, themePref, onTheme }: { work
   const lineId = line?.trajectoryId;
 
   useEffect(() => { setTarget({ kind: 'folder', path: '' }); }, [lineId]);
+  const shownDoc = useRef<ContinuoDoc | null>(null);
+  useEffect(() => {
+    const before = shownDoc.current;
+    shownDoc.current = doc;
+    if (before === null || doc === null || target.kind !== 'file') return;
+    const renamed = before.tasks.find((task) => task.logPath === target.path);
+    const now = renamed === undefined ? undefined : doc.tasks.find((task) => task.taskId === renamed.taskId)?.logPath;
+    if (now !== undefined && now !== target.path) setTarget({ kind: 'file', path: now });
+  }, [doc]);
 
   const refreshPending = useCallback(async (sid: string) => {
     const [q, a] = await Promise.all([kimi.pendingQuestions(sid), kimi.pendingApprovals(sid)]);
@@ -96,6 +105,19 @@ export function WorkspaceView({ workspace, onClose, themePref, onTheme }: { work
         setQuestions(snap.pending_questions); setApprovals(snap.pending_approvals);
         const stream = new SessionStream(sessionId);
         streamRef.current = stream;
+        let opened = false;
+        stream.onStatus = (status) => {
+          if (status !== 'open') return;
+          if (opened) {
+            void kimi.snapshot(sessionId).then((fresh) => {
+              if (cancelled) return;
+              setState((prev) => ({ ...fromMessages(prev, fresh.messages.items), busy: fresh.session.busy, pendingInteraction: fresh.session.pending_interaction ?? 'none' }));
+              setQuestions(fresh.pending_questions); setApprovals(fresh.pending_approvals);
+            }).catch(() => undefined);
+            void refresh();
+          }
+          opened = true;
+        };
         stream.subscribe((ev) => {
           setState((prev) => applyEvent(prev, ev));
           if (ev.type === 'event.session.work_changed') { void refreshPending(sessionId); void refresh(); }
@@ -123,13 +145,13 @@ export function WorkspaceView({ workspace, onClose, themePref, onTheme }: { work
   const activeUserTask = lineTasks.find(isBlocking) ?? null;
   const replyTarget = latest !== null && isAwaitingReply(latest) ? latest : null;
 
-  const submit = async (text: string, reply: ContinuoTask | null): Promise<boolean> => {
+  const submit = async (text: string, target: { task: ContinuoTask; action: 'reply' | 'steer' } | null): Promise<boolean> => {
     setSending(true); setError(null);
     const localId = `local_${Date.now()}`;
     try {
       if (sessionId !== null) setState((prev) => withUserMessage(prev, localId, text));
-      if (reply !== null) {
-        setDoc(await continuo.taskAction(workspaceId, reply.taskId, 'reply', { text }));
+      if (target !== null) {
+        setDoc(await continuo.taskAction(workspaceId, target.task.taskId, target.action, { text }));
       } else {
         const r = await continuo.createTask(workspaceId, text, newRequestId());
         if (sessionId === null) pendingUser.current = { sessionId: r.task.sessionId, text };
@@ -147,14 +169,15 @@ export function WorkspaceView({ workspace, onClose, themePref, onTheme }: { work
   const send = (): Promise<boolean> => {
     const text = (composerRef.current?.value ?? '').trim();
     if (!text || sending) return Promise.resolve(true);
-    return submit(text, replyTarget);
+    if (activeUserTask?.status === 'running') return submit(text, { task: activeUserTask, action: 'steer' });
+    return submit(text, replyTarget === null ? null : { task: replyTarget, action: 'reply' });
   };
 
   const run = async (work: () => Promise<ContinuoDoc>): Promise<boolean> => {
     setSending(true); setError(null);
     try { setDoc(await work()); return true; } catch (error) { setError((error as Error).message); return false; } finally { setSending(false); }
   };
-  const action = (task: ContinuoTask, a: 'pause' | 'resume') => { void run(() => continuo.taskAction(workspaceId, task.taskId, a)); };
+  const action = (task: ContinuoTask, a: 'pause' | 'resume' | 'complete') => { void run(() => continuo.taskAction(workspaceId, task.taskId, a)); };
   const choose = (decision: Decision, plan: TrajectoryPlan) => run(() => continuo.decisionAction(workspaceId, decision.decisionId, 'choose', { plan_id: plan.planId }));
   const expand = (decision: Decision) => run(() => continuo.decisionAction(workspaceId, decision.decisionId, 'expand'));
   const abandon = (decision: Decision, plan: TrajectoryPlan, reason: string) => { void run(() => continuo.decisionAction(workspaceId, decision.decisionId, 'abandon', { plan_id: plan.planId, reason: reason.trim() === '' ? undefined : reason.trim() })); };
@@ -193,7 +216,7 @@ export function WorkspaceView({ workspace, onClose, themePref, onTheme }: { work
         <ThemeToggle themePref={themePref} onTheme={onTheme} />
       </div>
       <div className="project-body" style={{ '--drawer-w': `${drawerWidth}px` } as React.CSSProperties}>
-        <Finder workspaceId={workspaceId} root={workspace.root} doc={doc} target={target} onNavigate={setTarget} onError={setError} searchRef={searchRef} />
+        <Finder workspaceId={workspaceId} root={workspace.root} doc={doc} target={target} onNavigate={setTarget} searchRef={searchRef} />
         <div
           className={`drawer-resizer ${dragging ? 'is-dragging' : ''}`}
           role="separator"
