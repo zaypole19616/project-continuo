@@ -322,6 +322,7 @@ export class Decisions {
     const angles = decision.exploration!.angles;
     const started = angles.some((angle) => angle.sessionId !== undefined);
     if (decision.plans.length === 0 && !started) {
+      await patchTask(this.store, workspaceId, taskId, (current) => (current.status === 'running' ? { ...toEnded(current, 'failed', endedAt), error: { code: 'turn.failed', message: explorationFailure(angles), at: endedAt } } : current));
       await writeWorkLog(this.store, workspaceId, taskId);
       return;
     }
