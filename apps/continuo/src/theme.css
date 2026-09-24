@@ -387,7 +387,7 @@ button.deck-option:disabled { opacity: 0.5; cursor: default; }
 .tree-views button:hover { color: var(--text-1); }
 .tree-views button.is-on { background: var(--seg-thumb); color: var(--text-1); font-weight: 600; box-shadow: var(--seg-shadow); }
 .t-stub .t-go { width: 24px; height: 24px; flex: none; }
-.tree-scroll { flex: 1; min-height: 0; overflow: auto; padding: 4px 8px 64px; cursor: grab; }
+.tree-scroll { flex: 1; min-height: 0; overflow: auto; padding: 4px 8px 64px; cursor: grab; container-type: inline-size; }
 .tree-scroll:active { cursor: grabbing; }
 .trunk { position: relative; padding-left: 22px; width: max-content; min-width: 100%; }
 .trunk::before { content: ''; position: absolute; left: 9px; top: 10px; bottom: 10px; width: 2px; border-radius: 1px; background: var(--line-strong); }
@@ -402,9 +402,9 @@ button.deck-option:disabled { opacity: 0.5; cursor: default; }
 .t-dot.is-decision { background: var(--surface); border: 2px solid var(--accent); transform: rotate(45deg); border-radius: 2px; width: 10px; height: 10px; }
 .t-dot.is-root { background: var(--surface); border: 2px solid var(--line-strong); }
 .t-root-icon { flex: none; color: var(--text-3); align-self: center; }
-.t-card { width: 300px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); padding: 8px 11px; box-shadow: var(--shadow-xs); cursor: auto; }
+.t-card { width: clamp(260px, calc(100cqw - 40px), 560px); border: 1px solid var(--line); border-radius: 12px; background: var(--surface); padding: 8px 11px; box-shadow: var(--shadow-xs); cursor: auto; }
 .t-card.is-decision { border-color: var(--accent-line); }
-.t-card.is-detail { width: 360px; padding: 10px 12px; }
+.t-card.is-detail { width: clamp(260px, calc(100cqw - 40px), 640px); padding: 10px 12px; }
 .t-card.is-decision.is-detail { padding: 0; overflow: hidden; }
 .t-card.is-decision.is-detail .t-head { padding: 10px 12px; background: var(--surface-sunken); }
 .t-head { display: flex; align-items: baseline; gap: 7px; min-width: 0; }
@@ -602,3 +602,5 @@ button.deck-option:disabled { opacity: 0.5; cursor: default; }
 .ob-switch { position: absolute; left: 50%; z-index: 4; display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: var(--radius-full); font-size: 13px; font-weight: 700; color: #fff; background: var(--accent); box-shadow: 0 0 0 5px var(--accent-soft), 0 10px 24px rgba(26, 136, 255, 0.35); transform: translate(-50%, -50%); cursor: pointer; }
 .launch-guide { font-size: inherit; color: var(--text-2); text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--line-strong); }
 .launch-guide:hover { color: var(--text-1); }
+.pick-fallback { margin-top: 6px; font-size: var(--fs-xs); color: var(--text-2); text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--line-strong); }
+.pick-fallback:hover { color: var(--text-1); }

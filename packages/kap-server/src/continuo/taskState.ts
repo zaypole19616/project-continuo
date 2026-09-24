@@ -61,6 +61,11 @@ export function failureText(task: ContinuoTask): string | undefined {
   return task.error === undefined ? undefined : friendlyError(task.error.message);
 }
 
+export function asksUser(reply: string): boolean {
+  const last = reply.trim().split(/\n\s*\n/).at(-1) ?? '';
+  return /[？?]/.test(last);
+}
+
 export function explorationFailure(angles: readonly ExplorationAngle[]): string {
   const reasons = [...new Set(angles.map((angle) => angle.note).filter((note) => note !== undefined))];
   return `分头写的 ${angles.length} 个方案都没能完成${reasons.length === 0 ? '' : `：${reasons.join('；')}`}`;

@@ -33,7 +33,7 @@ import { ContinuoError } from './errors';
 import { hiddenTurnFirstRead, mainTurnResume, mainTurnUser } from './prompts';
 import { writePlanFiles, writeWorkLog } from './render';
 import { scanWorkspace } from './scan';
-import { assertIdle, interruptedOnRestart, isBusy, isLiveBusy, phaseOf, readPath, started, taskErrorOf, toAwaiting, toEnded, toRunning, writtenPath, type TurnError } from './taskState';
+import { asksUser, assertIdle, interruptedOnRestart, isBusy, isLiveBusy, phaseOf, readPath, started, taskErrorOf, toAwaiting, toEnded, toRunning, writtenPath, type TurnError } from './taskState';
 import { acceptTodo, addTodo, dismissTodo, finishTodoRun, openTodo, removeTodo, suggestedTodos } from './todos';
 import { NO_MODEL, Workers } from './workers';
 
@@ -241,6 +241,20 @@ export class ContinuoTaskManager {
     return patchTask(this.store, workspaceId, taskId, (current) => toRunning(current, { promptId, trigger: 'resume' }));
   }
 
+  async steer(workspaceId: string, taskId: string, text: string): Promise<ContinuoWorkspaceDoc> {
+    const task = requireTask(await requireDoc(this.store, workspaceId), taskId);
+    if (task.status !== 'running' || !(await this.workers.steer(task.sessionId, text))) throw new ContinuoError('invalid_state', '这一步刚好结束了，再发送一次就好。');
+    return patchTask(this.store, workspaceId, taskId, (current) => ({ ...current, supplements: [...(current.supplements ?? []), text] }));
+  }
+
+  async complete(workspaceId: string, taskId: string): Promise<ContinuoWorkspaceDoc> {
+    const task = requireTask(await requireDoc(this.store, workspaceId), taskId);
+    if (task.status !== 'awaiting_user' || task.pendingInteraction !== 'reply') throw new ContinuoError('invalid_state', '这件事现在不能标为完成。');
+    await patchTask(this.store, workspaceId, taskId, (current) => toEnded(current, 'completed', new Date().toISOString()));
+    await writeWorkLog(this.store, workspaceId, taskId);
+    return requireDoc(this.store, workspaceId);
+  }
+
   async reply(workspaceId: string, taskId: string, text: string): Promise<ContinuoWorkspaceDoc> {
     const doc = await requireDoc(this.store, workspaceId);
     const task = requireTask(doc, taskId);
@@ -430,7 +444,10 @@ export class ContinuoTaskManager {
       report = { summary: '产物由实际写入的文件推断得出；Agent 这次没有上报。', deliverables: observed.map((path) => ({ path, note: '实际写入', turnId: observedWrites.get(path) })), unresolved: [], reportedAt: endedAt };
       notes.push('agent did not report; deliverables inferred from observed writes');
     } else if (report === undefined) {
-      await patchTask(this.store, workspaceId, taskId, (candidate) => ({ ...toAwaiting(candidate, 'reply', '已回复，等你确认或继续'), lastReply: reply === '' ? undefined : reply, verification: ['no files written and no result report; the agent replied and is waiting for you'] }));
+      const lastReply = reply === '' ? undefined : reply;
+      await patchTask(this.store, workspaceId, taskId, (candidate) => (asksUser(reply)
+        ? { ...toAwaiting(candidate, 'reply', '已回复，等你确认或继续'), lastReply, verification: ['no files written and no result report; the reply asks the user something, waiting for them'] }
+        : { ...toEnded(candidate, 'completed', endedAt), lastReply, verification: ['no files written and no result report; the agent answered'] }));
       return;
     } else {
       report = { ...report, deliverables: report.deliverables.map((item) => {

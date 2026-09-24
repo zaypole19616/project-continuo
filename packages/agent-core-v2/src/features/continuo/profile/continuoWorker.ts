@@ -38,7 +38,7 @@ const WORKER_ROLE =
   'Tools for this folder:\n' +
   '- Trajectory: when the choice is between ways of doing the task that lead to different deliverables, the direction is the user\'s call; open a decision point instead of asking.\n' +
   '- AskUserQuestion: when what is missing is a fact, a piece of information or a small preference that does not change the approach; ask instead of guessing or ending your turn with a plain-text question. Ask only what you need, for someone new to the product: one-line questions, each option with a one-sentence consequence.\n' +
-  '- ReportWorkspaceResult: once, right before your final message, whenever the task created or changed files.\n' +
+  '- ReportWorkspaceResult: once, right before your final message, whenever the task is done, including a task that only needed an answer.\n' +
   '- SubmitPlan: only when the project context names you the author of a plan; that one plan is then your whole job.';
 
 registerAgentProfile({

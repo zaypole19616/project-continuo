@@ -9,13 +9,15 @@ import { Button } from '#/components/ui/button';
 export type NavTarget = { kind: 'folder'; path: string } | { kind: 'file'; path: string };
 type SortKey = 'name' | 'time' | 'size';
 
-export function FileBrowser({ workspaceId, root, doc, target, searchRef, onNavigate, onError }: {
+export function FileBrowser({ workspaceId, root, doc, target, searchRef, onNavigate }: {
   workspaceId: string; root: string; doc: ContinuoDoc | null; target: NavTarget; searchRef: React.RefObject<HTMLInputElement | null>;
-  onNavigate: (target: NavTarget) => void; onError: (message: string) => void;
+  onNavigate: (target: NavTarget) => void;
 }) {
   const folderPath = target.kind === 'folder' ? target.path : target.path.split('/').slice(0, -1).join('/');
   const [listing, setListing] = useState<FileListing | null>(null);
   const [file, setFile] = useState<FileContent | null>(null);
+  const [listFailed, setListFailed] = useState<string | null>(null);
+  const [readFailed, setReadFailed] = useState<string | null>(null);
   const [view, setView] = useState<'grid' | 'list'>(() => { try { return localStorage.getItem('continuo.view') === 'list' ? 'list' : 'grid'; } catch { return 'grid'; } });
   const sort: SortKey = 'name';
   const [query, setQuery] = useState('');
@@ -24,15 +26,15 @@ export function FileBrowser({ workspaceId, root, doc, target, searchRef, onNavig
   useEffect(() => {
     if (revision === 0) return;
     let cancelled = false;
-    continuoFiles.list(workspaceId, folderPath).then((r) => { if (!cancelled) setListing(r); }).catch((error: Error) => { if (!cancelled) onError(error.message); });
+    continuoFiles.list(workspaceId, folderPath).then((r) => { if (!cancelled) { setListing(r); setListFailed(null); } }).catch((error: Error) => { if (!cancelled) setListFailed(error.message); });
     return () => { cancelled = true; };
   }, [workspaceId, folderPath, revision]);
 
   useEffect(() => {
-    if (target.kind !== 'file') { setFile(null); return; }
+    if (target.kind !== 'file') { setFile(null); setReadFailed(null); return; }
     if (revision === 0) return;
     let cancelled = false;
-    continuoFiles.read(workspaceId, target.path).then((r) => { if (!cancelled) setFile(r); }).catch((error: Error) => { if (!cancelled) onError(error.message); });
+    continuoFiles.read(workspaceId, target.path).then((r) => { if (!cancelled) { setFile(r); setReadFailed(null); } }).catch((error: Error) => { if (!cancelled) { setFile(null); setReadFailed(error.message); } });
     return () => { cancelled = true; };
   }, [workspaceId, target, revision]);
 
@@ -80,7 +82,7 @@ export function FileBrowser({ workspaceId, root, doc, target, searchRef, onNavig
       </header>
 
       {target.kind === 'file' ? (
-        <div className="pane-body"><FilePreview file={file} producer={producer} taskTitle={taskTitle} onBack={() => onNavigate({ kind: 'folder', path: folderPath })}  onError={onError} /></div>
+        <div className="pane-body"><FilePreview file={file} failed={readFailed} producer={producer} taskTitle={taskTitle} onBack={() => onNavigate({ kind: 'folder', path: folderPath })} /></div>
       ) : (
         <>
           <div className="toolbar chrome">
@@ -88,7 +90,8 @@ export function FileBrowser({ workspaceId, root, doc, target, searchRef, onNavig
             <span className="text-3">{entries.length} 项</span>
           </div>
           <div className="pane-body">
-            {!listing ? <div className="text-3 fs-meta p-6">读取中…</div>
+            {listFailed !== null ? <div className="text-3 fs-meta p-6">这个文件夹打不开：{listFailed}</div>
+              : !listing ? <div className="text-3 fs-meta p-6">读取中…</div>
               : entries.length === 0 ? <EmptyFolder query={query} />
               : view === 'grid' ? <Grid entries={entries} taskTitle={taskTitle} onNavigate={onNavigate}  />
               : <FileTable entries={entries} taskTitle={taskTitle} onNavigate={onNavigate}  />}
@@ -151,11 +154,20 @@ function Markers({ entry, taskTitle }: { entry: FileEntry; taskTitle: (id: strin
   );
 }
 
-function FilePreview({ file, producer, taskTitle, onBack, onError }: { file: FileContent | null; producer: ContinuoTask | null; taskTitle: (id: string) => string; onBack: () => void; onError: (message: string) => void }) {
+function FilePreview({ file, failed, producer, taskTitle, onBack }: { file: FileContent | null; failed: string | null; producer: ContinuoTask | null; taskTitle: (id: string) => string; onBack: () => void }) {
   const [before, setBefore] = useState<string | null>(null);
   const [comparing, setComparing] = useState(false);
   const [loading, setLoading] = useState(false);
-  useEffect(() => { setBefore(null); setComparing(false); }, [file?.path]);
+  const [compareFailed, setCompareFailed] = useState<string | null>(null);
+  useEffect(() => { setBefore(null); setComparing(false); setCompareFailed(null); }, [file?.path]);
+  if (failed !== null) {
+    return (
+      <div className="p-8 space-y-3 fade-in">
+        <Button variant="ghost" size="sm" onClick={onBack}><ArrowLeft size={14} />返回文件夹</Button>
+        <div className="text-3">{failed}</div>
+      </div>
+    );
+  }
   if (!file) return <div className="text-3 fs-meta p-6">读取中…</div>;
   const isMd = /\.(md|markdown)$/i.test(file.path);
   const deliverable = producer?.report?.deliverables.find((d) => d.path === file.path);
@@ -168,7 +180,7 @@ function FilePreview({ file, producer, taskTitle, onBack, onError }: { file: Fil
       const r = await continuoFiles.before(producer!.sessionId, deliverable!.turnId!, file.path);
       setBefore(r.content?.content ?? '');
       setComparing(true);
-    } catch (error) { onError((error as Error).message); } finally { setLoading(false); }
+    } catch (error) { setCompareFailed((error as Error).message); } finally { setLoading(false); }
   };
   const rows = comparing && before !== null ? collapseUnchanged(diffLines(before, file.text ?? '')) : [];
   return (
@@ -179,6 +191,7 @@ function FilePreview({ file, producer, taskTitle, onBack, onError }: { file: Fil
         {file.producedBy && <span className="tag tag-done" title={taskTitle(file.producedBy)}><Sparkles size={12} />由任务产出</span>}
         {canCompare && <Button size="sm" disabled={loading} onClick={() => { void compare(); }}><GitCompare size={13} />{comparing ? '看正文' : '对比上一版'}</Button>}
         {file.truncated && <span className="tag tag-wait">只显示前 256KB</span>}
+        {compareFailed !== null && <span className="text-3 fs-meta">没能取到上一版：{compareFailed}</span>}
       </div>
       {comparing && before !== null
         ? <div className="diff">

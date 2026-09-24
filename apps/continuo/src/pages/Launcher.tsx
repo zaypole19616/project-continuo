@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { continuo, DEFAULT_MODEL, kimi, readRecent, type Workspace } from '#/lib/api';
 import { FolderPicker } from '#/components/FolderPicker';
 import { CreateProjectDialog } from '#/components/CreateProjectDialog';
@@ -9,17 +9,24 @@ export function Launcher({ onOpen, themePref, onTheme, onGuide }: { onOpen: (w: 
   const [recent, setRecent] = useState<Workspace[]>([]);
   const [creating, setCreating] = useState(false);
   const [browsing, setBrowsing] = useState(false);
+  const [waiting, setWaiting] = useState(false);
+  const gaveUp = useRef(false);
   const [error, setError] = useState<string | null>(null);
 
   const openExisting = async () => {
     setError(null);
+    setWaiting(true);
+    gaveUp.current = false;
     try {
       const picked = await continuo.chooseFolder('选择要打开的项目文件夹');
-      if (picked.path !== null) onOpen(await kimi.createWorkspace(picked.path));
+      if (!gaveUp.current && picked.path !== null) onOpen(await kimi.createWorkspace(picked.path));
     } catch {
-      setBrowsing(true);
+      if (!gaveUp.current) setBrowsing(true);
+    } finally {
+      setWaiting(false);
     }
   };
+  const pickInPage = () => { gaveUp.current = true; setWaiting(false); setBrowsing(true); };
 
   useEffect(() => {
     let cancelled = false;
@@ -55,7 +62,8 @@ export function Launcher({ onOpen, themePref, onTheme, onGuide }: { onOpen: (w: 
             </div>
             <div className="launch-cell">
               <b>打开已有项目</b><span>把一个本地文件夹作为项目打开。</span>
-              <button className="launch-btn" onClick={() => void openExisting()}>打开</button>
+              <button className="launch-btn" disabled={waiting} onClick={() => void openExisting()}>{waiting ? '等待系统窗口…' : '打开'}</button>
+              {waiting && <button className="pick-fallback" onClick={pickInPage}>没看到窗口？在页面里选</button>}
             </div>
           </div>
           {recent.length > 0 && (

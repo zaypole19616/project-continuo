@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { FolderOpen, Loader2, X } from 'lucide-react';
 import { continuo, kimi, type Workspace } from '#/lib/api';
 import { Button } from '#/components/ui/button';
@@ -10,6 +10,7 @@ export function CreateProjectDialog({ open, onOpenChange, onCreated }: { open: b
   const [parent, setParent] = useState<string | null>(null);
   const [choosing, setChoosing] = useState(false);
   const [browsing, setBrowsing] = useState(false);
+  const gaveUp = useRef(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -24,15 +25,17 @@ export function CreateProjectDialog({ open, onOpenChange, onCreated }: { open: b
   const choose = async () => {
     setChoosing(true);
     setError(null);
+    gaveUp.current = false;
     try {
       const picked = await continuo.chooseFolder('选择项目路径', parent ?? undefined);
-      if (picked.path !== null) setParent(picked.path);
+      if (!gaveUp.current && picked.path !== null) setParent(picked.path);
     } catch {
-      setBrowsing(true);
+      if (!gaveUp.current) setBrowsing(true);
     } finally {
       setChoosing(false);
     }
   };
+  const pickInPage = () => { gaveUp.current = true; setChoosing(false); setBrowsing(true); };
 
   const save = async () => {
     if (parent === null || trimmed === '' || nameProblem !== undefined) return;
@@ -67,6 +70,7 @@ export function CreateProjectDialog({ open, onOpenChange, onCreated }: { open: b
             {choosing ? <Loader2 size={18} className="spin" /> : <FolderOpen size={18} />}
             <span className="cd-path-text">{parent ?? '…'}</span>
           </button>
+          {choosing && <button className="pick-fallback" onClick={pickInPage}>没看到窗口？在页面里选</button>}
           {error !== null && <div className="cd-error">{error}</div>}
           <div className="cd-actions">
             <Button variant="secondary" className="cd-btn" onClick={() => onOpenChange(false)}>取消</Button>

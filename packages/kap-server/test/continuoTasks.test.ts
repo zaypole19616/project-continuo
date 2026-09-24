@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { EMPTY_USAGE, type ContinuoTask } from '@moonshot-ai/agent-core-v2';
 
-import { explorationFailure, interruptedOnRestart, isBusy, isLiveBusy, started, toAwaiting, toEnded, toRunning } from '../src/continuo/taskState';
+import { asksUser, explorationFailure, interruptedOnRestart, isBusy, isLiveBusy, started, toAwaiting, toEnded, toRunning } from '../src/continuo/taskState';
 import { TodoRunner } from '../src/continuo/todos';
 
 const NOW = '2026-09-24T00:00:00.000Z';
@@ -38,6 +38,13 @@ describe('isBusy', () => {
 });
 
 describe('task transitions', () => {
+  it('waits for the user only when the last paragraph of a reply asks something', () => {
+    expect(asksUser('上海站合计 54000 元。\n\n需要的话我可以留意等确认。')).toBe(false);
+    expect(asksUser('思路如下：先按城市排。\n\n你希望按城市还是按费用类型排？')).toBe(true);
+    expect(asksUser('要不要我顺便补上杭州？')).toBe(true);
+    expect(asksUser('')).toBe(false);
+  });
+
   it('says why every plan author failed, once per reason', () => {
     const quota = '出错了（403 You\'ve reached your 5-hour usage limit.）';
     const angle = (key: string, note?: string) => ({ key, title: key, angle: key, status: 'failed' as const, note });

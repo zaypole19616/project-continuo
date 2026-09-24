@@ -75,10 +75,12 @@ function errorEnvelope(error: unknown, requestId: string) {
   return errEnvelope(ErrorCode.INTERNAL_ERROR, error instanceof Error ? error.message : String(error), requestId);
 }
 
-const taskActions: ActionTable<'pause' | 'resume' | 'reply' | 'fork', ActionExtra> = {
+const taskActions: ActionTable<'pause' | 'resume' | 'reply' | 'steer' | 'complete' | 'fork', ActionExtra> = {
   pause: { handle: async ({ manager, workspaceId, id, respond }) => { respond(await manager.pause(workspaceId, id)); } },
   resume: { handle: async ({ manager, workspaceId, id, respond }) => { respond(await manager.resume(workspaceId, id)); } },
   reply: { body: replyBodySchema, handle: async ({ manager, workspaceId, id, body, respond }: ActionCtx<z.infer<typeof replyBodySchema>>) => { respond(await manager.reply(workspaceId, id, body.text)); } },
+  steer: { body: replyBodySchema, handle: async ({ manager, workspaceId, id, body, respond }: ActionCtx<z.infer<typeof replyBodySchema>>) => { respond(await manager.steer(workspaceId, id, body.text)); } },
+  complete: { handle: async ({ manager, workspaceId, id, respond }) => { respond(await manager.complete(workspaceId, id)); } },
   fork: { handle: async ({ manager, workspaceId, id, respond }) => { respond(await manager.decisions.forkAfterTask(workspaceId, id)); } },
 };
 
@@ -217,7 +219,7 @@ export function registerContinuoRoutes(app: ContinuoRouteHost, core: Scope): voi
       body: z.object({ text: z.string().min(1).max(8000).optional() }).optional(),
       success: { data: docSchema },
       errors: CONTINUO_ERRORS,
-      description: 'Task actions: {task_id}:pause stops a running task (the user pause wins over automatic continuation); {task_id}:resume continues a paused, interrupted, failed or needs_review task in its original session; {task_id}:reply sends the user reply into the task session; {task_id}:fork copies the current line up to the end of that task into a new line and makes it current',
+      description: 'Task actions: {task_id}:pause stops a running task (the user pause wins over automatic continuation); {task_id}:resume continues a paused, interrupted, failed or needs_review task in its original session; {task_id}:reply sends the user reply into the task session; {task_id}:steer adds a user supplement to the turn that is running; {task_id}:complete closes a task that is waiting for a reply; {task_id}:fork copies the current line up to the end of that task into a new line and makes it current',
       tags: ['continuo'],
       operationId: 'continuoTaskAction',
     },
