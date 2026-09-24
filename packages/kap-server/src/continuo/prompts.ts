@@ -33,9 +33,9 @@ export const MAIN_TURN_MORE_PLANS: MainTurn = {
 };
 
 export function mainTurnComparePlans(plans: readonly TrajectoryPlan[]): MainTurn {
-  const list = plans.map((plan) => `- 「${plan.title}」：${plan.path}`).join('\n');
+  const titles = plans.map((plan) => `「${plan.title}」`).join('、');
   return {
-    text: `分头写的方案都交上来了：\n${list}\n比较一下：先说清楚选哪个取决于什么；如果材料里有事实能定下来，再说你建议哪个、为什么。先不要开始任何一个。`,
+    text: `分头写的方案都交上来了：${titles}。读完后把选哪个取决于什么记到决策卡上；如果材料里有事实能定下来，也记上你建议哪个、为什么。先不要开始任何一个。`,
     round: '比较方案',
   };
 }

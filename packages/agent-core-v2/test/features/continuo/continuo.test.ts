@@ -172,7 +172,9 @@ describe('trajectory', () => {
   it('marks a decision that is still open so the agent waits for the user', () => {
     const main = line({ trajectoryId: 'main', taskIds: ['task_1'] });
     const doc = { ...docWith([], { understanding: { text: 'Q4 planning', sourceRefs: [], updatedAt: NOW } }), trajectories: [main], decisions: [decision()] };
-    expect(bundleFor(doc, task())!).toContain('Still open: the user has not picked a plan yet.');
+    const text = bundleFor(doc, task())!;
+    expect(text).toContain('Still open: the user has not picked a plan yet.');
+    expect(text).toContain('「keep budget」 (id B) — a candidate. work-log/plan-B.md');
   });
 });
 

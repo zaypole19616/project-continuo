@@ -232,7 +232,7 @@ export function doneOnLine(doc: ContinuoWorkspaceDoc, line: Trajectory, exceptTa
 export function otherLineNote(doc: ContinuoWorkspaceDoc, line: Trajectory, decision: Decision, plan: TrajectoryPlan): string {
   const status = planStatusOn(doc, line, decision, plan);
   if (status.kind === 'abandoned') return `abandoned${plan.abandoned?.reason === undefined ? '' : ` because ${plan.abandoned.reason}`}`;
-  if (status.kind !== 'elsewhere') return 'not taken';
+  if (status.kind !== 'elsewhere') return choiceOn(line, decision.decisionId) === undefined ? 'a candidate' : 'not taken';
   const own = new Set(line.taskIds);
   const tasks = status.trajectory.taskIds.filter((taskId) => !own.has(taskId)).map((taskId) => doc.tasks.find((task) => task.taskId === taskId)).filter((task): task is ContinuoTask => task !== undefined);
   const rounds = tasks.reduce((total, task) => total + (task.rounds ?? []).length, 0);

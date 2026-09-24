@@ -85,7 +85,7 @@ export class TrajectoryTool implements ITrajectoryTool {
         startedAt: now,
       },
     }, now);
-    return { isError: false, output: `Exploration recorded with ${args.angles.length} angles. End your turn now with one short line; one author per angle writes a plan in parallel and the plans go to the user.` };
+    return { isError: false, output: `Exploration recorded with ${args.angles.length} angles. End your turn now with one short line; one author per angle writes a plan in parallel. When the plans are back you are asked to compare them: do that with recommend.` };
   }
 
   private async recommend(doc: ContinuoWorkspaceDoc, open: Decision, args: TrajectoryInput, now: string): Promise<ToolResult> {
