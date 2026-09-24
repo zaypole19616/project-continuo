@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowRight, ArrowUp, Check, CircleAlert, Play, RotateCcw, Square } from 'lucide-react';
+import { ArrowRight, ArrowUp, Check, CircleAlert, LogIn, Play, RotateCcw, Square } from 'lucide-react';
 import { DEFAULT_MODEL, type ApprovalRequest, type ContinuoDoc, type ContinuoTask, type ContinuoTodo, type Decision, type PermissionMode, type TodoAction, type TodoTiming, type QuestionRequest, type Trajectory, type TrajectoryPlan, type Workspace } from '#/lib/api';
 import type { TimelineState } from '#/lib/timeline';
 import { decisionsOn, lineIsBusy, taskLabel, tasksOn, todoGroup, TODO_GROUPS } from '#/lib/trajectory';
@@ -10,6 +10,7 @@ import { Backlog } from './Backlog';
 import { failureReason } from '#/lib/errors';
 import { PermissionPicker } from './PermissionPicker';
 import { ErrorCard } from './ErrorCard';
+import { useKimiLogin } from './LoginDialog';
 import { SuggestedTodos } from './SuggestedTodos';
 import { DecisionCard } from './DecisionCard';
 import { TrajectoryTree } from './TrajectoryTree';
@@ -79,6 +80,8 @@ export function Drawer(p: DrawerProps) {
   const [draft, setDraft] = useState('');
   const [dropping, setDropping] = useState<{ decision: Decision; plan: TrajectoryPlan } | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
+  const loginFor = useRef<ContinuoTask | null>(null);
+  const login = useKimiLogin(() => { if (loginFor.current !== null) p.onAction(loginFor.current, 'resume'); });
   const lastItem = p.state.items.at(-1);
   useEffect(() => {
     if (tab !== 'chat') return;
@@ -118,7 +121,13 @@ export function Drawer(p: DrawerProps) {
   }
   for (const task of tasks.filter((t) => t.status === 'failed' && t.endedAt !== undefined)) {
     const error = task.error ?? { code: 'turn.failed', message: '没有完成', at: task.endedAt! };
-    const retry = task.taskId === p.latest?.taskId ? <Button variant="default" size="sm" disabled={p.sending} onClick={() => p.onAction(task, 'resume')}><RotateCcw size={12} />重试</Button> : undefined;
+    const latest = task.taskId === p.latest?.taskId;
+    if (error.code === 'model.not_configured') {
+      const signIn = latest ? <Button variant="default" size="sm" disabled={p.sending} onClick={() => { loginFor.current = task; login.start(); }}>登录</Button> : undefined;
+      extras.push({ at: Date.parse(task.endedAt!), node: <ErrorCard key={`err-${task.taskId}`} kicker={`「${taskLabel(task)}」没有完成`} icon={LogIn} error={{ ...error, message: '登录后会接着把这件事做完。' }} action={signIn} /> });
+      continue;
+    }
+    const retry = latest ? <Button variant="default" size="sm" disabled={p.sending} onClick={() => p.onAction(task, 'resume')}><RotateCcw size={12} />重试</Button> : undefined;
     extras.push({ at: Date.parse(task.endedAt!), node: <ErrorCard key={`err-${task.taskId}`} kicker={`「${taskLabel(task)}」没有完成`} error={error} action={retry} /> });
   }
   if (p.doc !== null && p.line !== undefined) {
@@ -193,6 +202,7 @@ export function Drawer(p: DrawerProps) {
             {p.questions.map((q) => <QuestionCard key={q.question_id} q={q} onAnswer={(answers, note) => p.onAnswer(q, answers, note)} />)}
             {p.approvals.map((a) => <ApprovalCard key={a.approval_id} a={a} root={p.line?.workDir ?? p.doc?.root} onDecide={(d, scope) => p.onDecide(a, d, scope)} />)}
             <div ref={bottomRef} />
+            {login.dialog}
           </div>
           <div className="drawer-foot">{composer}</div>
         </TabsContent>

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { EMPTY_USAGE, type ContinuoTask } from '@moonshot-ai/agent-core-v2';
 
-import { asksUser, explorationFailure, interruptedOnRestart, isBusy, isLiveBusy, started, toAwaiting, toEnded, toRunning } from '../src/continuo/taskState';
+import { asksUser, explorationFailure, taskErrorOf, interruptedOnRestart, isBusy, isLiveBusy, started, toAwaiting, toEnded, toRunning } from '../src/continuo/taskState';
 import { TodoRunner } from '../src/continuo/todos';
 
 const NOW = '2026-09-24T00:00:00.000Z';
@@ -43,6 +43,11 @@ describe('task transitions', () => {
     expect(asksUser('思路如下：先按城市排。\n\n你希望按城市还是按费用类型排？')).toBe(true);
     expect(asksUser('要不要我顺便补上杭州？')).toBe(true);
     expect(asksUser('')).toBe(false);
+  });
+
+  it('reads a missing model as a sign-in problem, whichever way the engine words it', () => {
+    expect(taskErrorOf({ code: 'config.invalid', message: 'Model "kimi-code/kimi-for-coding" is not configured in config.toml.' }, 'failed', NOW)).toMatchObject({ code: 'model.not_configured', message: '请先用 Kimi 账号登录。' });
+    expect(taskErrorOf({ code: 'provider.error', message: '429 Too Many Requests' }, 'failed', NOW).code).toBe('provider.error');
   });
 
   it('says why every plan author failed, once per reason', () => {
