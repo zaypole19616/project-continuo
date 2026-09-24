@@ -3,27 +3,23 @@ import { z } from 'zod';
 import { createDecorator } from '#/_base/di/instantiation';
 import { type AgentTool } from '#/tool/toolContract';
 
+import { EXPLORE_MAX_ANGLES } from '../../trajectory';
+import { planSchema, taskNameSchema } from '../schemas';
+
 export const TRAJECTORY_TOOL_NAME = 'Trajectory';
 
-const planSchema = z.object({
-  title: z.string().min(1).max(40).describe('The plan in a few words.'),
-  basis: z.string().min(1).max(300).describe('Which material or fact makes this plan reasonable.'),
-  risk: z.string().min(1).max(300).describe('The main way this plan could go wrong or what it gives up.'),
-  prompt: z.string().min(1).max(800).describe('The instruction that starts this plan if the user picks it, written as the user would say it.'),
-  fit: z.string().min(1).max(80).describe('One line in the language of the folder on the situation this plan suits: what would make someone pick it.'),
-  caution: z.string().min(1).max(200).optional().describe('Only when this plan has a concrete problem worth warning the user about: the problem and what it rests on, in one line.'),
-  detail: z.string().max(4000).optional().describe('The fuller plan in Markdown: steps, what gets produced, open points. Written into the plan file.'),
-  recommended: z.boolean().optional().describe('propose / expand: true on the one plan you would pick, only when a fact in the materials settles the choice.'),
+const proposedPlanSchema = planSchema.extend({
+  recommended: z.boolean().optional().describe('true on the one plan you would pick, only when a fact in the materials settles the choice.'),
 });
 
 export const TrajectoryInputSchema = z.object({
   action: z
-    .enum(['propose', 'expand', 'explore', 'recommend', 'list', 'submit', 'ask', 'withdraw'])
-    .describe('Main agent: propose opens a decision point with plans you write yourself; expand adds plans to the open one or says nothing different is left; explore opens a decision point whose plans are written in parallel, one per angle; recommend states where you stand on the open one; list shows the decision points on this line. Plan author: submit hands in your plan; ask sends a question to another author; withdraw drops your plan because it is the same as another one.'),
+    .enum(['propose', 'expand', 'explore', 'recommend'])
+    .describe('propose opens a decision point with plans you write yourself; expand adds plans to the open one or says nothing different is left; explore opens a decision point whose plans are written in parallel, one per angle; recommend states where you stand on the open one.'),
   question: z.string().min(1).max(120).optional().describe('propose / explore: the decision the user has to make, as a short question.'),
-  plans: z.array(planSchema).max(12).optional().describe('propose / expand: the plans. Each must differ from the others in approach, not in wording.'),
+  plans: z.array(proposedPlanSchema).max(12).optional().describe('propose / expand: the plans. Each must differ from the others in approach, not in wording.'),
   pick: z.string().min(1).max(8).optional().describe('recommend: the id of the plan you would pick; leave it out when none is clearly better.'),
-  why: z.string().min(1).max(300).optional().describe('propose / expand / recommend: one short sentence, about 40 Chinese characters, naming the fact in the materials that makes the plan you recommend the better choice; the user reads it on the card.'),
+  why: z.string().min(1).max(300).optional().describe('propose / expand / recommend: one short sentence in the language of the folder, at most about 40 Chinese characters or 25 English words, naming the fact in the materials that makes the plan you recommend the better choice; the user reads it on the card.'),
   dependsOn: z.string().min(1).max(200).optional().describe('propose / recommend: always; expand: when it changes. What the choice comes down to, as one short phrase in the language of the folder.'),
   exhausted: z
     .object({
@@ -34,16 +30,13 @@ export const TrajectoryInputSchema = z.object({
     .describe('expand: use instead of plans when another plan would only restate an existing one.'),
   angles: z
     .array(z.object({ title: z.string().min(1).max(40).describe('The angle in a few words.'), angle: z.string().min(1).max(400).describe('What this author should look into and argue for.') }))
-    .max(6)
+    .min(2)
+    .max(EXPLORE_MAX_ANGLES)
     .optional()
-    .describe('explore: two to four clearly different angles, one author each.'),
-  reason: z.string().min(1).max(300).optional().describe('explore: why each plan needs its own investigation instead of you writing them in one go. withdraw: why your plan is the same as the other one.'),
-  plan: planSchema.optional().describe('submit: your plan.'),
-  to: z.string().min(1).max(8).optional().describe('ask: the key of the author you ask (for example B), or all.'),
-  text: z.string().min(1).max(600).optional().describe('ask: the question or answer.'),
-  sameAs: z.string().min(1).max(8).optional().describe('withdraw: the key of the author whose plan yours duplicates.'),
-  name: z.string().min(1).max(12).optional().describe('propose / explore: the task name, two to six characters, if you have not reported it yet.'),
-  category: z.string().min(1).max(24).regex(/^[a-z][a-z0-9-]*$/).optional().describe('propose / explore: the task category as a lowercase ASCII word.'),
+    .describe(`explore: two to ${EXPLORE_MAX_ANGLES} clearly different angles, one author each.`),
+  reason: z.string().min(1).max(300).optional().describe('explore: why each plan needs its own investigation instead of you writing them in one go.'),
+  name: taskNameSchema.shape.name.optional(),
+  category: taskNameSchema.shape.category.optional(),
 });
 
 export type TrajectoryInput = z.infer<typeof TrajectoryInputSchema>;

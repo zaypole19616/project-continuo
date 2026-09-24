@@ -66,7 +66,7 @@ export function InitCard({ doc, busy, startLock, onRetry, onOpenFile, onTodoActi
     );
   }
   if (doc.init.status === 'failed') {
-    const error: TaskError = task?.error ?? { code: 'turn.failed', message: task?.lastError ?? '没有完成', at: doc.init.endedAt ?? doc.init.startedAt ?? new Date().toISOString() };
+    const error: TaskError = task?.error ?? { code: 'turn.failed', message: '没有完成', at: doc.init.endedAt ?? doc.init.startedAt ?? new Date().toISOString() };
     return <ErrorCard kicker="了解这个文件夹时出错" error={error} action={retry} />;
   }
   if (doc.init.status === 'stopped') {

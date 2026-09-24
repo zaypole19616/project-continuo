@@ -49,7 +49,8 @@ export function untilText(iso: string, now: number): string {
 }
 
 export function failureReason(task: ContinuoTask): string | undefined {
-  if (task.error !== undefined) return errorTitle(task.error);
-  if (task.lastError === undefined) return undefined;
-  return /usage limit|quota/i.test(task.lastError) ? '已达到用量上限' : task.lastError.slice(0, 80);
+  const error = task.error;
+  if (error === undefined) return undefined;
+  if (mentionsUsageLimit(error) || TITLES[error.code] !== undefined) return errorTitle(error);
+  return error.message.slice(0, 80);
 }

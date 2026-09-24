@@ -35,7 +35,7 @@ export interface TaskDeliverable {
   readonly turnId?: number;
 }
 
-export interface TaskNextStep {
+export interface Suggestion {
   readonly title: string;
   readonly reason: string;
   readonly prompt: string;
@@ -74,7 +74,6 @@ export interface ExplorationAngle {
   readonly sessionId?: string;
   readonly planId?: string;
   readonly note?: string;
-  readonly steps: number;
   readonly usage?: TaskUsage;
 }
 
@@ -151,7 +150,7 @@ export interface TaskReport {
   readonly summary: string;
   readonly deliverables: readonly TaskDeliverable[];
   readonly unresolved: readonly string[];
-  readonly nextStep?: TaskNextStep;
+  readonly nextStep?: Suggestion;
   readonly reportedAt: string;
 }
 
@@ -200,7 +199,6 @@ export interface ContinuoTask {
   readonly status: TaskStatus;
   readonly phase?: string;
   readonly pauseRequested: boolean;
-  readonly contextRevision: number;
   readonly pendingInteraction?: 'question' | 'approval' | 'reply' | 'choice' | 'none';
   readonly lastReply?: string;
   readonly report?: TaskReport;
@@ -212,7 +210,6 @@ export interface ContinuoTask {
   readonly branch?: { readonly decisionId: string; readonly planId: string; readonly label: string };
   readonly snapshot?: string;
   readonly usage: TaskUsage;
-  readonly lastError?: string;
   readonly error?: TaskError;
   readonly createdAt: string;
   readonly updatedAt: string;
@@ -237,16 +234,10 @@ export interface WorkspaceScan {
 
 export type InitStatus = 'pending' | 'running' | 'completed' | 'partial' | 'failed' | 'stopped';
 
-export interface InitSuggestion {
-  readonly title: string;
-  readonly reason: string;
-  readonly prompt: string;
-}
-
 export interface WorkspaceUnderstanding {
   readonly text: string;
   readonly sourceRefs: readonly string[];
-  readonly suggestions?: readonly InitSuggestion[];
+  readonly suggestions?: readonly Suggestion[];
   readonly updatedAt: string;
 }
 

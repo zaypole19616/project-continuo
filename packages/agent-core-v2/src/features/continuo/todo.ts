@@ -7,7 +7,7 @@ export type TodoTiming =
   | { readonly kind: 'daily'; readonly time: string }
   | { readonly kind: 'weekly'; readonly day: number; readonly time: string };
 
-const WEEKDAYS = '日一二三四五六';
+export type TodoCron = Pick<TodoSchedule, 'cron' | 'recurring'>;
 
 function clock(time: string): { hour: number; minute: number } | undefined {
   const match = /^(\d{1,2}):(\d{2})$/.exec(time);
@@ -17,23 +17,20 @@ function clock(time: string): { hour: number; minute: number } | undefined {
   return hour <= 23 && minute <= 59 ? { hour, minute } : undefined;
 }
 
-const pad = (value: number) => String(value).padStart(2, '0');
-
-export function scheduleOf(timing: TodoTiming): TodoSchedule | undefined {
+export function scheduleOf(timing: TodoTiming): TodoCron | undefined {
   if (timing.kind === 'once') {
     const at = new Date(timing.at);
     if (Number.isNaN(at.getTime())) return undefined;
-    return { cron: `${at.getMinutes()} ${at.getHours()} ${at.getDate()} ${at.getMonth() + 1} *`, recurring: false, label: `${at.getMonth() + 1}月${at.getDate()}日 ${pad(at.getHours())}:${pad(at.getMinutes())}` };
+    return { cron: `${at.getMinutes()} ${at.getHours()} ${at.getDate()} ${at.getMonth() + 1} *`, recurring: false };
   }
   const time = clock(timing.time);
   if (time === undefined) return undefined;
-  const hhmm = `${pad(time.hour)}:${pad(time.minute)}`;
-  if (timing.kind === 'daily') return { cron: `${time.minute} ${time.hour} * * *`, recurring: true, label: `每天 ${hhmm}` };
+  if (timing.kind === 'daily') return { cron: `${time.minute} ${time.hour} * * *`, recurring: true };
   if (!Number.isInteger(timing.day) || timing.day < 0 || timing.day > 6) return undefined;
-  return { cron: `${time.minute} ${time.hour} * * ${timing.day}`, recurring: true, label: `每周${WEEKDAYS[timing.day]} ${hhmm}` };
+  return { cron: `${time.minute} ${time.hour} * * ${timing.day}`, recurring: true };
 }
 
-export function nextRunAt(schedule: TodoSchedule, fromMs: number): string | undefined {
+export function nextRunAt(schedule: Pick<TodoSchedule, 'cron'>, fromMs: number): string | undefined {
   const next = computeNextCronRun(parseCronExpression(schedule.cron), fromMs);
   return next === null ? undefined : new Date(next).toISOString();
 }

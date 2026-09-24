@@ -5,7 +5,7 @@ import { renderMarkdown } from '#/lib/markdown';
 
 const TOOL_LABEL: Record<string, string> = {
   Read: '读取', ReadMediaFile: '读取', Write: '写入', Edit: '修改', Grep: '搜索', Glob: '查找文件', Bash: '命令',
-  WebSearch: '网页搜索', FetchURL: '打开网页', Trajectory: '方案', ReportWorkspaceResult: '汇报结果', AskUserQuestion: '提问',
+  WebSearch: '网页搜索', FetchURL: '打开网页', Trajectory: '方案', SubmitPlan: '方案', ReportWorkspaceResult: '汇报结果', AskUserQuestion: '提问',
   TodoList: '待办', WorkspaceContext: '记录要点', Skill: '技能',
 };
 

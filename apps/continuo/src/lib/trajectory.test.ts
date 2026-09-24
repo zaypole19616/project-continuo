@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ContinuoDoc, ContinuoTask, Decision, Trajectory } from './api';
 import { buildTrunk, currentLine, isExploring, lineIsBusy, orderedPlans, planState, stanceTag, todoGroup } from './trajectory';
-import { errorTitle, spentLimit, untilText } from './errors';
+import { errorTitle, failureReason, spentLimit, untilText } from './errors';
 
 const NOW = '2026-09-23T04:00:00.000Z';
 
@@ -69,7 +69,7 @@ describe('where the agent stands', () => {
 });
 
 describe('plans written in parallel', () => {
-  const exploring: Decision = { ...decision, plans: [plan('A')], exploration: { reason: 'r', angles: [{ key: 'A', title: 'a', angle: 'x', status: 'submitted', planId: 'A', steps: 2 }, { key: 'B', title: 'b', angle: 'y', status: 'running', steps: 1 }], maxSteps: 8, startedAt: NOW } };
+  const exploring: Decision = { ...decision, plans: [plan('A')], exploration: { reason: 'r', angles: [{ key: 'A', title: 'a', angle: 'x', status: 'submitted', planId: 'A' }, { key: 'B', title: 'b', angle: 'y', status: 'running' }], maxSteps: 8, startedAt: NOW } };
 
   it('keeps a decision open for writing until every author is done', () => {
     expect(isExploring(exploring)).toBe(true);
@@ -87,6 +87,14 @@ describe('failure wording', () => {
     expect(errorTitle({ ...plain, code: 'provider.rate_limit' })).toBe('模型请求被限流');
     expect(errorTitle({ ...plain, code: 'something.else' })).toBe('模型请求失败');
     expect(errorTitle(error)).toBe('已达到用量上限');
+  });
+
+  it('names why a task failed by its code when the code is known, and by the message otherwise', () => {
+    const failed = task('t1', { status: 'failed', endedAt: NOW });
+    expect(failureReason(failed)).toBeUndefined();
+    expect(failureReason({ ...failed, error: { ...error, message: '403 Forbidden' } })).toBe('模型认证失败');
+    expect(failureReason({ ...failed, error })).toBe('已达到用量上限');
+    expect(failureReason({ ...failed, error: { code: 'turn.failed', message: '分头写的 3 个方案都没能完成', at: NOW } })).toBe('分头写的 3 个方案都没能完成');
   });
 
   it('names the plan limit that is used up and when it resets', () => {

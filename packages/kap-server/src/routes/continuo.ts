@@ -1,28 +1,52 @@
-import { IFlagService, type Scope } from '@moonshot-ai/agent-core-v2';
+import { IFlagService, type ContinuoWorkspaceDoc, type Scope } from '@moonshot-ai/agent-core-v2';
 import { z } from 'zod';
 
-import { ContinuoError, ContinuoTaskManager } from '../continuo/taskManager';
+import { chooseFolder } from '../continuo/chooseFolder';
+import { ContinuoError, type ContinuoErrorCode } from '../continuo/errors';
+import { listFiles, readTextFile } from '../continuo/files';
+import { ContinuoTaskManager } from '../continuo/taskManager';
+import { TodoRunner } from '../continuo/todos';
 import { errEnvelope, okEnvelope } from '../envelope';
 import { defineRoute } from '../middleware/defineRoute';
-import { parseActionSuffix } from './action-suffix';
-import { chooseFolder } from '../continuo/chooseFolder';
-import { listFiles, readTextFile } from '../continuo/files';
 import { ErrorCode } from '../protocol/error-codes';
+import { type ActionTable, dispatchAction } from './action-dispatch';
 
 const workspaceParamSchema = z.object({ workspace_id: z.string().min(1) });
+const tailParamSchema = z.object({ workspace_id: z.string().min(1), tail: z.string().min(1) });
 const openBodySchema = z.object({ client_request_id: z.string().min(1).optional() });
 const createTaskBodySchema = z.object({ text: z.string().min(1).max(8000), client_request_id: z.string().min(1).optional() });
+const replyBodySchema = z.object({ text: z.string().min(1).max(8000) });
+const planBodySchema = z.object({ plan_id: z.string().min(1).max(8) });
+const abandonBodySchema = z.object({ plan_id: z.string().min(1).max(8), reason: z.string().max(300).optional() });
 const docSchema = z.record(z.string(), z.unknown());
 const todoTimingSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('once'), at: z.string().min(1).max(64) }),
   z.object({ kind: z.literal('daily'), time: z.string().min(3).max(5) }),
   z.object({ kind: z.literal('weekly'), day: z.number().int().min(0).max(6), time: z.string().min(3).max(5) }),
 ]);
-const TODO_TICK_MS = 30_000;
+
+interface Reply {
+  send(payload: unknown): unknown;
+}
 
 interface ContinuoRouteHost {
-  get(path: string, options: { preHandler: unknown[]; schema?: Record<string, unknown> } | undefined, handler: (req: { id: string; params: unknown; query?: unknown }, reply: { send(payload: unknown): unknown }) => Promise<void> | void): unknown;
-  post(path: string, options: { preHandler: unknown[]; schema?: Record<string, unknown> } | undefined, handler: (req: { id: string; params: unknown; body: unknown }, reply: { send(payload: unknown): unknown }) => Promise<void> | void): unknown;
+  get(path: string, options: { preHandler: unknown[]; schema?: Record<string, unknown> } | undefined, handler: (req: { id: string; params: unknown; query?: unknown }, reply: Reply) => Promise<void> | void): unknown;
+  post(path: string, options: { preHandler: unknown[]; schema?: Record<string, unknown> } | undefined, handler: (req: { id: string; params: unknown; body: unknown }, reply: Reply) => Promise<void> | void): unknown;
+  addHook(name: 'onClose', hook: () => void): unknown;
+}
+
+interface ActionExtra {
+  readonly manager: ContinuoTaskManager;
+  readonly workspaceId: string;
+  readonly respond: (doc: ContinuoWorkspaceDoc) => void;
+}
+
+type ActionCtx<TBody = unknown> = ActionExtra & { readonly id: string; readonly body: TBody };
+
+interface ActionRequest {
+  readonly id: string;
+  readonly params: { readonly workspace_id: string; readonly tail: string };
+  readonly body?: unknown;
 }
 
 const CONTINUO_ERRORS = {
@@ -31,24 +55,81 @@ const CONTINUO_ERRORS = {
   [ErrorCode.TASK_NOT_FOUND]: {},
 };
 
+const FILE_ERRORS = { ...CONTINUO_ERRORS, [ErrorCode.FS_PATH_NOT_FOUND]: {} };
+
+const ERROR_CODES: Record<ContinuoErrorCode, ErrorCode> = {
+  workspace_not_found: ErrorCode.WORKSPACE_NOT_FOUND,
+  task_not_found: ErrorCode.TASK_NOT_FOUND,
+  invalid_state: ErrorCode.VALIDATION_FAILED,
+  entry_not_found: ErrorCode.FS_PATH_NOT_FOUND,
+};
+
+const DISABLED = 'Continuo is disabled; start the server with KIMI_CODE_EXPERIMENTAL_CONTINUO=1';
+
+function errorEnvelope(error: unknown, requestId: string) {
+  if (error instanceof ContinuoError) return errEnvelope(ERROR_CODES[error.code], error.message, requestId);
+  if (error instanceof z.ZodError) {
+    const issue = error.issues[0];
+    return errEnvelope(ErrorCode.VALIDATION_FAILED, issue === undefined ? 'validation failed' : `${issue.path.join('.')}: ${issue.message}`, requestId);
+  }
+  return errEnvelope(ErrorCode.INTERNAL_ERROR, error instanceof Error ? error.message : String(error), requestId);
+}
+
+const taskActions: ActionTable<'pause' | 'resume' | 'reply' | 'fork', ActionExtra> = {
+  pause: { handle: async ({ manager, workspaceId, id, respond }) => { respond(await manager.pause(workspaceId, id)); } },
+  resume: { handle: async ({ manager, workspaceId, id, respond }) => { respond(await manager.resume(workspaceId, id)); } },
+  reply: { body: replyBodySchema, handle: async ({ manager, workspaceId, id, body, respond }: ActionCtx<z.infer<typeof replyBodySchema>>) => { respond(await manager.reply(workspaceId, id, body.text)); } },
+  fork: { handle: async ({ manager, workspaceId, id, respond }) => { respond(await manager.decisions.forkAfterTask(workspaceId, id)); } },
+};
+
+const decisionActions: ActionTable<'choose' | 'expand' | 'abandon', ActionExtra> = {
+  choose: { body: planBodySchema, handle: async ({ manager, workspaceId, id, body, respond }: ActionCtx<z.infer<typeof planBodySchema>>) => { respond(await manager.decisions.choosePlan(workspaceId, id, body.plan_id)); } },
+  expand: { handle: async ({ manager, workspaceId, id, respond }) => { respond(await manager.decisions.expandPlans(workspaceId, id)); } },
+  abandon: { body: abandonBodySchema, handle: async ({ manager, workspaceId, id, body, respond }: ActionCtx<z.infer<typeof abandonBodySchema>>) => { respond(await manager.decisions.abandonPlan(workspaceId, id, body.plan_id, body.reason)); } },
+};
+
+const todoActions: ActionTable<'start' | 'accept' | 'dismiss' | 'delete', ActionExtra> = {
+  start: { handle: async ({ manager, workspaceId, id, respond }) => { respond(await manager.startTodo(workspaceId, id)); } },
+  accept: { handle: async ({ manager, workspaceId, id, respond }) => { respond(await manager.acceptTodo(workspaceId, id)); } },
+  dismiss: { handle: async ({ manager, workspaceId, id, respond }) => { respond(await manager.dismissTodo(workspaceId, id)); } },
+  delete: { handle: async ({ manager, workspaceId, id, respond }) => { respond(await manager.removeTodo(workspaceId, id)); } },
+};
+
+const trajectoryActions: ActionTable<'activate', ActionExtra> = {
+  activate: { handle: async ({ manager, workspaceId, id, respond }) => { respond(await manager.decisions.activateTrajectory(workspaceId, id)); } },
+};
+
 export function registerContinuoRoutes(app: ContinuoRouteHost, core: Scope): void {
   const manager = new ContinuoTaskManager(core);
-  const todoTimer = setInterval(() => {
-    if (core.accessor.get(IFlagService).enabled('continuo')) void manager.runDueTodos().catch(() => undefined);
-  }, TODO_TICK_MS);
-  todoTimer.unref();
-  const flagGuard = (requestId: string, reply: { send(payload: unknown): unknown }): boolean => {
-    if (core.accessor.get(IFlagService).enabled('continuo')) return true;
-    reply.send(errEnvelope(ErrorCode.VALIDATION_FAILED, 'Continuo is disabled; start the server with KIMI_CODE_EXPERIMENTAL_CONTINUO=1', requestId));
-    return false;
-  };
-  const sendError = (reply: { send(payload: unknown): unknown }, requestId: string, error: unknown): void => {
-    if (error instanceof ContinuoError) {
-      const code = error.code === 'workspace_not_found' ? ErrorCode.WORKSPACE_NOT_FOUND : error.code === 'task_not_found' ? ErrorCode.TASK_NOT_FOUND : ErrorCode.VALIDATION_FAILED;
-      reply.send(errEnvelope(code, error.message, requestId));
+  const enabled = (): boolean => core.accessor.get(IFlagService).enabled('continuo');
+  const todos = new TodoRunner(() => (enabled() ? manager.runDueTodos() : Promise.resolve()));
+  todos.start();
+  app.addHook('onClose', () => { todos.dispose(); });
+
+  const guarded = async (req: { id: string }, reply: Reply, work: () => Promise<unknown>): Promise<void> => {
+    if (!enabled()) {
+      reply.send(errEnvelope(ErrorCode.VALIDATION_FAILED, DISABLED, req.id));
       return;
     }
-    reply.send(errEnvelope(ErrorCode.INTERNAL_ERROR, error instanceof Error ? error.message : String(error), requestId));
+    try {
+      await work();
+    } catch (error) {
+      reply.send(errorEnvelope(error, req.id));
+    }
+  };
+  const respond = (req: { id: string }, reply: Reply, work: () => Promise<unknown>): Promise<void> => guarded(req, reply, async () => { reply.send(okEnvelope(await work(), req.id)); });
+  const dispatch = <TAction extends string>(req: ActionRequest, reply: Reply, actions: ActionTable<TAction, ActionExtra>, resourceLabel: string): Promise<void> => guarded(req, reply, () => dispatchAction({
+    tail: req.params.tail,
+    actions,
+    resourceLabel,
+    extra: { manager, workspaceId: req.params.workspace_id, respond: (doc) => { reply.send(okEnvelope(doc, req.id)); } },
+    body: req.body,
+    onUnsupported: (message) => { throw new ContinuoError('invalid_state', message); },
+  }));
+  const opened = async (workspaceId: string): Promise<ContinuoWorkspaceDoc> => {
+    const doc = await manager.snapshot(workspaceId);
+    if (doc === undefined) throw new ContinuoError('workspace_not_found', '这个项目还没有打开过。');
+    return doc;
   };
 
   const chooseFolderRoute = defineRoute(
@@ -62,15 +143,7 @@ export function registerContinuoRoutes(app: ContinuoRouteHost, core: Scope): voi
       tags: ['continuo'],
       operationId: 'continuoChooseFolder',
     },
-    async (req, reply) => {
-      if (!flagGuard(req.id, reply)) return;
-      try {
-        const path = await chooseFolder(req.body?.prompt ?? '选择文件夹', req.body?.default_path);
-        reply.send(okEnvelope({ path: path ?? null }, req.id));
-      } catch (error) {
-        sendError(reply, req.id, error);
-      }
-    },
+    (req, reply) => respond(req, reply, async () => ({ path: (await chooseFolder(req.body?.prompt ?? '选择文件夹', req.body?.default_path)) ?? null })),
   );
   app.post(chooseFolderRoute.path, chooseFolderRoute.options, chooseFolderRoute.handler as Parameters<ContinuoRouteHost['post']>[2]);
 
@@ -86,14 +159,7 @@ export function registerContinuoRoutes(app: ContinuoRouteHost, core: Scope): voi
       tags: ['continuo'],
       operationId: 'continuoOpen',
     },
-    async (req, reply) => {
-      if (!flagGuard(req.id, reply)) return;
-      try {
-        reply.send(okEnvelope(await manager.open(req.params.workspace_id, req.body.client_request_id), req.id));
-      } catch (error) {
-        sendError(reply, req.id, error);
-      }
-    },
+    (req, reply) => respond(req, reply, () => manager.open(req.params.workspace_id, req.body.client_request_id)),
   );
   app.post(openRoute.path, openRoute.options, openRoute.handler as Parameters<ContinuoRouteHost['post']>[2]);
 
@@ -108,14 +174,7 @@ export function registerContinuoRoutes(app: ContinuoRouteHost, core: Scope): voi
       tags: ['continuo'],
       operationId: 'continuoRetryInit',
     },
-    async (req, reply) => {
-      if (!flagGuard(req.id, reply)) return;
-      try {
-        reply.send(okEnvelope(await manager.retryInit(req.params.workspace_id), req.id));
-      } catch (error) {
-        sendError(reply, req.id, error);
-      }
-    },
+    (req, reply) => respond(req, reply, () => manager.retryInit(req.params.workspace_id)),
   );
   app.post(retryInitRoute.path, retryInitRoute.options, retryInitRoute.handler as Parameters<ContinuoRouteHost['post']>[2]);
 
@@ -130,19 +189,7 @@ export function registerContinuoRoutes(app: ContinuoRouteHost, core: Scope): voi
       tags: ['continuo'],
       operationId: 'continuoGet',
     },
-    async (req, reply) => {
-      if (!flagGuard(req.id, reply)) return;
-      try {
-        const doc = await manager.snapshot(req.params.workspace_id);
-        if (doc === undefined) {
-          reply.send(errEnvelope(ErrorCode.WORKSPACE_NOT_FOUND, '这个项目还没有打开过。', req.id));
-          return;
-        }
-        reply.send(okEnvelope(doc, req.id));
-      } catch (error) {
-        sendError(reply, req.id, error);
-      }
-    },
+    (req, reply) => respond(req, reply, () => opened(req.params.workspace_id)),
   );
   app.get(getRoute.path, getRoute.options, getRoute.handler as Parameters<ContinuoRouteHost['get']>[2]);
 
@@ -158,15 +205,7 @@ export function registerContinuoRoutes(app: ContinuoRouteHost, core: Scope): voi
       tags: ['continuo'],
       operationId: 'continuoCreateTask',
     },
-    async (req, reply) => {
-      if (!flagGuard(req.id, reply)) return;
-      try {
-        const result = await manager.createUserTask(req.params.workspace_id, req.body.text, req.body.client_request_id);
-        reply.send(okEnvelope({ task: result.task, doc: result.doc }, req.id));
-      } catch (error) {
-        sendError(reply, req.id, error);
-      }
-    },
+    (req, reply) => respond(req, reply, () => manager.createUserTask(req.params.workspace_id, req.body.text, req.body.client_request_id)),
   );
   app.post(createTaskRoute.path, createTaskRoute.options, createTaskRoute.handler as Parameters<ContinuoRouteHost['post']>[2]);
 
@@ -174,7 +213,7 @@ export function registerContinuoRoutes(app: ContinuoRouteHost, core: Scope): voi
     {
       method: 'POST',
       path: '/workspaces/{workspace_id}/continuo/tasks/{tail}',
-      params: z.object({ workspace_id: z.string().min(1), tail: z.string().min(1) }),
+      params: tailParamSchema,
       body: z.object({ text: z.string().min(1).max(8000).optional() }).optional(),
       success: { data: docSchema },
       errors: CONTINUO_ERRORS,
@@ -182,31 +221,7 @@ export function registerContinuoRoutes(app: ContinuoRouteHost, core: Scope): voi
       tags: ['continuo'],
       operationId: 'continuoTaskAction',
     },
-    async (req, reply) => {
-      if (!flagGuard(req.id, reply)) return;
-      const parsed = parseActionSuffix({ tail: req.params.tail, allowedActions: ['pause', 'resume', 'reply', 'fork'] as const, resourceLabel: 'task' });
-      if (parsed.kind !== 'action') {
-        reply.send(errEnvelope(ErrorCode.VALIDATION_FAILED, parsed.kind === 'invalid' ? parsed.reason : 'expected {task_id}:pause, :resume, :reply or :fork', req.id));
-        return;
-      }
-      const text = req.body?.text;
-      if (parsed.action === 'reply' && text === undefined) {
-        reply.send(errEnvelope(ErrorCode.VALIDATION_FAILED, 'reply requires text', req.id));
-        return;
-      }
-      try {
-        const doc = parsed.action === 'pause'
-          ? await manager.pause(req.params.workspace_id, parsed.id)
-          : parsed.action === 'resume'
-            ? await manager.resume(req.params.workspace_id, parsed.id)
-            : parsed.action === 'fork'
-              ? await manager.forkAfterTask(req.params.workspace_id, parsed.id)
-              : await manager.reply(req.params.workspace_id, parsed.id, text!);
-        reply.send(okEnvelope(doc, req.id));
-      } catch (error) {
-        sendError(reply, req.id, error);
-      }
-    },
+    (req, reply) => dispatch(req, reply, taskActions, 'task'),
   );
   app.post(taskActionRoute.path, taskActionRoute.options, taskActionRoute.handler as Parameters<ContinuoRouteHost['post']>[2]);
 
@@ -214,7 +229,7 @@ export function registerContinuoRoutes(app: ContinuoRouteHost, core: Scope): voi
     {
       method: 'POST',
       path: '/workspaces/{workspace_id}/continuo/decisions/{tail}',
-      params: z.object({ workspace_id: z.string().min(1), tail: z.string().min(1) }),
+      params: tailParamSchema,
       body: z.object({ plan_id: z.string().min(1).max(8).optional(), reason: z.string().max(300).optional() }).optional(),
       success: { data: docSchema },
       errors: CONTINUO_ERRORS,
@@ -222,29 +237,7 @@ export function registerContinuoRoutes(app: ContinuoRouteHost, core: Scope): voi
       tags: ['continuo'],
       operationId: 'continuoDecisionAction',
     },
-    async (req, reply) => {
-      if (!flagGuard(req.id, reply)) return;
-      const parsed = parseActionSuffix({ tail: req.params.tail, allowedActions: ['choose', 'expand', 'abandon'] as const, resourceLabel: 'decision' });
-      if (parsed.kind !== 'action') {
-        reply.send(errEnvelope(ErrorCode.VALIDATION_FAILED, parsed.kind === 'invalid' ? parsed.reason : 'expected {decision_id}:choose, :expand or :abandon', req.id));
-        return;
-      }
-      const planId = req.body?.plan_id;
-      if (parsed.action !== 'expand' && planId === undefined) {
-        reply.send(errEnvelope(ErrorCode.VALIDATION_FAILED, `${parsed.action} requires plan_id`, req.id));
-        return;
-      }
-      try {
-        const doc = parsed.action === 'choose'
-          ? await manager.choosePlan(req.params.workspace_id, parsed.id, planId!)
-          : parsed.action === 'expand'
-            ? await manager.expandPlans(req.params.workspace_id, parsed.id)
-            : await manager.abandonPlan(req.params.workspace_id, parsed.id, planId!, req.body?.reason);
-        reply.send(okEnvelope(doc, req.id));
-      } catch (error) {
-        sendError(reply, req.id, error);
-      }
-    },
+    (req, reply) => dispatch(req, reply, decisionActions, 'decision'),
   );
   app.post(decisionActionRoute.path, decisionActionRoute.options, decisionActionRoute.handler as Parameters<ContinuoRouteHost['post']>[2]);
 
@@ -260,14 +253,7 @@ export function registerContinuoRoutes(app: ContinuoRouteHost, core: Scope): voi
       tags: ['continuo'],
       operationId: 'continuoSetPermission',
     },
-    async (req, reply) => {
-      if (!flagGuard(req.id, reply)) return;
-      try {
-        reply.send(okEnvelope(await manager.setPermissionMode(req.params.workspace_id, req.body.mode), req.id));
-      } catch (error) {
-        sendError(reply, req.id, error);
-      }
-    },
+    (req, reply) => respond(req, reply, () => manager.setPermissionMode(req.params.workspace_id, req.body.mode)),
   );
   app.post(permissionRoute.path, permissionRoute.options, permissionRoute.handler as Parameters<ContinuoRouteHost['post']>[2]);
 
@@ -283,14 +269,7 @@ export function registerContinuoRoutes(app: ContinuoRouteHost, core: Scope): voi
       tags: ['continuo'],
       operationId: 'continuoAddTodo',
     },
-    async (req, reply) => {
-      if (!flagGuard(req.id, reply)) return;
-      try {
-        reply.send(okEnvelope(await manager.addTodo(req.params.workspace_id, req.body.text, req.body.timing), req.id));
-      } catch (error) {
-        sendError(reply, req.id, error);
-      }
-    },
+    (req, reply) => respond(req, reply, () => manager.addTodo(req.params.workspace_id, req.body.text, req.body.timing)),
   );
   app.post(addTodoRoute.path, addTodoRoute.options, addTodoRoute.handler as Parameters<ContinuoRouteHost['post']>[2]);
 
@@ -298,33 +277,14 @@ export function registerContinuoRoutes(app: ContinuoRouteHost, core: Scope): voi
     {
       method: 'POST',
       path: '/workspaces/{workspace_id}/continuo/todos/{tail}',
-      params: z.object({ workspace_id: z.string().min(1), tail: z.string().min(1) }),
+      params: tailParamSchema,
       success: { data: docSchema },
       errors: CONTINUO_ERRORS,
       description: 'Backlog item actions: {todo_id}:start starts it now as a task on the current line (a recurring item keeps its schedule); {todo_id}:accept keeps a suggested item in the backlog for later; {todo_id}:dismiss crosses a suggested item out; {todo_id}:delete removes it',
       tags: ['continuo'],
       operationId: 'continuoTodoAction',
     },
-    async (req, reply) => {
-      if (!flagGuard(req.id, reply)) return;
-      const parsed = parseActionSuffix({ tail: req.params.tail, allowedActions: ['start', 'accept', 'dismiss', 'delete'] as const, resourceLabel: 'todo' });
-      if (parsed.kind !== 'action') {
-        reply.send(errEnvelope(ErrorCode.VALIDATION_FAILED, parsed.kind === 'invalid' ? parsed.reason : 'expected {todo_id}:start, :accept, :dismiss or :delete', req.id));
-        return;
-      }
-      try {
-        const doc = parsed.action === 'start'
-          ? await manager.startTodo(req.params.workspace_id, parsed.id)
-          : parsed.action === 'accept'
-            ? await manager.acceptTodo(req.params.workspace_id, parsed.id)
-            : parsed.action === 'dismiss'
-              ? await manager.dismissTodo(req.params.workspace_id, parsed.id)
-              : await manager.removeTodo(req.params.workspace_id, parsed.id);
-        reply.send(okEnvelope(doc, req.id));
-      } catch (error) {
-        sendError(reply, req.id, error);
-      }
-    },
+    (req, reply) => dispatch(req, reply, todoActions, 'todo'),
   );
   app.post(todoActionRoute.path, todoActionRoute.options, todoActionRoute.handler as Parameters<ContinuoRouteHost['post']>[2]);
 
@@ -332,7 +292,7 @@ export function registerContinuoRoutes(app: ContinuoRouteHost, core: Scope): voi
     {
       method: 'POST',
       path: '/workspaces/{workspace_id}/continuo/trajectories/{tail}',
-      params: z.object({ workspace_id: z.string().min(1), tail: z.string().min(1) }),
+      params: tailParamSchema,
       body: z.object({}).optional(),
       success: { data: docSchema },
       errors: CONTINUO_ERRORS,
@@ -340,19 +300,7 @@ export function registerContinuoRoutes(app: ContinuoRouteHost, core: Scope): voi
       tags: ['continuo'],
       operationId: 'continuoTrajectoryAction',
     },
-    async (req, reply) => {
-      if (!flagGuard(req.id, reply)) return;
-      const parsed = parseActionSuffix({ tail: req.params.tail, allowedActions: ['activate'] as const, resourceLabel: 'trajectory' });
-      if (parsed.kind !== 'action') {
-        reply.send(errEnvelope(ErrorCode.VALIDATION_FAILED, parsed.kind === 'invalid' ? parsed.reason : 'expected {trajectory_id}:activate', req.id));
-        return;
-      }
-      try {
-        reply.send(okEnvelope(await manager.activateTrajectory(req.params.workspace_id, parsed.id), req.id));
-      } catch (error) {
-        sendError(reply, req.id, error);
-      }
-    },
+    (req, reply) => dispatch(req, reply, trajectoryActions, 'trajectory'),
   );
   app.post(trajectoryActionRoute.path, trajectoryActionRoute.options, trajectoryActionRoute.handler as Parameters<ContinuoRouteHost['post']>[2]);
 
@@ -363,21 +311,12 @@ export function registerContinuoRoutes(app: ContinuoRouteHost, core: Scope): voi
       params: workspaceParamSchema,
       querystring: z.object({ path: z.string().max(4096).optional() }),
       success: { data: docSchema },
-      errors: CONTINUO_ERRORS,
+      errors: FILE_ERRORS,
       description: 'List one folder of the workspace with size, modification time, guide-file and produced-by-task markers',
       tags: ['continuo'],
       operationId: 'continuoListFiles',
     },
-    async (req, reply) => {
-      if (!flagGuard(req.id, reply)) return;
-      try {
-        const doc = await manager.snapshot(req.params.workspace_id);
-        if (doc === undefined) throw new ContinuoError('workspace_not_found', '这个项目还没有打开过。');
-        reply.send(okEnvelope(await listFiles(doc, req.query.path ?? ''), req.id));
-      } catch (error) {
-        sendError(reply, req.id, error);
-      }
-    },
+    (req, reply) => respond(req, reply, async () => listFiles(await opened(req.params.workspace_id), req.query.path ?? '')),
   );
   app.get(filesRoute.path, filesRoute.options, filesRoute.handler as Parameters<ContinuoRouteHost['get']>[2]);
 
@@ -388,21 +327,12 @@ export function registerContinuoRoutes(app: ContinuoRouteHost, core: Scope): voi
       params: workspaceParamSchema,
       querystring: z.object({ path: z.string().min(1).max(4096) }),
       success: { data: docSchema },
-      errors: CONTINUO_ERRORS,
+      errors: FILE_ERRORS,
       description: 'Read one text file of the workspace (bounded); binary files return only metadata',
       tags: ['continuo'],
       operationId: 'continuoReadFile',
     },
-    async (req, reply) => {
-      if (!flagGuard(req.id, reply)) return;
-      try {
-        const doc = await manager.snapshot(req.params.workspace_id);
-        if (doc === undefined) throw new ContinuoError('workspace_not_found', '这个项目还没有打开过。');
-        reply.send(okEnvelope(await readTextFile(doc, req.query.path), req.id));
-      } catch (error) {
-        sendError(reply, req.id, error);
-      }
-    },
+    (req, reply) => respond(req, reply, async () => readTextFile(await opened(req.params.workspace_id), req.query.path)),
   );
   app.get(fileRoute.path, fileRoute.options, fileRoute.handler as Parameters<ContinuoRouteHost['get']>[2]);
 
@@ -417,15 +347,7 @@ export function registerContinuoRoutes(app: ContinuoRouteHost, core: Scope): voi
       tags: ['continuo'],
       operationId: 'continuoExport',
     },
-    async (req, reply) => {
-      if (!flagGuard(req.id, reply)) return;
-      try {
-        reply.send(okEnvelope(await manager.exportTrajectories(req.params.workspace_id), req.id));
-      } catch (error) {
-        sendError(reply, req.id, error);
-      }
-    },
+    (req, reply) => respond(req, reply, () => manager.exportTrajectories(req.params.workspace_id)),
   );
   app.get(exportRoute.path, exportRoute.options, exportRoute.handler as Parameters<ContinuoRouteHost['get']>[2]);
-
 }

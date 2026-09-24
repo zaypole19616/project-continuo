@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowRight, BookOpen, CornerDownRight, FileText, GitBranch, GitFork, RotateCcw } from 'lucide-react';
 import type { ContinuoDoc, ContinuoTask, Decision, Trajectory } from '#/lib/api';
+import { failureReason } from '#/lib/errors';
 import { buildTrunk, choiceOn, isEmptyFolder, isExploring, isOpen, lastTurnOf, localDay, localTime, orderedPlans, planState, planTitle, stanceTag, taskLabel, type LineStub } from '#/lib/trajectory';
 import { Button } from '#/components/ui/button';
 import { Hint } from './Hint';
@@ -165,7 +166,7 @@ export function RootNode({ doc, tier, collapsible, onToggle, locked, actions }: 
         {tier === 'mid' && <div className="t-sub">{doc.understanding?.text.split(/[。\n]/)[0] ?? status}</div>}
         {tier === 'detail' && (
           <div className="t-detail">
-            <Field label="理解" primary><div className="t-line">{doc.understanding?.text ?? (retryable ? (task?.lastError ?? '没有完成') : '还没有结论')}</div></Field>
+            <Field label="理解" primary><div className="t-line">{doc.understanding?.text ?? (retryable ? ((task === undefined ? undefined : failureReason(task)) ?? '没有完成') : '还没有结论')}</div></Field>
             <Field label="读过">{sources.length === 0 ? <div className="t-line">没有读文件，只看了目录结构</div> : <Paths paths={sources} />}</Field>
             {doc.context.length > 0 && (
               <Field label="要点">

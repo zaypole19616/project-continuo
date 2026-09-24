@@ -55,15 +55,16 @@ export class ReportResultTool implements IReportResultTool {
   }
 }
 
-const SENTENCE_END = /[。！？!?.；;]["'」』）)]?$/;
+const OPENS_A_CONTINUATION = /[，,、：:（(「『“‘［[【《〈]$/;
+const CLOSES_A_CONTINUATION = /^[，,、。．.！!？?；;：:）)」』”’］\]】》〉]/;
 
-function joinFragments(items: readonly string[]): string[] {
+export function joinFragments(items: readonly string[]): string[] {
   const out: string[] = [];
   for (const item of items) {
     const text = item.trim();
     if (text.length === 0) continue;
     const previous = out.at(-1);
-    if (previous !== undefined && !SENTENCE_END.test(previous)) out[out.length - 1] = `${previous}${text}`;
+    if (previous !== undefined && (OPENS_A_CONTINUATION.test(previous) || CLOSES_A_CONTINUATION.test(text))) out[out.length - 1] = `${previous}${/[,:]$/.test(previous) ? ' ' : ''}${text}`;
     else out.push(text);
   }
   return out;

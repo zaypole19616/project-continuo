@@ -3,14 +3,13 @@ import { Service } from '#/_base/di/service';
 import { IAtomicDocumentStore } from '#/persistence/interface/atomicDocumentStore';
 
 import { migrateWorkspaceDoc } from './migrate';
-import { CONTINUO_SCHEMA_VERSION, CONTINUO_STORE_SCOPE, newWorkspaceDoc, type ContinuoWorkspaceDoc } from './types';
+import { CONTINUO_SCHEMA_VERSION, CONTINUO_STORE_SCOPE, newWorkspaceDoc, type ContinuoWorkspaceDoc, type Decision } from './types';
 
 export type DocMutator = (doc: ContinuoWorkspaceDoc) => ContinuoWorkspaceDoc;
 
 export interface IContinuoStore {
   readonly _serviceBrand: undefined;
   load(workspaceId: string): Promise<ContinuoWorkspaceDoc | undefined>;
-  peek(workspaceId: string): ContinuoWorkspaceDoc | undefined;
   workspaceIds(): Promise<readonly string[]>;
   ensure(workspaceId: string, root: string): Promise<ContinuoWorkspaceDoc>;
   update(workspaceId: string, mutate: DocMutator): Promise<ContinuoWorkspaceDoc>;
@@ -32,10 +31,6 @@ export class ContinuoStoreService extends Service implements IContinuoStore {
 
   async workspaceIds(): Promise<readonly string[]> {
     return (await this.documents.list(CONTINUO_STORE_SCOPE)).filter((key) => !key.includes('.tmp.'));
-  }
-
-  peek(workspaceId: string): ContinuoWorkspaceDoc | undefined {
-    return this.cache.get(workspaceId);
   }
 
   async load(workspaceId: string): Promise<ContinuoWorkspaceDoc | undefined> {
@@ -93,4 +88,11 @@ export class ContinuoStoreService extends Service implements IContinuoStore {
     this.queues.set(workspaceId, run.catch(() => undefined));
     return run;
   }
+}
+
+export async function patchDecision(store: IContinuoStore, workspaceId: string, decisionId: string, mutate: (decision: Decision) => Decision): Promise<Decision> {
+  const updated = await store.update(workspaceId, (current) => ({ ...current, decisions: current.decisions.map((decision) => (decision.decisionId === decisionId ? mutate(decision) : decision)) }));
+  const decision = updated.decisions.find((candidate) => candidate.decisionId === decisionId);
+  if (decision === undefined) throw new Error(`decision ${decisionId} is gone from workspace ${workspaceId}`);
+  return decision;
 }

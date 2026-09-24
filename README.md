@@ -52,10 +52,10 @@ Open `http://127.0.0.1:5180/#token=<token printed by kimi web>`, then open the s
 
 | Layer | Path |
 |---|---|
-| Engine feature: project context, reminder bridge, `WorkspaceContext` / `ReportWorkspaceResult` / `Trajectory` tools, profiles, the per-line file guard, trajectory export | `packages/agent-core-v2/src/features/continuo/` |
+| Engine feature: project context, reminder bridge, `WorkspaceContext` / `ReportWorkspaceResult` / `Trajectory` / `SubmitPlan` tools, profiles, the per-line file guard, trajectory export | `packages/agent-core-v2/src/features/continuo/` |
 | Server: task manager, deliverable verification, work-log and plan files, lines of work on session fork (a shared folder where one line never overwrites another's files; a worktree per line for git projects), plans written in parallel, read-only file routes, export route | `packages/kap-server/src/continuo/`, `packages/kap-server/src/routes/continuo.ts` |
 | Workbench UI | `apps/continuo/` |
-| Tests | `packages/agent-core-v2/test/features/continuo/`, `packages/agent-core-v2/test/agent/permissionPolicy/` |
+| Tests | `packages/agent-core-v2/test/features/continuo/`, `packages/agent-core-v2/test/agent/permissionPolicy/`, `packages/kap-server/test/continuo*.test.ts` |
 
 Continuo is gated behind the experimental flag `KIMI_CODE_EXPERIMENTAL_CONTINUO`; without it the fork behaves exactly like upstream Kimi Code.
 

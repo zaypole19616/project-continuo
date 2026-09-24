@@ -26,7 +26,7 @@ This repository is a fork of [MoonshotAI/kimi-code](https://github.com/MoonshotA
 
 **打开项目：先读懂，不动手。** 一个只读 profile 的 Agent 扫描目录，先读 AGENTS.md / README 这类指引文件（如果 `work-log/` 里已有记录，也读最近几份），再看目录结构：目录结构已经能说明这个文件夹在做什么、材料在哪、怎么命名，就不再打开别的文件；不够时才抽样几份材料，然后用一次 `WorkspaceContext` 调用记下两样东西：一句**这个文件夹是什么**的简述（一眼能读完），以及若干条**项目要点**（一句一条：输入在哪、产物去哪、命名约定、已经定下的决定、什么是归档）。每条要点都必须指向它来自哪个文件；说不出来源的不记。了解期间你可以浏览文件，也可以直接交代事情。 只在第一次打开时了解；以后从「最近打开」再进来不会重读，了解失败或被打断时，对话里有「重新了解」；还没登录模型时，打开项目会照常显示文件，对话里提示先登录，登录后点「重新了解」。了解的过程是对话的第一条消息：和 Agent 回答问题时一样显示「正在了解这个文件夹」，下面只显示正在读的那个文件和已经读了几个。结束后 Agent 主动发一条消息：先说了解到了什么（「我已经了解了这个项目：……」），模型看出值得做的事（最多三条，每条带依据）时接着说「我建议接下来可以做这些事：」并列出来，没有建议就直接问你想先做什么；读过的文件和记下的要点收在消息底部「读过 N 个文件」一行里，展开后点文件就在左侧打开。建议和待办是同一种东西：每条建议就是一件处于「建议」状态的待办，同时出现在这条消息和「事项」页的待办里，有三个按钮——✓ 立即执行、✗ 划掉、≡+ 加入待办（以后再做）；处理过的在消息里留下结果（已开始 / 已加入待办 / 已划掉）。空文件夹不调模型、不给具体建议，只提示放进材料或直接交代第一件事。之后的对话接在这条消息下面。
 
-**交代事情：带着这些干活。** 一个项目只有一个会话，你说的每一件事是这个会话里的一轮。Harness 在每一步把「这个文件夹是什么 + 项目要点 + 当前这件事 + 你中途补充的要求」编成一段参考数据注入，压缩之后重新注入。它需要一个材料里没有的决定时，用 AskUserQuestion 停下来问；写文件走 Kimi Code 原有的审批链。
+**交代事情：带着这些干活。** 一个项目只有一个会话，你说的每一件事是这个会话里的一轮。Harness 把「这个文件夹是什么 + 项目要点 + 当前这件事 + 你中途补充的要求」编成一段参考数据注入对话：每一轮开始时注入一次，之后只在内容变了时再注入（按内容摘要比对，不按版本号），压缩之后也会重新注入。它需要一个材料里没有的决定时，用 AskUserQuestion 停下来问；写文件走 Kimi Code 原有的审批链。
 
 **收尾：核验，然后留下日志。** 一轮结束时 Harness 核验交付物：Agent 用 `ReportWorkspaceResult` 上报路径，同时 Harness 自己记录了它实际写过哪些文件，两边合并后逐个 stat，才决定是「做完了」还是「还差一点」。接着 Harness 把这件事写成一份工作日志，放进项目里的 `work-log/work-log-YYYY-MM-DD-分类-任务名.md`，格式就是下面「信息的统一口径」那一节：STAR 四段，加上 Meta Data、原始任务描述、逐轮的工作记录、最终产出表和备注。**这份日志是项目自己的文件**，你能在文件区看到它、改它、删它。
 
@@ -36,7 +36,7 @@ This repository is a fork of [MoonshotAI/kimi-code](https://github.com/MoonshotA
 
 **方案需要各自去查时：分头写。** 如果每个方案都得单独翻不同的材料、各算各的（比如按用户、竞品、成本三个角度分别定价），主 Agent 先列出两到四个角度和理由，Harness 把主会话在同一个点上各复制一份，每份只写一个方案。复制出来的会话前缀一字不差，差别只在最后一条消息，所以它们共用主会话已经缓存好的那一段。写方案的只能读材料，不能改文件、不能跑命令、不能打扰你；拿不准某件事时才去问写其他方案的那个，发现和别人的方案一样就撤回并注明和哪个重复。决策卡上能看到哪几个还在写，都写完了才能选；每个最多 8 步，超了就停下，记成没写完。
 
-**换一条路，原来的不动。** 选完之后想试另一个方案，点那个方案卡上的箭头（已经走过的方案，箭头就是切换过去）：Harness 用 Kimi Code 的会话 fork 从**这个决策之前**复制出一条新轨迹，新会话里没有上一个方案的执行过程；复制的是执行过程，文件不复制：所有轨迹共用这个文件夹。Agent 的原则是不在老文件上改：要改一个已有的文件，先复制成新文件（名字加上方案名，如 `定价建议-方案C.md`，原轨迹上加 `-v2`）再改；这件事里自己新建的文件可以直接改；你明确要求改某个文件本身时照办。硬性拦截只有一条：另一条轨迹写出、现在还在的文件不能被覆盖。文件被你删掉了就按不存在处理，界面上直接显示「文件不存在」。每一步 Harness 都会告诉 Agent 哪些文件属于别的轨迹。想回到某件事之后重来，在轨迹树上点那个节点的「从这里继续」，同样是复制出一条新轨迹。项目本身是 git 代码仓库时例外：改代码只能改原文件，所以每条轨迹用 `git worktree` 拿一份自己的工作目录（`.continuo/lines/<轨迹>/`）。不要的方案可以「放弃」并写一句原因。对话框只显示当前这条轨迹，没有会话切换器；所有分叉都在「轨迹」里。
+**换一条路，原来的不动。** 选完之后想试另一个方案，点那个方案卡上的箭头（已经走过的方案，箭头就是切换过去）：Harness 用 Kimi Code 的会话 fork 从**这个决策之前**复制出一条新轨迹，新会话里没有上一个方案的执行过程；复制的是执行过程，文件不复制：所有轨迹共用这个文件夹。Agent 的原则是不在老文件上改：要改一个已有的文件，先复制成新文件（名字加上方案名，如 `定价建议-方案C.md`，原轨迹上加 `-v2`）再改；这件事里自己新建的文件可以直接改；你明确要求改某个文件本身时照办。硬性拦截有四条：写方案的副本不能写任何文件；共用文件夹的轨迹只能写项目文件夹里面、不能碰 `.continuo/`；另一条轨迹写出、现在还在的文件不能被覆盖；有自己工作目录的轨迹（下文 git 仓库的情况）只能读写自己的目录。文件被你删掉了就按不存在处理，界面上直接显示「文件不存在」。每一步 Harness 都会告诉 Agent 哪些文件属于别的轨迹。想回到某件事之后重来，在轨迹树上点那个节点的「从这里继续」，同样是复制出一条新轨迹。项目本身是 git 代码仓库时例外：改代码只能改原文件，所以每条轨迹用 `git worktree` 拿一份自己的工作目录（`.continuo/lines/<轨迹>/`）。不要的方案可以「放弃」并写一句原因。对话框只显示当前这条轨迹，没有会话切换器；所有分叉都在「轨迹」里。
 
 **审批跟着权限设置走。** 输入框旁边可以选权限，就是 Kimi Code 自己的三档：始终询问（只自动读取，其余逐一确认）、必要时询问（常规修改和命令自动完成，高危操作、提问和计划仍会问你）、完全自动（完全不打断）。按项目保存，对当前轨迹立即生效。
 
@@ -76,9 +76,9 @@ This repository is a fork of [MoonshotAI/kimi-code](https://github.com/MoonshotA
 | 模块 | 用法 |
 |---|---|
 | Agent loop（XState 双状态机、取消、steer） | 每件事就是这个会话里的一个普通 turn；暂停 = `loop.cancel`，续接 = 同一会话再提交一条 prompt |
-| Reminder 机制 | 项目上下文注入走 `IAgentReminderService`：每步注入、压缩后重注、provider 出错跳过不炸 turn |
-| Profile 与 Feature seam | 两个新 profile（只读的 `continuo-init`、带上报工具的 `continuo-worker`）、两个新工具、一个 App 级存储和一个 Agent 级桥接服务，全部通过 `registerFeature` 挂进去，核心引擎零改动 |
-| 权限策略链 | 文件写入仍走原有审批；只在默认放行名单里加了 Continuo 自己的两个记录工具（见 2.3） |
+| Reminder 机制 | 项目上下文注入走 `IAgentReminderService`：每轮开始注入、内容变了才重注（摘要比对）、压缩后重注、provider 出错跳过不炸 turn |
+| Profile 与 Feature seam | 两个新 profile（只读的 `continuo-init`、带上报工具的 `continuo-worker`）、四个新工具、一个 App 级存储和一个 Agent 级桥接服务，全部通过 `registerFeature` 挂进去，核心引擎零改动 |
+| 权限策略链 | 文件写入仍走原有审批；只在默认放行名单里加了 Continuo 自己的四个记录工具（见 2.3） |
 | 问题 / 审批 / 会话快照 / WS 事件流 | 前端直接复用 `/api/v1` 的 questions、approvals、snapshot 和 WebSocket，没有另造协议 |
 | turn 级 file history | 产物「对比上一版」直接取 `/sessions/{id}/file-history/content?turn_id=…&phase=start` |
 | 会话 fork | 换方案和从某件事之后重来都走 `ISessionManager.fork({ sourceSessionId, turnIndex })`：按用户可见的 turn 切片复制出新会话，源会话不动；Continuo 只记轨迹这一层语义 |
@@ -88,23 +88,23 @@ This repository is a fork of [MoonshotAI/kimi-code](https://github.com/MoonshotA
 
 | 新增 | 落点 | 解决什么 |
 |---|---|---|
-| 项目上下文（一段理解 + 若干条有来源的要点）与每步注入 | `packages/agent-core-v2/src/features/continuo/` | AGENTS.md 是一份人写的静态文件；这里的上下文是 Agent 读出来的，每条都指向来源文件，纠正它只需要在对话里说一句 |
+| 项目上下文（一段理解 + 若干条有来源的要点）与按需注入 | `packages/agent-core-v2/src/features/continuo/` | AGENTS.md 是一份人写的静态文件；这里的上下文是 Agent 读出来的，每条都指向来源文件，纠正它只需要在对话里说一句 |
 | 打开项目时的只读理解任务 | `kap-server/src/continuo/taskManager.ts` `startInit` + `continuo-init` profile | Kimi Code 的 `/init` 是一次性写 AGENTS.md 的子代理；Continuo 的理解有来源，并且不写用户的文件 |
 | 交付核验 | `settleTurn`：上报路径 ∪ 观测到的写入 → 逐个 stat | "模型说完成"不等于完成；Agent 忘了上报也不丢（验证里就出现过一次没上报，靠观测写入兜底） |
 | 「等你回复」状态 | `settleTurn` 无写入无上报的分支 + `:reply` 动作 | 模型有时不用 AskUserQuestion 而是一句话问你，若照常标"完成"界面就撒谎了 |
 | 一个项目一个会话 | `createUserTask` 复用上一件事的 session | 同一个文件夹里的事本来就是连着的；没有"新建对话"，也就不存在"这条信息在哪个对话里"的问题 |
 | 按轮记录 + 工作日志落盘 | `recordRound` / `writeWorkLog` | 过程要留在项目里，而不是留在应用状态里：换台机器、换个人、换个 Agent 打开这个文件夹，`work-log/` 都还在 |
 | 并发打开合并 | `open()` 的 in-flight map | 前端严格模式会把 open 发两次，修之前跑出了两个初始化任务 |
-| 决策与轨迹 | 引擎侧 `Trajectory` 工具（`propose` / `expand` / `recommend` / `list`）与 `trajectory.ts`；服务侧 `choosePlan` / `expandPlans` / `abandonPlan` / `activateTrajectory` / `forkAfterTask` | 方向的判断留给人，而且判断的那一刻被完整记下：条件、候选及依据、选了哪个、执行到哪、放弃了哪个以及为什么。轨迹只追加不覆盖，每条都能单独读、单独切回去 |
-| 分头写方案 | `Trajectory` 的 `explore`（主 Agent）与 `submit` / `ask` / `withdraw`（写方案的副本）；服务侧 `startExploration` / `finishExploration` | 需要各自调查的方案由各自的副本去写，彼此只在有疑问时对话，重复的合并；fork 时把项目根会话的缓存键带过去（会话元数据 `promptCacheKey`），副本命中同一段前缀缓存 |
-| 新方案不覆盖旧方案 | 引擎侧 `guard.ts` + `trajectory.ts` 的 `guardAccesses`；代码仓库另有 `kap-server/src/continuo/lines.ts`（快照 + `git worktree`） | 写入执行前检查：另一条轨迹写出、现在还在的文件被拒，并告诉 Agent 复制成哪个名字再改；其余靠「不在老文件上改」的原则。不复制整个文件夹，磁盘上只多出新写的文件 |
+| 决策与轨迹 | 引擎侧 `Trajectory` 工具（`propose` / `expand` / `explore` / `recommend`）与 `trajectory.ts`；服务侧 `choosePlan` / `expandPlans` / `abandonPlan` / `activateTrajectory` / `forkAfterTask` | 方向的判断留给人，而且判断的那一刻被完整记下：条件、候选及依据、选了哪个、执行到哪、放弃了哪个以及为什么。轨迹只追加不覆盖，每条都能单独读、单独切回去 |
+| 分头写方案 | `Trajectory` 的 `explore`（主 Agent）与 `SubmitPlan` 的 `submit` / `ask` / `withdraw`（写方案的副本；角色由数据决定，用错工具会得到明确的报错）；服务侧 `startExploration` / `finishExploration` | 需要各自调查的方案由各自的副本去写，彼此只在有疑问时对话，重复的合并；fork 时把项目根会话的缓存键带过去（会话元数据 `promptCacheKey`），副本命中同一段前缀缓存 |
+| 新方案不覆盖旧方案 | 引擎侧 `guard.ts` + `trajectory.ts` 的 `guardAccesses`；代码仓库另有 `kap-server/src/continuo/lines.ts`（快照 + `git worktree`） | 写入执行前按轨迹的运行方式分两套规则检查（`guardSharedFolder` / `guardOwnDirectory`）：共用文件夹时，写入不能出项目文件夹、不能碰 `.continuo/`，另一条轨迹写出、现在还在的文件被拒并告诉 Agent 复制成哪个名字再改；有自己工作目录时，读写都不能出那个目录；写方案的副本一律不能写。其余靠「不在老文件上改」的原则。不复制整个文件夹，磁盘上只多出新写的文件 |
 | 分支的上下文 | `contextBundle.ts` | 当前轨迹上做过的事每件一行（细节在它自己的工作日志里）；其他方案一句话说明它在别的轨迹上的去向，附方案文件地址，需要时再读 |
-| 轨迹导出 | `export.ts` + `GET /api/v1/workspaces/{id}/continuo/export` | 每条轨迹一份样本（上下文、逐轮输入输出、产物后来有没有被改、每个决策上各方案的结局），外加由选择、切换、放弃得出的方案偏好对 |
+| 轨迹导出 | `export.ts` + `GET /api/v1/workspaces/{id}/continuo/export` | 项目级一份上下文（理解 + 要点，不再每条轨迹重复一遍），每条轨迹一份样本（逐轮输入输出、产物后来有没有被改、建议的下一步有没有被开始——按待办的状态判断、每个决策上各方案的结局），外加由选择、切换、放弃得出的方案偏好对 |
 | Finder + 对话 + 事项 + 轨迹 | `apps/continuo/`（Vite + React，独立于官方 web UI） | 显性层只做三件事：需要你时才打断、打断带上下文、随时可看可接管 |
 
 ### 2.3 一条权限策略的取舍
 
-`WorkspaceContext` 和 `ReportWorkspaceResult` 加进了默认放行名单。理由：它们写的是 Continuo 自己的项目状态，不是用户文件，属于可撤销操作；而每次都弹审批会把"记一条约定"这种最该无感的动作变成打扰。文件写入、Shell 仍然按原策略链审批。
+`WorkspaceContext`、`ReportWorkspaceResult`、`Trajectory`、`SubmitPlan` 加进了默认放行名单。理由：它们写的是 Continuo 自己的记录（项目状态、决策和 `work-log/` 下的方案文件），不是用户的文件，属于可撤销操作；而每次都弹审批会把"记一条约定""摆出几个方案"这种最该无感的动作变成打扰。文件写入、Shell 仍然按原策略链审批。
 
 ### 2.4 与 Kimi Code 已有机制的差异
 
@@ -121,7 +121,7 @@ This repository is a fork of [MoonshotAI/kimi-code](https://github.com/MoonshotA
 - 定时的待办复用 Kimi Code 定时任务的时间规则（cron 表达式、按本地时间），每 30 秒检查一次，只在本机的 Continuo 服务运行时触发；到点时手上有事就等它结束再开始；电脑合上期间错过的，打开后只补一次。
 - 项目状态升级数据版本时逐级迁移（v1 的账本只保留生效的项目要点，v2 的一段对话变成第一条轨迹），不会丢掉已有的事项和对话；用更新版本保存过的项目，旧版本拒绝打开而不是覆盖。
 - 工作日志由 Harness 从任务状态生成，不是模型按 AGENTS.md 自己写的；STAR 的 A/R 在任务收尾时由 Harness 按实际发生的事补全，不等用户确认阶段完成。
-- 「不在老文件上改」是写给 Agent 的原则，不是拦截；硬性拦截只保护别的轨迹写出的文件，归属按 Write / Edit 写过的文件和上报的产物算。Shell 命令写出的文件记不到，也拦不住；这不是沙箱。
+- 「不在老文件上改」是写给 Agent 的原则，不是拦截；硬性拦截只有上面那四条，其中「别的轨迹写出的文件」的归属按 Write / Edit 写过的文件和上报的产物算。Shell 命令写出的文件记不到，也拦不住；这不是沙箱。
 - 共用文件夹时，「从这里继续」出来的轨迹能看到原来那条轨迹之后写出的文件（Harness 会告诉 Agent 它们不属于这条轨迹，并且改不了）。
 - git 代码仓库的轨迹目录：快照用临时索引生成、挂在 `refs/continuo/` 下，副本是 `git worktree`，不动你的分支、暂存区和提交；被 `.gitignore` 忽略的文件（如 `node_modules`、`.env`）不会进副本。打开时的扫描被截断或文件合计超过 300MB 时不建副本，按共用文件夹处理。副本里的轨迹只能读写自己的目录，命令也必须从那里启动。
 - 分头写方案：最多 4 个角度，每个最多 8 步；写方案的副本不能问你，只能问彼此。各副本的步数和 token 用量记在项目状态和导出里，界面上不显示。
@@ -151,4 +151,4 @@ KIMI_PORT=58627 pnpm dev:continuo
 
 打开 `http://127.0.0.1:5180/#token=<上面的 token>`，新建一个项目，或打开自己的文件夹。
 
-代码位置：引擎侧 `packages/agent-core-v2/src/features/continuo/`，服务侧 `packages/kap-server/src/continuo/`（含只读文件接口 `files.ts`、轨迹目录 `lines.ts`）与 `routes/continuo.ts`（含导出接口 `GET /api/v1/workspaces/{id}/continuo/export`），前端 `apps/continuo/`（`pages/Launcher` 启动卡，`components/Finder` 文件窗口 + `components/Drawer` 对话抽屉），测试 `packages/agent-core-v2/test/features/continuo/`、`packages/kap-server/test/continuoLines.test.ts`、`apps/continuo/src/lib/trajectory.test.ts`。
+代码位置：引擎侧 `packages/agent-core-v2/src/features/continuo/`，服务侧 `packages/kap-server/src/continuo/`（含只读文件接口 `files.ts`、轨迹目录 `lines.ts`）与 `routes/continuo.ts`（含导出接口 `GET /api/v1/workspaces/{id}/continuo/export`），前端 `apps/continuo/`（`pages/Launcher` 启动卡，`components/Finder` 文件窗口 + `components/Drawer` 对话抽屉），测试 `packages/agent-core-v2/test/features/continuo/`、`packages/kap-server/test/continuoLines.test.ts`、`packages/kap-server/test/continuoTasks.test.ts`、`apps/continuo/src/lib/trajectory.test.ts`。

@@ -60,6 +60,16 @@ export function planLetter(index: number): string {
   return index < 26 ? String.fromCodePoint(65 + index) : `P${index + 1}`;
 }
 
+export function planIds(taken: readonly string[]): () => string {
+  const used = new Set(taken);
+  return () => {
+    let index = 0;
+    while (used.has(planLetter(index))) index += 1;
+    used.add(planLetter(index));
+    return planLetter(index);
+  };
+}
+
 export function localDay(iso: string): string {
   const at = new Date(iso);
   return `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}`;
@@ -95,6 +105,12 @@ export function planPath(task: ContinuoTask, planId: string, at: string): string
   return `${WORK_LOG_DIR}/${parts.filter((part) => part !== undefined && part !== '').join('-')}.md`;
 }
 
+export type PlanFields = Pick<TrajectoryPlan, 'title' | 'basis' | 'risk' | 'prompt' | 'fit' | 'caution' | 'detail'>;
+
+export function planFrom(input: PlanFields, planId: string, task: ContinuoTask, at: string): TrajectoryPlan {
+  return { planId, title: input.title, basis: input.basis, risk: input.risk, prompt: input.prompt, fit: input.fit, caution: input.caution, detail: input.detail, path: planPath(task, planId, at), createdAt: at };
+}
+
 export function planStatusOn(doc: ContinuoWorkspaceDoc, trajectory: Trajectory, decision: Decision, plan: TrajectoryPlan): { kind: 'current' } | { kind: 'abandoned' } | { kind: 'elsewhere'; trajectory: Trajectory } | { kind: 'open' } {
   if (choiceOn(trajectory, decision.decisionId)?.planId === plan.planId) return { kind: 'current' };
   if (plan.abandoned !== undefined) return { kind: 'abandoned' };
@@ -126,6 +142,11 @@ export function isExploring(decision: Decision): boolean {
   return decision.exploration !== undefined && decision.exploration.endedAt === undefined;
 }
 
+export function lineOfSession(doc: ContinuoWorkspaceDoc, sessionId: string): Trajectory | undefined {
+  const explorer = explorerOf(doc, sessionId);
+  return explorer === undefined ? trajectoryOfSession(doc, sessionId) : lineById(doc, explorer.decision.trajectoryId);
+}
+
 export interface GuardedAccess {
   readonly operation: string;
   readonly path: string;
@@ -152,39 +173,45 @@ function writtenByOtherLine(doc: ContinuoWorkspaceDoc, line: Trajectory, path: s
   return doc.tasks.some((task) => task.kind === 'user' && !line.taskIds.includes(task.taskId) && writtenPaths(doc, task).includes(path));
 }
 
-export function guardAccesses(doc: ContinuoWorkspaceDoc, sessionId: string, accesses: readonly GuardedAccess[], existing: ReadonlySet<string>): string | undefined {
-  const explorer = explorerOf(doc, sessionId);
-  const line = explorer === undefined ? trajectoryOfSession(doc, sessionId) : lineById(doc, explorer.decision.trajectoryId);
-  if (line === undefined) return undefined;
-  const root = lineRoot(doc, line);
-  const hidden = join(doc.root, CONTINUO_DIR);
-  const isWrite = (access: GuardedAccess) => access.operation === 'write' || access.operation === 'readwrite';
-  if (explorer !== undefined && accesses.some(isWrite)) {
-    return 'As the author of one plan you only write the plan: submit it with Trajectory submit. Do not create or change project files.';
-  }
-  const blocked = accesses.filter((access) => {
-    const inLine = isWithinDirectory(access.path, root);
-    const inHidden = isWithinDirectory(access.path, hidden);
-    if (isWrite(access)) return !inLine || (root === doc.root && inHidden);
-    if (!isWithinDirectory(access.path, doc.root)) return false;
-    return root === doc.root ? inHidden : !inLine;
-  });
-  if (blocked.length === 0 && line.workDir === undefined) {
-    const foreign = accesses.find((access) => isWrite(access) && existing.has(access.path) && writtenByOtherLine(doc, line, access.path));
-    if (foreign === undefined) return undefined;
-    return `${foreign.path} was written on another line of this project and stays as it is. Copy it to ${variantPath(foreign.path, lineSuffix(doc, line))} and change the copy instead, then report that path.`;
-  }
+function isWrite(access: GuardedAccess): boolean {
+  return access.operation === 'write' || access.operation === 'readwrite';
+}
+
+function deniedPaths(blocked: readonly GuardedAccess[]): string {
+  return [...new Set(blocked.map((access) => access.path))].join(', ');
+}
+
+export function guardOwnDirectory(projectRoot: string, workDir: string, accesses: readonly GuardedAccess[]): string | undefined {
+  const blocked = accesses.filter((access) => (isWrite(access) ? !isWithinDirectory(access.path, workDir) : isWithinDirectory(access.path, projectRoot) && !isWithinDirectory(access.path, workDir)));
   if (blocked.length === 0) return undefined;
-  const paths = [...new Set(blocked.map((access) => access.path))].join(', ');
-  if (root === doc.root && blocked.some((access) => isWithinDirectory(access.path, hidden))) return `${hidden} holds Continuo's own records and stays as it is. Denied: ${paths}.`;
-  if (root === doc.root) return `Work on this project stays inside its folder, ${doc.root}; files outside it are not changed. Denied: ${paths}.`;
-  return `This line works in its own directory: ${root}, a copy of the project made when it branched off. Nothing here is ever merged back into other lines, and this line can never change their files. Read and write only inside it, with absolute paths under it; if the user asked for a file elsewhere in the project, tell them plainly that this line cannot write there and where the file is in this line. Denied: ${paths}.`;
+  return `This line works in its own directory: ${workDir}, a copy of the project made when it branched off. Nothing here is ever merged back into other lines, and this line can never change their files. Read and write only inside it, with absolute paths under it; if the user asked for a file elsewhere in the project, tell them plainly that this line cannot write there and where the file is in this line. Denied: ${deniedPaths(blocked)}.`;
+}
+
+export function guardSharedFolder(doc: ContinuoWorkspaceDoc, line: Trajectory, accesses: readonly GuardedAccess[], existing: ReadonlySet<string>): string | undefined {
+  const hidden = join(doc.root, CONTINUO_DIR);
+  const blocked = accesses.filter((access) => (isWrite(access) ? !isWithinDirectory(access.path, doc.root) || isWithinDirectory(access.path, hidden) : isWithinDirectory(access.path, hidden)));
+  if (blocked.length > 0) {
+    if (blocked.some((access) => isWithinDirectory(access.path, hidden))) return `${hidden} holds Continuo's own records and stays as it is. Denied: ${deniedPaths(blocked)}.`;
+    return `Work on this project stays inside its folder, ${doc.root}; files outside it are not changed. Denied: ${deniedPaths(blocked)}.`;
+  }
+  const foreign = accesses.find((access) => isWrite(access) && existing.has(access.path) && writtenByOtherLine(doc, line, access.path));
+  if (foreign === undefined) return undefined;
+  return `${foreign.path} was written on another line of this project and stays as it is. Copy it to ${variantPath(foreign.path, lineSuffix(doc, line))} and change the copy instead, then report that path.`;
+}
+
+export function guardAccesses(doc: ContinuoWorkspaceDoc, sessionId: string, accesses: readonly GuardedAccess[], existing: ReadonlySet<string>): string | undefined {
+  const line = lineOfSession(doc, sessionId);
+  if (line === undefined) return undefined;
+  if (explorerOf(doc, sessionId) !== undefined && accesses.some(isWrite)) {
+    return 'As the author of one plan you only write the plan: submit it with SubmitPlan submit. Do not create or change project files.';
+  }
+  return line.workDir === undefined ? guardSharedFolder(doc, line, accesses, existing) : guardOwnDirectory(doc.root, line.workDir, accesses);
 }
 
 export function guardTool(doc: ContinuoWorkspaceDoc, sessionId: string, name: string, cwd: string | undefined): string | undefined {
   if (explorerOf(doc, sessionId) !== undefined) {
-    if (name === 'AskUserQuestion') return 'As the author of one plan you do not ask the user. Ask another author with Trajectory ask, or write the assumption into your plan.';
-    if (name === 'Bash') return 'As the author of one plan you do not run shell commands. Read the materials with Read, Grep and Glob, then submit your plan with Trajectory submit.';
+    if (name === 'AskUserQuestion') return 'As the author of one plan you do not ask the user. Ask another author with SubmitPlan ask, or write the assumption into your plan.';
+    if (name === 'Bash') return 'As the author of one plan you do not run shell commands. Read the materials with Read, Grep and Glob, then submit your plan with SubmitPlan submit.';
     return undefined;
   }
   if (name !== 'Bash') return undefined;
@@ -205,7 +232,7 @@ export function doneOnLine(doc: ContinuoWorkspaceDoc, line: Trajectory, exceptTa
 export function otherLineNote(doc: ContinuoWorkspaceDoc, line: Trajectory, decision: Decision, plan: TrajectoryPlan): string {
   const status = planStatusOn(doc, line, decision, plan);
   if (status.kind === 'abandoned') return `abandoned${plan.abandoned?.reason === undefined ? '' : ` because ${plan.abandoned.reason}`}`;
-  if (status.kind !== 'elsewhere') return 'not taken';
+  if (status.kind !== 'elsewhere') return choiceOn(line, decision.decisionId) === undefined ? 'a candidate' : 'not taken';
   const own = new Set(line.taskIds);
   const tasks = status.trajectory.taskIds.filter((taskId) => !own.has(taskId)).map((taskId) => doc.tasks.find((task) => task.taskId === taskId)).filter((task): task is ContinuoTask => task !== undefined);
   const rounds = tasks.reduce((total, task) => total + (task.rounds ?? []).length, 0);
