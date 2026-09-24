@@ -80,6 +80,11 @@ export function Drawer(p: DrawerProps) {
   const [dropping, setDropping] = useState<{ decision: Decision; plan: TrajectoryPlan } | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const lastItem = p.state.items.at(-1);
+  useEffect(() => {
+    if (tab !== 'chat') return;
+    const frame = requestAnimationFrame(() => bottomRef.current?.scrollIntoView({ block: 'end' }));
+    return () => cancelAnimationFrame(frame);
+  }, [tab]);
   useEffect(() => { bottomRef.current?.scrollIntoView({ block: 'end' }); }, [p.state.items.length, lastItem?.kind === 'assistant' ? lastItem.text.length : 0, p.questions.length, p.approvals.length, p.latest?.status]);
 
   const tasks = p.doc === null ? [] : tasksOn(p.doc, p.line);
