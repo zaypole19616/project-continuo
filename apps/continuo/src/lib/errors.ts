@@ -8,7 +8,7 @@ const TITLES: Record<string, string> = {
   'provider.filtered': '响应被提供方过滤',
   'provider.api_error': '模型接口返回错误',
   'context.overflow': '上下文超出模型限制',
-  'model.not_configured': '还没有登录模型',
+  'model.not_configured': '请先用 Kimi 账号登录',
 };
 
 export function mentionsUsageLimit(error: TaskError): boolean {

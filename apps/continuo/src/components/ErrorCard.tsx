@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { CircleAlert } from 'lucide-react';
+import { CircleAlert, type LucideIcon } from 'lucide-react';
 import { kimi, type TaskError } from '#/lib/api';
 import { errorTitle, mentionsUsageLimit, spentLimit, untilText, type SpentLimit } from '#/lib/errors';
 import { localTime } from '#/lib/trajectory';
@@ -10,7 +10,7 @@ function Linked({ text }: { text: string }) {
   return <>{text.split(URL).map((part, index) => (index % 2 === 1 ? <a key={index} href={part} target="_blank" rel="noreferrer">{part}</a> : part))}</>;
 }
 
-export function ErrorCard({ kicker, error, action }: { kicker: string; error: TaskError; action?: React.ReactNode }) {
+export function ErrorCard({ kicker, error, action, icon: Icon = CircleAlert }: { kicker: string; error: TaskError; action?: React.ReactNode; icon?: LucideIcon }) {
   const [limit, setLimit] = useState<SpentLimit | undefined>(undefined);
   const usageLimited = mentionsUsageLimit(error);
   useEffect(() => {
@@ -27,7 +27,7 @@ export function ErrorCard({ kicker, error, action }: { kicker: string; error: Ta
   return (
     <div className="err-card fade-in">
       <div className="err-head">
-        <CircleAlert size={15} />
+        <Icon size={15} />
         <span className="err-kicker">{kicker}</span>
         <span className="err-title">{limit === undefined ? errorTitle(error) : `${limit.label}已用完`}</span>
       </div>

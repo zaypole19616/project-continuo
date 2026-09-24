@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
-import { FileText, RotateCcw } from 'lucide-react';
+import { FileText, LogIn, RotateCcw } from 'lucide-react';
 import type { ContinuoDoc, ContinuoTodo, TaskError, TodoAction } from '#/lib/api';
 import { Button } from '#/components/ui/button';
 import { isEmptyFolder } from '#/lib/trajectory';
 import { ErrorCard } from './ErrorCard';
+import { useKimiLogin } from './LoginDialog';
 import { SuggestedTodos } from './SuggestedTodos';
 
 const STAGES: Array<[number, string]> = [
@@ -40,6 +41,7 @@ export function InitCard({ doc, busy, startLock, onRetry, onOpenFile, onTodoActi
   onTodoAction: (todo: ContinuoTodo, action: TodoAction) => void; onShowTodos: () => void;
 }) {
   const [now, setNow] = useState(() => Date.now());
+  const login = useKimiLogin(onRetry);
   const running = doc.init.status === 'running';
   useEffect(() => {
     if (!running) return;
@@ -67,6 +69,10 @@ export function InitCard({ doc, busy, startLock, onRetry, onOpenFile, onTodoActi
   }
   if (doc.init.status === 'failed') {
     const error: TaskError = task?.error ?? { code: 'turn.failed', message: '没有完成', at: doc.init.endedAt ?? doc.init.startedAt ?? new Date().toISOString() };
+    if (error.code === 'model.not_configured') {
+      const action = <Button variant="default" size="sm" disabled={busy} onClick={login.start}>登录</Button>;
+      return <>{login.dialog}<ErrorCard kicker="了解这个文件夹时出错" icon={LogIn} error={{ ...error, message: '登录后会自动重新了解这个文件夹，文件区现在照常可以浏览。' }} action={action} /></>;
+    }
     return <ErrorCard kicker="了解这个文件夹时出错" error={error} action={retry} />;
   }
   if (doc.init.status === 'stopped') {

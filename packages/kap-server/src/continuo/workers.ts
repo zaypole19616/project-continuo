@@ -41,7 +41,7 @@ export interface Attachment {
 
 export type AgentEventHandler = (workspaceId: string, taskId: string, event: Record<string, unknown>) => Promise<void>;
 
-export const NO_MODEL = '还没有可用的模型：先在终端运行 node apps/kimi-code/dist/main.mjs login 登录，再回来重试。';
+export const NO_MODEL = '请先用 Kimi 账号登录，再回来重试。';
 const MISSING_TASK_SESSION = '这件事的对话记录找不到了。';
 const FORK_RETRIES = 25;
 
