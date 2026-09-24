@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowRight, ChevronLeft, ChevronRight, FileText, Loader2, PenLine, Scale, Sparkles, ThumbsUp, TriangleAlert } from 'lucide-react';
 import type { ContinuoDoc, Decision, Trajectory, TrajectoryPlan } from '#/lib/api';
-import { choiceOn, isExploring, isOpen, orderedPlans, planState } from '#/lib/trajectory';
+import { choiceOn, hingeText, isExploring, isOpen, orderedPlans, planState } from '#/lib/trajectory';
 import { Hint } from './Hint';
 
 export interface PlanActions {
@@ -61,7 +61,7 @@ export function PlanDeck({ doc, line, decision, locked, actions, head }: { doc: 
         <button className="icon-btn" title="上一个" aria-label="上一个" disabled={active === 0} onClick={() => goTo(active - 1)}><ChevronLeft size={15} /></button>
         <button className="icon-btn" title="下一个" aria-label="下一个" disabled={active >= total - 1} onClick={() => goTo(active + 1)}><ChevronRight size={15} /></button>
       </div>
-      {stance?.dependsOn !== undefined && <div className="deck-depends"><Scale size={13} /><span><em>取决于</em>{stance.dependsOn}</span></div>}
+      {stance?.dependsOn !== undefined && <div className="deck-depends"><Scale size={13} /><span><em>取决于</em>{hingeText(stance.dependsOn)}</span></div>}
       <div ref={scroller} className="deck-track" onScroll={onScroll}>
         {custom !== undefined && (
           <article className={`deck-card is-current ${active === 0 ? 'is-active' : ''}`}>

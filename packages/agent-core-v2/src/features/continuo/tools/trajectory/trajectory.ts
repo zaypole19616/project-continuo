@@ -20,7 +20,7 @@ export const TrajectoryInputSchema = z.object({
   plans: z.array(proposedPlanSchema).max(12).optional().describe('propose / expand: the plans. Each must differ from the others in approach, not in wording.'),
   pick: z.string().min(1).max(8).optional().describe('recommend: the id of the plan you would pick; leave it out when none is clearly better.'),
   why: z.string().min(1).max(300).optional().describe('propose / expand / recommend: one short sentence in the language of the folder, at most about 40 Chinese characters or 25 English words, naming the fact in the materials that makes the plan you recommend the better choice; the user reads it on the card.'),
-  dependsOn: z.string().min(1).max(200).optional().describe('propose / recommend: always; expand: when it changes. What the choice comes down to, as one short phrase in the language of the folder.'),
+  dependsOn: z.string().min(1).max(80).optional().describe('propose / recommend: always; expand: when it changes. What the choice comes down to, as one short phrase in the language of the folder, at most about 30 Chinese characters or 15 English words, for example 「更看重现场转化还是长期声量」. It names no plan and no plan letter, does not start with 取决于 or "depends on" (the card adds that), and carries no recommendation: that goes into pick and why.'),
   exhausted: z
     .object({
       reason: z.string().min(1).max(300).describe('Why no meaningfully different plan is left: which directions the existing plans already cover.'),
