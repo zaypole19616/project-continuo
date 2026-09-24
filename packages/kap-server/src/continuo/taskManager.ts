@@ -219,7 +219,7 @@ export class ContinuoTaskManager {
     const task = requireTask(doc, taskId);
     if (task.status !== 'running' && task.status !== 'awaiting_user' && task.status !== 'queued') return doc;
     await patchTask(this.store, workspaceId, taskId, (current) => ({ ...current, pauseRequested: true }));
-    const exploring = doc.decisions.find((decision) => decision.taskId === taskId && isExploring(decision));
+    const exploring = doc.decisions.find((decision) => decision.taskId === taskId && isExploring(decision) && decision.exploration!.angles.some((angle) => angle.sessionId !== undefined));
     if (exploring !== undefined) {
       await this.decisions.finishExploration(workspaceId, exploring.decisionId, '已停止');
       return requireDoc(this.store, workspaceId);
@@ -422,7 +422,8 @@ export class ContinuoTaskManager {
     const line = trajectoryOfSession(settled, task.sessionId);
     const open = line === undefined ? undefined : openDecisionOf(settled, line, taskId);
     const attachment = this.workers.attachmentOf(taskId);
-    const reply = (attachment?.reply ?? '').trim().slice(0, 4000);
+    const fullReply = (attachment?.reply ?? '').trim();
+    const reply = fullReply.slice(0, 4000);
     if (open !== undefined) {
       const exploring = isExploring(open);
       await patchTask(this.store, workspaceId, taskId, (current) => {
@@ -445,7 +446,7 @@ export class ContinuoTaskManager {
       notes.push('agent did not report; deliverables inferred from observed writes');
     } else if (report === undefined) {
       const lastReply = reply === '' ? undefined : reply;
-      await patchTask(this.store, workspaceId, taskId, (candidate) => (asksUser(reply)
+      await patchTask(this.store, workspaceId, taskId, (candidate) => (asksUser(fullReply)
         ? { ...toAwaiting(candidate, 'reply', '已回复，等你确认或继续'), lastReply, verification: ['no files written and no result report; the reply asks the user something, waiting for them'] }
         : { ...toEnded(candidate, 'completed', endedAt), lastReply, verification: ['no files written and no result report; the agent answered'] }));
       return;

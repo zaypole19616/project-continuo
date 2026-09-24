@@ -80,6 +80,11 @@ export function Drawer(p: DrawerProps) {
   const [dropping, setDropping] = useState<{ decision: Decision; plan: TrajectoryPlan } | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const lastItem = p.state.items.at(-1);
+  useEffect(() => {
+    if (tab !== 'chat') return;
+    const frame = requestAnimationFrame(() => bottomRef.current?.scrollIntoView({ block: 'end' }));
+    return () => cancelAnimationFrame(frame);
+  }, [tab]);
   useEffect(() => { bottomRef.current?.scrollIntoView({ block: 'end' }); }, [p.state.items.length, lastItem?.kind === 'assistant' ? lastItem.text.length : 0, p.questions.length, p.approvals.length, p.latest?.status]);
 
   const tasks = p.doc === null ? [] : tasksOn(p.doc, p.line);
@@ -89,7 +94,7 @@ export function Drawer(p: DrawerProps) {
   const modelName = DEFAULT_MODEL.split('/').pop();
   const answering = p.activeUserTask !== null && p.activeUserTask.status === 'awaiting_user';
   const steering = p.activeUserTask?.status === 'running';
-  const send = () => { const text = draft; setDraft(''); void p.onSend().then((ok) => { if (!ok) setDraft(text); }); };
+  const send = () => { const text = draft; setDraft(''); void p.onSend().then((ok) => { if (!ok) setDraft((current) => (current === '' ? text : current)); }); };
   const stop = () => { if (p.activeUserTask) p.onAction(p.activeUserTask, 'pause'); };
   const focusComposer = () => { setTab('chat'); setTimeout(() => p.composerRef.current?.focus(), 50); };
   const locked = p.sending || (p.doc !== null && lineIsBusy(p.doc, p.line));

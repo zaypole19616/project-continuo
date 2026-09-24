@@ -162,6 +162,7 @@ export function WorkspaceView({ workspace, onClose, themePref, onTheme }: { work
     } catch (error) {
       setState((prev) => ({ ...prev, items: prev.items.filter((item) => item.id !== localId) }));
       setError((error as Error).message);
+      void refresh();
       return false;
     } finally { setSending(false); }
   };
