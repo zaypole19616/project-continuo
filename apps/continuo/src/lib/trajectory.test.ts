@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ContinuoDoc, ContinuoTask, Decision, Trajectory } from './api';
-import { buildTrunk, currentLine, isExploring, lineIsBusy, orderedPlans, planState, stanceTag, todoGroup } from './trajectory';
+import { buildTrunk, currentLine, isExploring, lineIsBusy, orderedPlans, planState, stanceTag, todoGroup, hingeText } from './trajectory';
 import { errorTitle, failureReason, spentLimit, untilText } from './errors';
 
 const NOW = '2026-09-23T04:00:00.000Z';
@@ -115,5 +115,14 @@ describe('task tab groups', () => {
     expect(todoGroup(task('e', { status: 'needs_review' }))).toBe('stopped');
     expect(todoGroup(task('f', { status: 'interrupted' }))).toBe('stopped');
     expect(todoGroup(task('g'))).toBeUndefined();
+  });
+});
+
+describe('hingeText', () => {
+  it('drops a leading 取决于 the card already shows', () => {
+    expect(hingeText('取决于 Q4 更看重现场转化还是声量')).toBe('Q4 更看重现场转化还是声量');
+    expect(hingeText('选哪个取决于：预算')).toBe('预算');
+    expect(hingeText('Depends on budget')).toBe('budget');
+    expect(hingeText('更看重转化还是声量')).toBe('更看重转化还是声量');
   });
 });

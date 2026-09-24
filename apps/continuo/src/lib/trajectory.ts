@@ -142,3 +142,7 @@ export function buildTrunk(doc: ContinuoDoc, line: Trajectory): TrunkItem[] {
   }
   return items;
 }
+
+export function hingeText(dependsOn: string): string {
+  return dependsOn.replace(/^\s*(选哪个|选择)?\s*(取决于|depends on)[\s:：,，]*/i, '');
+}
