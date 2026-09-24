@@ -521,6 +521,11 @@ describe('context injection', () => {
     expect(shouldInject({ digest: bundleDigest(before) }, bundleDigest(after), false)).toBe(false);
   });
 
+  it('does not inject again when only the task status moves during a turn', () => {
+    const digests = (['queued', 'running', 'awaiting_user'] as const).map((status) => bundleDigest(textOf(7, task({ status }))));
+    expect(new Set(digests).size).toBe(1);
+  });
+
   it('injects when the content changed, on a new turn, and when nothing was injected yet', () => {
     const before = bundleDigest(textOf(7, task()));
     const changed = bundleDigest(textOf(7, task({ supplements: ['keep it short'] })));

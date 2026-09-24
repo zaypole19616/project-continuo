@@ -40,7 +40,7 @@ export function compileContextBundle(doc: ContinuoWorkspaceDoc, sessionId: strin
     return lines.join('\n');
   }
   if (task !== undefined && task.kind === 'user') {
-    lines.push('', `Current task: ${task.title}`, `Task status: ${task.status}.`);
+    lines.push('', `Current task: ${task.title}`);
     for (const item of task.supplements ?? []) lines.push(`The user added: ${item}`);
     if (line !== undefined) lines.push(...renderDone(doc, line, task), ...renderDecisions(doc, line));
   }
